@@ -1,0 +1,49 @@
+# StockWatch strategia-labor: belepesi strategiak folyamatos tesztje multbeli adatokon.
+# A LEGALACSONYABB prioritassal fut: a monitor es a webes felulet mindig elsobbseget kap.
+# Telepites: deploy/install.sh masolja ide: /etc/systemd/system/
+[Unit]
+Description=StockWatch strategia-labor (hatterkutatas)
+After=network-online.target stockwatch-monitor.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=stockwatch
+Group=stockwatch
+WorkingDirectory=/opt/stockwatch
+Environment=STOCKWATCH_ENV_FILE=/etc/stockwatch/stockwatch.env
+Environment=HOME=/var/lib/stockwatch
+Environment=PYTHONUNBUFFERED=1
+Environment=OMP_NUM_THREADS=1
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=MKL_NUM_THREADS=1
+ExecStart=/opt/stockwatch/.venv/bin/python cli.py lab
+Restart=always
+RestartSec=60
+
+# Eroforras: csak a maradek CPU / IO, memoriaplafon (a gep 1 GB-os)
+Nice=19
+CPUWeight=5
+CPUSchedulingPolicy=idle
+IOSchedulingClass=idle
+MemoryHigh=300M
+MemoryMax=450M
+
+# Vedelem: a kod irasvedett, csak az adat-, konfig-, naplo- es titokmappa irhato
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/stockwatch/data /opt/stockwatch/logs /opt/stockwatch/config /etc/stockwatch /var/lib/stockwatch
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Titkok
+.env
+
+# Generalt adat - soha nem verziokezelt
+data/
+logs/
+charts/

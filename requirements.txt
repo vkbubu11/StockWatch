@@ -1,0 +1,33 @@
+# --- Adat ---
+yfinance>=0.2.55
+requests>=2.32.0
+
+# --- Szamitas ---
+pandas>=2.2.0
+numpy>=2.0.0
+scipy>=1.13.0
+
+# FIGYELEM: pandas-ta NEM hasznalhato (numpy>=2 alatt eltorik: `from numpy import NaN`).
+# A szukseges indikatorok sajat implementacioban vannak: src/stockwatch/indicators.py
+
+# --- Strategia-labor: gepi tanulas (lab_ml.py) ---
+scikit-learn>=1.5.0
+
+# --- Chart ---
+plotly>=5.22.0
+kaleido>=0.2.1
+
+# --- UI ---
+streamlit>=1.36.0
+
+# --- Utemezes ---
+APScheduler>=3.10.4
+pandas_market_calendars>=4.4.0
+
+# --- Konfig ---
+PyYAML>=6.0
+pydantic>=2.7.0
+python-dotenv>=1.0.0
+
+# --- Teszt ---
+pytest>=8.2.0

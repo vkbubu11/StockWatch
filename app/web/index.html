@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StockWatch</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6f5c'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22l6-7 5 4 9-11"/></svg>
+      <span>StockWatch</span>
+    </a>
+    <nav class="tabs" aria-label="Fő navigáció">
+      <a href="#/" data-tab="overview">Áttekintés</a>
+      <a href="#/holdings" data-tab="holdings">Saját pozíciók</a>
+      <a href="#/positions" data-tab="positions">Jelzett trade-ek</a>
+      <a href="#/broker" data-tab="broker">Paper trading</a>
+      <a href="#/alerts" data-tab="alerts">Értesítések</a>
+      <a href="#/ledger" data-tab="ledger">Jelzésnapló</a>
+      <a href="#/strategies" data-tab="strategies">Stratégiák</a>
+      <a href="#/sandbox" data-tab="sandbox">Kutatás</a>
+      <a href="#/lab" data-tab="lab">Labor</a>
+      <a href="#/settings" data-tab="settings">Beállítások</a>
+    </nav>
+    <div class="topbar-right">
+      <span id="regime" class="pill" title="Piaci rezsim">…</span>
+      <span id="lastbar" class="muted small"></span>
+      <button id="best" class="btn" type="button" title="A legjobb long és short belépő most, a Beállításokban választott listán">Legjobb belépő</button>
+      <button id="refresh" class="btn primary" type="button">Frissítés</button>
+      <button id="theme" class="btn icon" type="button" title="Világos / sötét téma" aria-label="Téma váltása">◐</button>
+      <button id="logout" class="btn" type="button" hidden>Kilépés</button>
+    </div>
+  </header>
+
+  <div id="jobbar" class="jobbar" hidden></div>
+  <dialog id="best-dialog" class="best-dialog" aria-label="Legjobb belépő most"></dialog>
+
+  <main id="view" class="view" aria-live="polite">
+    <div class="loading">Betöltés…</div>
+  </main>
+
+  <footer class="footer">
+    Technikai elemzés — <strong>nem befektetési tanács</strong>. Valódi pénzzel nem kereskedik (csak Alpaca paper számlán);
+    az értesítéseket a <code>python cli.py monitor</code> küldi.
+  </footer>
+
+  <div id="tooltip" class="tooltip" hidden></div>
+  <div id="guide" class="guide" role="tooltip" hidden></div>
+  <script src="guide.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

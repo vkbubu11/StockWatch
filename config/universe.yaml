@@ -1,0 +1,126 @@
+# ---------------------------------------------------------------------------
+# Kutatasi / backtest univerzum - NEM a figyelt papirok (az a watchlist.yaml).
+#
+# Szandekosan vegyes: nem csak a mai gyoztesek. A 10 nagy tech papir mellett
+# vannak benne oldalazo, visszaeso es kifejezetten gyengen teljesito cegek is
+# (pl. INTC, PYPL, WBA, BIIB, ZM, PTON, NKE), kulonben a backtest a
+# "tulelesi torzitas" miatt tul szep eredmenyt mutatna.
+#
+# Letoltes (a sajat gepeden, ~2-4 perc):   python cli.py fetch-universe
+# Kutatas:                                   python cli.py entry-research --universe
+#
+# A benchmark (QQQ) automatikusan bekerul.
+# ---------------------------------------------------------------------------
+symbols:
+  # --- mega cap tech (a watchlist) ---
+  - AAPL
+  - MSFT
+  - NVDA
+  - AMZN
+  - GOOGL
+  - META
+  - TSLA
+  - AVGO
+  - AMD
+  - NFLX
+  # --- tovabbi NASDAQ-100 technologia / felvezeto ---
+  - ADBE
+  - CSCO
+  - INTC
+  - QCOM
+  - TXN
+  - AMAT
+  - LRCX
+  - KLAC
+  - MU
+  - ADI
+  - MRVL
+  - NXPI
+  - MCHP
+  - "ON"            # idezojel kell: a YAML a sima ON-t logikai igaznak olvasna
+  - ASML
+  - SNPS
+  - CDNS
+  - INTU
+  - ADSK
+  - ORCL
+  - CRM
+  - NOW
+  - PANW
+  - FTNT
+  - CRWD
+  - DDOG
+  - ZS
+  - TEAM
+  - WDAY
+  - MDB
+  - SNOW
+  - PLTR
+  - SHOP
+  - ANET
+  - DELL
+  - HPQ
+  - IBM
+  # --- internet / fogyasztoi ---
+  - PYPL
+  - EBAY
+  - BKNG
+  - ABNB
+  - UBER
+  - DASH
+  - EA
+  - TTWO
+  - ROKU
+  - ZM
+  - DOCU
+  - PTON
+  - ETSY
+  - PINS
+  - SNAP
+  # --- egeszsegugy / biotech ---
+  - AMGN
+  - GILD
+  - VRTX
+  - REGN
+  - BIIB
+  - ISRG
+  - IDXX
+  - DXCM
+  - ILMN
+  - MRNA
+  - JNJ
+  - PFE
+  - UNH
+  # --- fogyasztoi / kereskedelem ---
+  - COST
+  - PEP
+  - KO
+  - SBUX
+  - MDLZ
+  - WBA
+  - NKE
+  - TGT
+  - WMT
+  - HD
+  - MCD
+  - LULU
+  # --- ipar / energia / penzugy (nem tech rezsim) ---
+  - HON
+  - CAT
+  - DE
+  - GE
+  - BA
+  - MMM
+  - UPS
+  - XOM
+  - CVX
+  - JPM
+  - BAC
+  - GS
+  - V
+  - MA
+  - DIS
+  - T
+  - VZ
+  - CMCSA
+  - MOD
