@@ -15,7 +15,10 @@ backtest es a virtualis kovetes feltetelez:
 
     * ha az A bracket celja teljesult, a B bracket stopjat a belepore huzza (nullszaldo)
     * ha a belepo-limit a jelzes utani kereskedesi napon nem teljesult, visszavonja
-      (a jelzes a masnapi nyitasra szolt, kesobb mar nem ervenyes)
+      (a jelzes a masnapi nyitasra szolt, kesobb mar nem ervenyes). A kitores belepoje a
+      backtestben CSAK a nyitoaron teljesulhet (ha a nyito a limit folott van, nincs belepes):
+      ezert ha a nyitas utan `broker.entry_window_min` perccel sem teljesult, visszavonja -
+      kulonben a nyitas utan visszaeso (gap-fade) papirok teljesulnenek, amit a backtest nem merte
     * az idokorlat (a minta hosszabol szamolt horizont) utolso napjan meg a zaras elotti
       percekben piaci aron zarja a maradekot (a backtest is a napi zaron lep ki)
 
@@ -76,6 +79,7 @@ EVENT_LABELS = {
     "broker_error": "HIBA a paper kereskedesben",
     "broker_exit_signal": "KILEPESI JEL - nyitaskor piaci aron zar (paper)",
     "broker_exit": "kilepes elkuldve piaci aron (paper)",
+    "broker_exit_retry": "a kilepo megbizas nem teljesult - ujra bekuldve (paper)",
 }
 
 
@@ -388,6 +392,13 @@ def submit(signal, settings: Settings, client: AlpacaClient, book: BrokerBook) -
     return trade
 
 
+def occupied_slots(book: BrokerBook) -> list[BrokerTrade]:
+    """A max. nyitott trade-szamba szamito trade-ek. A Visszahuzas fuggo -5%-os limitje NEM foglal helyet:
+    a tobbsege nem teljesul, es a validalas szerint a fuggo megbizasokra szamolt korlat rontja az eredmenyt
+    (a nyertes valtozat korlat nelkuli). A fuggo vetelek a szabad keszpenzt igy is lekotik (free_cash)."""
+    return [t for t in book.active() if not (t.exit_mode == "indicator" and t.status == "submitted")]
+
+
 def _checked_shares(signal, settings: Settings, client: AlpacaClient, book: BrokerBook,
                     risk_mult: float = 1.0) -> int:
     """A bekuldes kozos vedelmei (duplikatum, egy trade / papir, max. nyitott, szamla, szabad keret)
@@ -397,7 +408,7 @@ def _checked_shares(signal, settings: Settings, client: AlpacaClient, book: Brok
         raise BrokerError("Ezt a jelzest mar bekuldtuk.")
     if book.active(signal.symbol):
         raise BrokerError(f"{signal.symbol}: mar van aktiv paper trade ezen a papiron.")
-    if len(book.active()) >= settings.broker.max_open_trades:
+    if len(occupied_slots(book)) >= settings.broker.max_open_trades:
         raise NoRoom(f"Elerted a max. nyitott paper trade-ek szamat ({settings.broker.max_open_trades}).")
 
     account = client.account()
@@ -532,6 +543,31 @@ def minutes_to_close(clock: dict) -> float | None:
         return None
 
 
+def session_open_at(clock: dict) -> pd.Timestamp | None:
+    """A mai nyitas idopontja (New York), ha a piac most nyitva van es az ora ismert."""
+    if not clock.get("is_open") or not clock.get("timestamp"):
+        return None
+    try:
+        now = pd.Timestamp(clock["timestamp"]).tz_convert(MARKET_TZ)
+    except (TypeError, ValueError):
+        return None
+    return now.normalize() + pd.Timedelta(hours=9, minutes=30)
+
+
+def entry_window_passed(trade: BrokerTrade, settings: Settings, clock: dict) -> bool:
+    """Kitores: a nyitas utan `entry_window_min` perccel sem teljesult a (nyitas ELOTT bekuldott) belepo
+    -> a nyito a limit folott volt, a backtest szerint nincs belepes. A napkozben kezzel bekuldott
+    megbizasra nem vonatkozik."""
+    window = settings.broker.entry_window_min
+    opened = session_open_at(clock)
+    if not window or opened is None or trade.exit_mode == "indicator" or not trade.submitted_at:
+        return False
+    now = pd.Timestamp(clock["timestamp"]).tz_convert(MARKET_TZ)
+    submitted = pd.Timestamp(trade.submitted_at)
+    submitted = (submitted.tz_localize("UTC") if submitted.tzinfo is None else submitted).tz_convert(MARKET_TZ)
+    return submitted < opened and now >= opened + pd.Timedelta(minutes=window)
+
+
 def sync(
     settings: Settings,
     client: AlpacaClient,
@@ -552,7 +588,7 @@ def sync(
     closing = market_open and left is not None and left <= CLOSE_WINDOW_MIN
     for trade in book.active():
         try:
-            events += _sync_trade(trade, settings, client, market_open, final_bar, closing)
+            events += _sync_trade(trade, settings, client, market_open, final_bar, closing, clock)
         except BrokerError as exc:
             trade.note(f"szinkron hiba: {exc}")
             log.warning("Paper trade szinkron hiba (%s): %s", trade.id, exc)
@@ -560,7 +596,8 @@ def sync(
 
 
 def _sync_trade(trade: BrokerTrade, settings: Settings, client: AlpacaClient,
-                market_open: bool, final_bar: bool, closing: bool = False) -> list[tuple[BrokerTrade, str]]:
+                market_open: bool, final_bar: bool, closing: bool = False,
+                clock: dict | None = None) -> list[tuple[BrokerTrade, str]]:
     events: list[tuple[BrokerTrade, str]] = []
     legs = trade.leg_objs()
     was_open = trade.status == "open"
@@ -583,9 +620,24 @@ def _sync_trade(trade: BrokerTrade, settings: Settings, client: AlpacaClient,
 
         if leg.exit_order_id:                       # idokorlat / kezi zaras folyamatban
             exit_order = client.get_order(leg.exit_order_id)
-            if exit_order.get("status") == "filled":
+            status = exit_order.get("status")
+            if status == "filled":
                 leg.exit_price = _fill_price(exit_order)
                 leg.exit_reason = leg.exit_intent or "manual"
+            elif status in ("canceled", "expired", "rejected") and not float(exit_order.get("filled_qty") or 0):
+                # A cel / stop mar vissza van vonva: e nelkul a pozicio vedtelenul ragadna (pl. egy
+                # nyitoaukcion nem teljesult OPG, vagy egy elutasitott eladas). Ujra piaci aron.
+                order = client.submit_order({
+                    "symbol": trade.symbol, "qty": str(leg.filled_qty), "side": "sell", "type": "market",
+                    "time_in_force": "day",
+                })
+                trade.note(f"a kilepo megbizas {status} - ujra bekuldve piaci aron")
+                leg.exit_order_id = order["id"]
+                if order.get("status") == "filled":
+                    leg.exit_price, leg.exit_reason = _fill_price(order), leg.exit_intent or "manual"
+                events.append((trade, "broker_exit_retry"))
+            elif status in ("canceled", "expired", "rejected"):
+                trade.note(f"FIGYELEM: a kilepo megbizas reszben teljesult, majd {status} - kezi ellenorzes kell")
             continue
         reason = _check_children(client, leg)
         if reason == "take_profit":
@@ -601,6 +653,26 @@ def _sync_trade(trade: BrokerTrade, settings: Settings, client: AlpacaClient,
         trade.filled_at = trade.filled_at or _today().strftime("%Y-%m-%d")
         trade.note(f"belepes teljesult: {qty} db @ {trade.entry_price:.2f}")
         events.insert(0, (trade, "broker_filled"))
+
+    # 1/b. kitores: a belepo csak a nyitaskor teljesulhet (mint a backtestben)
+    if trade.status == "submitted" and clock is not None and entry_window_passed(trade, settings, clock):
+        for leg in legs:
+            if not leg.done and leg.filled_qty == 0:
+                _cancel_quietly(client, leg.order_id)
+        # a visszavonas pillanataban teljesulhetett: akkor a kovetkezo szinkron nyitottkent veszi at
+        if any(float(client.get_order(leg.order_id).get("filled_qty") or 0) > 0 for leg in legs if not leg.done):
+            trade.note("a belepo a visszavonas kozben teljesult - nyitott trade-kent kovetjuk")
+            trade.set_legs(legs)
+            return events
+        for leg in legs:
+            if not leg.done:
+                leg.exit_reason = "not_filled"
+        trade.set_legs(legs)
+        trade.status = "expired"
+        trade.closed_at = _today().strftime("%Y-%m-%d")
+        trade.note(f"a nyitas utan {settings.broker.entry_window_min} perccel sem teljesult (a nyito a limit "
+                   "folott volt) - visszavonva, mint a backtestben")
+        return [(trade, "broker_expired")]
 
     bars = store.load(trade.symbol, settings)
 
@@ -681,8 +753,9 @@ def _cancel_quietly(client: AlpacaClient, order_id: str) -> None:
         log.info("Visszavonas nem sikerult (%s): %s", order_id, exc)
 
 
-def _close_legs(client: AlpacaClient, trade: BrokerTrade, legs: list[Leg], reason: str) -> bool:
-    """A meg nyitott labak: cel/stop visszavonasa, majd eladas piaci aron."""
+def _close_legs(client: AlpacaClient, trade: BrokerTrade, legs: list[Leg], reason: str,
+                tif: str = "day") -> bool:
+    """A meg nyitott labak: cel/stop visszavonasa, majd eladas piaci aron. `tif="opg"`: a nyitoaukcion."""
     acted = False
     for leg in legs:
         if leg.done or leg.exit_order_id:
@@ -701,7 +774,7 @@ def _close_legs(client: AlpacaClient, trade: BrokerTrade, legs: list[Leg], reaso
         leg.exit_intent = reason
         order = client.submit_order({
             "symbol": trade.symbol, "qty": str(leg.filled_qty), "side": "sell", "type": "market",
-            "time_in_force": "day",
+            "time_in_force": tif,
         })
         leg.exit_order_id = order["id"]
         if order.get("status") == "filled":
@@ -725,6 +798,71 @@ def _maybe_close(trade: BrokerTrade, legs: list[Leg], events: list) -> None:
                                    for leg in traded), 2)
     trade.note(f"lezarva, eredmeny {trade.realised_pnl:+.2f} $")
     events.append((trade, "broker_closed"))
+
+
+def preopen(settings: Settings, client: AlpacaClient, book: BrokerBook) -> list[tuple[BrokerTrade, str]]:
+    """Nyitas elott (a monitor 9:05-kor): a Visszahuzas zaron szuletett kilepesi jele -> eladas a
+    NYITOAUKCION (OPG piaci megbizas). A backtest pontosan a nyitoaron lep ki; a nyitas utani elso
+    szinkronig varva (percekkel kesobb) mas aron teljesulne. Ha az OPG nem megy be, a nyitas utani
+    szinkron piaci aron zar (mint eddig)."""
+    events: list[tuple[BrokerTrade, str]] = []
+    pending = [t for t in book.active() if t.exit_mode == "indicator" and t.status == "open" and t.exit_pending]
+    if not pending or client.clock().get("is_open"):
+        return events
+    for trade in pending:
+        legs = trade.leg_objs()
+        try:
+            if _close_legs(client, trade, legs, trade.exit_pending, tif="opg"):
+                trade.note(f"kilepes a nyitoaukcion (OPG, {trade.exit_pending})")
+                events.append((trade, "broker_exit"))
+        except BrokerError as exc:
+            trade.note(f"az OPG kilepes nem ment be ({exc}) - nyitaskor piaci aron zar")
+            log.warning("OPG kilepes sikertelen (%s): %s", trade.id, exc)
+        finally:
+            trade.set_legs(legs)
+    return events
+
+
+def readiness(book: BrokerBook, settings: Settings) -> dict[str, dict]:
+    """Eles kereskedes elotti kapu stratégiankent, a LEZART paper trade-ekbol.
+
+    Csak akkor "ready", ha eleg trade van, a nyeresi arany, a profit-faktor es az osszesitett eredmeny
+    is atmegy. A Wilson-intervallum mutatja, mennyire biztos a nyeresi arany (50 trade-nel +/-12%)."""
+    from .entry_research import wilson
+
+    cfg = settings.broker
+    out: dict[str, dict] = {}
+    closed = [t for t in book.trades.values() if t.status == "closed" and t.realised_pnl is not None]
+    for strategy in sorted({t.strategy for t in closed}):
+        trades = [t for t in closed if t.strategy == strategy]
+        pnl = [t.realised_pnl for t in trades]
+        wins = sum(p > 0 for p in pnl)
+        gross_win, gross_loss = sum(p for p in pnl if p > 0), -sum(p for p in pnl if p <= 0)
+        pf = gross_win / gross_loss if gross_loss > 0 else (float("inf") if gross_win > 0 else 0.0)
+        pct = [t.realised_pnl / (t.entry_price * t.shares) * 100 for t in trades if t.entry_price and t.shares]
+        lo, hi = wilson(wins, len(trades))
+        n, win = len(trades), wins / len(trades)
+        checks = [
+            (f"legalabb {cfg.live_gate_min_trades} lezart trade ({n})", n >= cfg.live_gate_min_trades),
+            (f"nyeresi arany >= {cfg.live_gate_win:.0%} ({win:.0%})", win >= cfg.live_gate_win),
+            (f"profit-faktor >= {cfg.live_gate_pf:g} ({pf:.2f})", pf >= cfg.live_gate_pf),
+            (f"osszesitett eredmeny > 0 ({sum(pnl):+,.0f} $)", sum(pnl) > 0),
+        ]
+        out[strategy] = {"n": n, "wins": wins, "win": win, "win_lo": lo, "win_hi": hi, "pf": pf,
+                         "pnl": sum(pnl), "avg_pct": sum(pct) / len(pct) if pct else None,
+                         "checks": checks, "ready": all(ok for _, ok in checks)}
+    return out
+
+
+def readiness_lines(book: BrokerBook, settings: Settings) -> list[str]:
+    """Rovid szoveg (CLI, eletjel): stratégiankent az eles kapu allapota."""
+    lines = []
+    for strategy, r in readiness(book, settings).items():
+        verdict = "ATMENT - elesitheto" if r["ready"] else "meg nem"
+        avg = f", atlag {r['avg_pct']:+.2f}% / trade" if r["avg_pct"] is not None else ""
+        lines.append(f"Eles kapu [{strategy}]: {verdict} | {r['n']} trade, nyero {r['win']:.0%} "
+                     f"(95%: {r['win_lo']:.0%}-{r['win_hi']:.0%}), PF {r['pf']:.2f}{avg}")
+    return lines
 
 
 def close_trade(trade: BrokerTrade, client: AlpacaClient) -> None:

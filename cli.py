@@ -479,6 +479,11 @@ def cmd_broker(args) -> int:
     stats = book.stats()
     if stats["n"]:
         print(f"\nLezart: {stats['n']} | nyero: {stats['win']:.0%} | osszesen: {stats['pnl']:+,.2f} $")
+    for strategy, r in broker_mod.readiness(book, settings).items():
+        print(f"\nEles kapu - {strategy}: {'ATMENT, elesitheto' if r['ready'] else 'meg nem ment at'}")
+        for text, ok in r["checks"]:
+            print(f"  [{'OK ' if ok else '   '}] {text}")
+        print(f"  nyeresi arany 95%-os intervalluma: {r['win_lo']:.0%} - {r['win_hi']:.0%}")
     return 0
 
 

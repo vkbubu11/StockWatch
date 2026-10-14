@@ -101,13 +101,14 @@ def _broker_lines(settings: Settings) -> list[str]:
     closed = (f" | lezart {stats['n']}, talalati arany {stats['win']:.0%}, P/L {stats['pnl']:+,.0f} $"
               if stats["n"] else "")
     line = f"Paper trade-ek: {len(book.active())} nyitott{closed}"
+    gate = broker.readiness_lines(book, settings)
     try:
         account = client.account()
         equity, last = float(account.get("equity") or 0), float(account.get("last_equity") or 0)
         day = f" (ma {(equity / last - 1) * 100:+.2f}%)" if last else ""
-        return [f"Paper szamla: {equity:,.0f} ${day}".replace(",", " "), line]
+        return [f"Paper szamla: {equity:,.0f} ${day}".replace(",", " "), line] + gate
     except Exception as exc:                      # a kulcs soha nincs a kivetel szovegeben
-        return [f"Paper szamla: nem elerheto ({type(exc).__name__})", line]
+        return [f"Paper szamla: nem elerheto ({type(exc).__name__})", line] + gate
 
 
 def build(settings: Settings, report: DayReport, sent: Counter | None, errors: ErrorCounter | None,

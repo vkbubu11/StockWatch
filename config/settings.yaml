@@ -157,6 +157,10 @@ broker:
   auto_trade: true
   size_from_account: true
   max_open_trades: 5
+  entry_window_min: 5       # kitores: ha a nyitas utan ennyi perccel sem teljesult, visszavonja (0 = ki)
+  live_gate_min_trades: 50  # elesitesi kapu: lezart paper trade-ek szama
+  live_gate_win: 0.70       # elesitesi kapu: nyeresi arany
+  live_gate_pf: 1.3         # elesitesi kapu: profit-faktor
 
 # --- Strategia-labor / gepi tanulas arnyek-uzeme (shadow.py) ---
 lab:

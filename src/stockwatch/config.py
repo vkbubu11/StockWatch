@@ -250,7 +250,22 @@ class BrokerSettings(BaseModel):
 
     auto_trade: bool = False        # a monitor maga kuldi-e be a belepesi jelzeseket
     size_from_account: bool = True  # darabszam a paper szamla toke-jebol (kulonben entry.account_size)
-    max_open_trades: int = 5        # egyszerre ennyi nyitott / fuggo broker-trade
+    max_open_trades: int = 5        # egyszerre ennyi nyitott / fuggo broker-trade (Visszahuzas: csak a teljesult)
+    # Kitores: a belepo csak a NYITASKOR teljesulhet (mint a backtestben). Ha a nyitas utan ennyi perccel
+    # sem teljesult (a nyito a limit folott volt), visszavonjuk. 0 = ki (a limit egesz nap el).
+    entry_window_min: int = 5
+    # Eles kereskedes elotti kapu (stratégiankent, a lezart paper trade-ekbol)
+    live_gate_min_trades: int = 50  # ennyi lezart paper trade kell a donteshez
+    live_gate_win: float = 0.70     # nyeresi arany legalabb
+    live_gate_pf: float = 1.3       # profit-faktor legalabb
+
+    @model_validator(mode="after")
+    def _check(self) -> "BrokerSettings":
+        if not 0 <= self.entry_window_min <= 390:
+            raise ValueError("broker.entry_window_min: 0 es 390 perc kozott")
+        if not 0 < self.live_gate_win < 1 or self.live_gate_min_trades < 1 or self.live_gate_pf <= 0:
+            raise ValueError("broker.live_gate_*: ervenytelen kuszob")
+        return self
 
 
 class PullbackParams(BaseModel):

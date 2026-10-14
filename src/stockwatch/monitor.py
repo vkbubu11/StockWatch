@@ -496,6 +496,29 @@ def broker_cycle(dispatcher: Dispatcher | None, final_bar: bool, read_only: bool
     return len(events)
 
 
+def broker_preopen_cycle(dispatcher: Dispatcher | None, read_only: bool = False) -> int:
+    """Nyitas elott: a Visszahuzas kilepesei a nyitoaukciora (broker.preopen). Az esemenyek szamat adja."""
+    client = broker.AlpacaClient.from_env()
+    if client is None:
+        return 0
+    settings = _fresh_settings()
+    with broker.book_lock(settings):
+        book = broker.BrokerBook(settings, read_only=read_only)
+        try:
+            events = broker.preopen(settings, client, book)
+        except broker.BrokerError as exc:
+            log.warning("Nyitas elotti paper kilepes sikertelen: %s", exc)
+            return 0
+        book.save()
+    if dispatcher is not None:
+        for trade, event in events:
+            title, body = broker.format_event(trade, event)
+            dispatcher.dispatch(Alert(symbol=trade.symbol, title=title, body=body, forecast=None, event=event,
+                                      extra={"broker_trade": trade.id, "status": trade.status,
+                                             "signal_id": trade.signal_id}, strategy=trade.strategy))
+    return len(events)
+
+
 # ---------------------------------------------------------------------------
 # Indexszkenneles (Nasdaq-100 / S&P 500)
 # ---------------------------------------------------------------------------
@@ -1039,7 +1062,8 @@ def run_forever(settings: Settings | None = None, dry_run: bool = False) -> None
     logging.getLogger("apscheduler.executors.default").setLevel(logging.WARNING)
 
     def preopen_job() -> None:
-        """Nyitas elott: az elozo esti jelzesek ujraellenorzese a veglegesitett adaton."""
+        """Nyitas elott: az elozo esti jelzesek ujraellenorzese a veglegesitett adaton, es a
+        Visszahuzas kilepesei a nyitoaukciora."""
         from . import revalidate
 
         try:
@@ -1049,6 +1073,10 @@ def run_forever(settings: Settings | None = None, dry_run: bool = False) -> None
                          ", ".join(f"{r['symbol']} {r['decision']}" for r in results))
         except Exception:
             log.exception("A nyitas elotti ellenorzes hibara futott")
+        try:
+            broker_preopen_cycle(dispatcher, read_only=dry_run)
+        except Exception:
+            log.exception("A nyitas elotti paper kilepes hibara futott")
 
     scheduler.add_job(preopen_job, triggers["preopen"], id="preopen", max_instances=1, coalesce=True)
     scheduler.add_job(close_job, triggers["close"], id="close", max_instances=1, coalesce=True)

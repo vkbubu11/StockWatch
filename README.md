@@ -590,9 +590,18 @@ python cli.py broker          # számla és paper trade-ek
 python cli.py broker sync     # szinkronizálás kézzel
 ```
 
-> A bracket belépő gtc limit, nem nyitóárra szóló megbízás: ha a nyitó a limit fölött van, de napközben
-> visszajön, még teljesülhet (a backtest ilyenkor kihagyja). A le nem futott belépőt a zárás utáni
-> szinkron vonja vissza.
+> **Belépés csak a nyitáskor (mint a backtestben).** A kitörés bracket-belépője gtc limit; ha a nyitás után
+> `broker.entry_window_min` (alap 5) perccel sem teljesült – a nyitó a limit fölött volt –, a rendszer visszavonja,
+> ahogy a backtest is kihagyja. (A napközben kézzel beküldött megbízásra nem vonatkozik; `0` = egész nap él.)
+>
+> **Visszahúzás:** a kilépési jel utáni reggel 9:05-kor (NY) a monitor az eladást a **nyitóaukcióra** (OPG) küldi,
+> így az a backtest szerinti nyitóáron teljesül. A függő −5%-os limitek nem foglalnak helyet a `max_open_trades`-ből
+> (a szabad készpénzt lekötik). Ha egy kilépő megbízást az Alpaca elutasít vagy visszavon, a rendszer újraküldi –
+> a pozíció nem maradhat stop nélkül.
+>
+> **Élesítési kapu:** a `python cli.py broker` és a napi életjel stratégiánként mutatja, átment-e: ≥ 50 lezárt paper
+> trade, ≥ 70% nyerő, profit-faktor ≥ 1,3, pozitív összesített eredmény (`broker.live_gate_*`), a nyerési arány
+> 95%-os intervallumával. Részletek és indoklás: [`docs/REVIEW-2026-10.md`](docs/REVIEW-2026-10.md).
 
 ---
 
