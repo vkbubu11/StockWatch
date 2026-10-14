@@ -432,3 +432,4 @@ tr.lab-detail h3, #lab-ml h3 { font-size: 13px; margin: 6px 0; }
 .best-plan th { text-align: left; font-weight: 500; color: var(--muted); padding: 2px 8px 2px 0; white-space: nowrap; }
 .best-list { list-style: none; padding: 0; margin: 0; font-size: 13px; }
 .best-list li { padding: 3px 0; }
+.nowrap { white-space: nowrap; }

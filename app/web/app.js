@@ -285,7 +285,7 @@ function indexCard(ix, all) {
 
 function candidatesTable(list) {
   return `<div class="table-wrap"><table>
-    <thead><tr><th>Ticker</th><th>Helyzet</th><th>Alakzat</th><th>Pont</th><th class="num">Záró</th>
+    <thead><tr><th>Ticker</th><th>Időpont</th><th>Helyzet</th><th>Alakzat</th><th>Pont</th><th class="num">Záró</th>
       <th class="num">Belépő / limit</th><th class="num">Stop</th><th class="num">½ eladás</th><th class="num">Cél</th>
       <th class="num">R/R</th><th class="num">Db</th><th>Eredmény</th></tr></thead>
     <tbody>${list.map((s) => {
@@ -293,6 +293,7 @@ function candidatesTable(list) {
       const p = s.plan;
       return `<tr class="clickable" data-href="#/p/${esc(s.symbol)}">
         <td class="ticker">${esc(s.symbol)}</td>
+        <td class="nowrap">${candidateTime(s)}</td>
         <td><span class="badge ${k.cls}">${k.text}</span></td>
         <td><span class="with-info">${esc(s.pattern)}${infoButton(s.pattern, "bullish", s.kind, statsFor(s.pattern, "bullish"))}</span></td>
         <td>${scorebar(s.score)}</td>
@@ -305,6 +306,16 @@ function candidatesTable(list) {
         <td class="num">${p.shares}</td>
         <td>${verdict(s)}${mlNote(s)}</td></tr>`;
     }).join("")}</tbody></table></div>`;
+}
+
+// A jelolt pontos idopontja: a gyertya (zaro) napja es a kiertekeles datuma, ideje (helyi ido, masodpercre).
+function candidateTime(s) {
+  const bar = s.bar_time ? new Date(s.bar_time).toLocaleString("hu-HU", { dateStyle: "short", timeStyle: "short" }) : s.as_of;
+  if (!s.evaluated_at) return `<span class="small">gyertya: ${esc(bar || "–")}</span>`;
+  const ev = new Date(s.evaluated_at);
+  const full = ev.toLocaleString("hu-HU", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return `<span title="Kiértékelve: ${esc(full)} (UTC: ${esc(s.evaluated_at)})">${esc(full)}</span>
+    <div class="muted small">gyertya: ${esc(bar || "–")}</div>`;
 }
 
 function watchRow(r) {

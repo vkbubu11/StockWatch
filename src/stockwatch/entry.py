@@ -172,6 +172,8 @@ class EntrySignal:
     earnings_date: date | None = None
     ml: dict | None = None                  # gepi tanulas arnyek-becsles (shadow.py) - nem dont
     strategy: str = "breakout"              # melyik strategia kuldte (config.STRATEGY_IDS)
+    # a kiertekeles pontos idopontja (UTC) - az elbukott jelolteknel is; a jelazonositoba NEM szamit bele
+    evaluated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def score(self) -> float:
@@ -219,6 +221,8 @@ class EntrySignal:
             "symbol": self.symbol,
             "kind": self.kind,
             "as_of": str(self.as_of.date()),
+            "bar_time": self.as_of.isoformat() if self.as_of.time() != datetime.min.time() else None,
+            "evaluated_at": self.evaluated_at.isoformat(timespec="seconds"),
             "price": round(self.price, 2),
             "score": self.score,
             "passed": self.passed,

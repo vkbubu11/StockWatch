@@ -58,3 +58,22 @@ def test_deep_cycle_tracks_and_submits_when_linked(env, monkeypatch):  # noqa: F
     assert all(a.strategy == "deep" for a in sent if a.event == "entry_pullback")
     assert len([p for p in tracker.active() if p.strategy == "deep"]) == 3
     assert len(submitted) == 3                                   # a paper fiok a Mely visszahuzashoz kotott
+
+
+def test_candidates_carry_exact_evaluation_time(env):  # noqa: F811
+    """Minden jelolt (atment vagy elbukott) pontos kiertekelesi idopontot visz; a jelazonosito nem fugg tole."""
+    from datetime import datetime, timedelta, timezone
+
+    df = uptrend_with_drop()
+    params = StrategiesSettings().pullback.params
+    failing = params.model_copy(update={"min_price": 1e9})          # az "Ar" szuron elbukik
+    before = datetime.now(timezone.utc).replace(microsecond=0)
+    ok, bad = (meanrev.evaluate("A", df, env, p, None) for p in (params, failing))
+    assert ok.passed and not bad.passed
+    for sig in (ok, bad):
+        d = sig.to_dict()
+        stamp = datetime.fromisoformat(d["evaluated_at"])
+        assert stamp.tzinfo is not None and before <= stamp <= before + timedelta(minutes=1)
+        assert d["as_of"] == f"{df.index[-1]:%Y-%m-%d}"
+    later = bad.__class__(**{**bad.__dict__, "evaluated_at": before + timedelta(days=1)})
+    assert later.signal_id == bad.signal_id
