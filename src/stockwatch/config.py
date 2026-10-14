@@ -359,6 +359,26 @@ class EtfStrategy(PullbackStrategy):
         return out
 
 
+def _deep_params() -> "PullbackParams":
+    """A Mely visszahuzas szabalyai: a Visszahuzas (RSI2) bemenete valtozatlan, de a stop TAG (5 ATR).
+
+    A 2026-10-i validacio (514 indextag, `meanrev-research --deep`) szerint a 3 ATR-es stop a
+    visszahuzas-kotesek egy reszet a melyponton zarja ki, amelyek utana visszapattannanak: 5 ATR-rel
+    tanito 72,8% -> 76,2%, validacio 75,0% (valtozatlan), a profit-faktor 2,5 -> 3,6, es a varhato
+    ertek bootstrap also hatara mindket idoszakban pozitiv lett. A valasztas CSAK a tanito idoszakon
+    tortent; a holdout (2025.04-) meg zarolt. Connors-Alvarez is azt talalta, hogy a szoros stop
+    a visszahuzas-strategiak talalati aranyat rontja."""
+    return PullbackParams(stop_atr=5.0)
+
+
+class DeepPullbackStrategy(PullbackStrategy):
+    """Mely visszahuzas: RSI(2) < 2, limit -5%, TAG (5 ATR) stop - a Nasdaq-100 / S&P 500 tagjain.
+    Alapbol fut (virtualis kovetes), de nem ertesit: a jelzesei a Visszahuzaseival egyeznek."""
+
+    alerts: bool = False
+    params: PullbackParams = Field(default_factory=_deep_params)
+
+
 class SandboxStrategy(StrategySwitch):
     """Szabad kutatoi strategia: SOHA nincs a paper fiokhoz kotve."""
 
@@ -384,10 +404,10 @@ class SandboxStrategy(StrategySwitch):
         return value
 
 
-STRATEGY_IDS = ("breakout", "pullback", "etf", "sandbox")
-PAPER_STRATEGIES = ("breakout", "pullback", "etf")   # a homokozo soha nem kotheto a paper fiokhoz
-STRATEGY_LABELS = {"breakout": "Kitores", "pullback": "Visszahuzas (RSI2)", "etf": "ETF visszahuzas",
-                   "sandbox": "Homokozo"}
+STRATEGY_IDS = ("breakout", "pullback", "deep", "etf", "sandbox")
+PAPER_STRATEGIES = ("breakout", "pullback", "deep", "etf")   # a homokozo soha nem kotheto a paper fiokhoz
+STRATEGY_LABELS = {"breakout": "Kitores", "pullback": "Visszahuzas (RSI2)", "deep": "Mely visszahuzas",
+                   "etf": "ETF visszahuzas", "sandbox": "Homokozo"}
 
 
 class StrategiesSettings(BaseModel):
@@ -396,6 +416,7 @@ class StrategiesSettings(BaseModel):
     paper: str = "breakout"          # melyik strategia van a paper fiokhoz kotve (broker.auto_trade a fokapcsolo)
     breakout: StrategySwitch = Field(default_factory=StrategySwitch)
     pullback: PullbackStrategy = Field(default_factory=PullbackStrategy)
+    deep: DeepPullbackStrategy = Field(default_factory=DeepPullbackStrategy)
     etf: EtfStrategy = Field(default_factory=EtfStrategy)
     sandbox: SandboxStrategy = Field(default_factory=SandboxStrategy)
 

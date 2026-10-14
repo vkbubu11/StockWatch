@@ -500,6 +500,23 @@ python cli.py meanrev-research --etf --holdout         # a zárolt 2025.04 után
 **Állapot:** új, még nincs validálva saját adaton. Alapból **megfigyel** (jelez, naplóz, virtuálisan követ); a
 paper fiókhoz a Stratégiák fülön köthető. Élesítés csak az élesítési kapu után (`python cli.py broker`).
 
+### Mély visszahúzás (tág stop)
+
+A Visszahúzás (RSI2) bemenete változatlan (RSI(2) < 2, záró > SMA200, rezsim, vételi limit 5%-kal a záró alatt,
+kilépés ConnorsRSI > 50 → másnap nyitáskor, legkésőbb 10 nap), de a stop **5 ATR** (a 3 helyett). A 2026-10-i
+validáció (514 indextag) szerint: tanító **76,2%**, validáció **75,0%** nyerési arány, profit-faktor 3,6 / 4,4,
+és a várható érték bootstrap alsó határa mindkét időszakban pozitív. Gyengéje: ritka (heti 0,2–0,7 kötés).
+Részletek és összehasonlítás: [`docs/STRATEGY-COMPARISON-2026-10.md`](docs/STRATEGY-COMPARISON-2026-10.md).
+
+```bash
+python cli.py meanrev-research --deep                  # tanító / validáció, elfogadási feltétellel
+python cli.py meanrev-research --deep --neighbourhood  # stabilitás a szomszédos beállításokon
+python cli.py meanrev-research --deep --holdout        # a zárolt 2025.04 utáni időszak – EGYSZER
+```
+
+Alapból **fut és virtuálisan követ, de értesítést nem küld** (a jelzései egyeznek a Visszahúzáséval); a paper fiókhoz
+a Stratégiák fülön köthető.
+
 ## Jelzésnapló, életút, visszajátszás
 
 A jelzések megbízhatóságát csak akkor lehet mérni, ha minden döntés visszakereshető és reprodukálható.

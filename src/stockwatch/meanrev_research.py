@@ -33,6 +33,7 @@ log = logging.getLogger(__name__)
 
 OUT_DIR = DATA_DIR / "research" / "meanrev"
 ETF_DIR = OUT_DIR / "etf"                     # az ETF visszahuzas validalasa
+DEEP_DIR = OUT_DIR / "deep"                   # a Mely visszahuzas (tag stop) validalasa
 SANDBOX_DIR = OUT_DIR / "sandbox"             # a homokozo backtestje (a labor-szolgaltatas futtatja)
 SANDBOX_REQUEST = SANDBOX_DIR / "request.json"
 SANDBOX_STATUS = SANDBOX_DIR / "status.json"
@@ -229,7 +230,7 @@ def neighbourhood(base: PullbackParams) -> list[tuple[str, PullbackParams]]:
         return out
     for rsi in (2.0, 3.0):
         for lim in (4.0, 5.0, 6.0):
-            for stop in (2.5, 3.0):
+            for stop in sorted({2.5, 3.0, base.stop_atr}):
                 for crsi in (40.0, 50.0, 60.0):
                     p = base.model_copy(update={"rsi2_max": rsi, "limit_pct": lim, "stop_atr": stop, "exit_crsi": crsi})
                     out.append((f"RSI2<{rsi:g} limit {lim:g}% stop {stop:g}ATR CRSI>{crsi:g}", p))

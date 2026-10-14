@@ -43,6 +43,7 @@ const KIND = {
 const STRAT = {
   breakout: ["s-breakout", "Kitörés", "A kitöréses alakzat-motor: megerősített kitörés vagy visszateszt után long belépés."],
   pullback: ["s-pullback", "Visszahúzás (RSI2)", "Mély, rövid visszahúzódás emelkedő trendben: vételi limit a záró alatt, kilépés a ConnorsRSI 50 fölé emelkedésekor."],
+  deep: ["s-deep", "Mély visszahúzás", "A Visszahúzás (RSI2) bemenete (RSI(2) < 2, vételi limit 5%-kal a záró alatt, kilépés ConnorsRSI > 50), de tág, 5 ATR-es stoppal: a validáción a szoros stop a mélyponton zárta ki a később visszapattanó kötéseket. Alapból csak virtuálisan követ, értesítést nem küld (a jelzései a Visszahúzáséval egyeznek)."],
   etf: ["s-etf", "ETF visszahúzás", "Likvid részvény-ETF-ek (SPY, QQQ, szektorok…) rövid túladottsága emelkedő trendben: vételi limit 1%-kal a záró alatt, kilépés az első visszapattanáskor (záró > SMA5 vagy ConnorsRSI > 50). Nincs gyorsjelentés, nincs egyedi csődkockázat; naponta max. 2, egyszerre max. 4 kötés."],
   sandbox: ["s-sandbox", "Homokozó", "Szabad kutatói stratégia – soha nincs a paper fiókhoz kötve."],
 };

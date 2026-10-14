@@ -759,7 +759,7 @@ def _emit(
 # ---------------------------------------------------------------------------
 # Visszahuzas (RSI2) - a teljes lista a zaron, rangsorolva, napi limittel
 # ---------------------------------------------------------------------------
-PULLBACK_STRATEGIES = ("pullback", "etf", "sandbox")
+PULLBACK_STRATEGIES = ("pullback", "deep", "etf", "sandbox")
 
 
 def pullback_symbols(settings: Settings, allow_network: bool = True, strategy: str = "pullback") -> list[str]:

@@ -656,6 +656,8 @@ def cmd_meanrev_research(args) -> int:
         symbols = list(dict.fromkeys(members.members("nasdaq100") + members.members("sp500")))
     params = settings.strategies.sandbox.params if args.sandbox else settings.strategies.pullback.params
     out_dir, study, name = mr.OUT_DIR, "meanrev", "Visszahuzas (RSI2)"
+    if args.deep:
+        params, out_dir, study, name = settings.strategies.deep.params, mr.DEEP_DIR, "deep", "Mely visszahuzas"
     if args.etf:
         from stockwatch import feed
 
@@ -1128,6 +1130,7 @@ def main() -> int:
     p.add_argument("--universe", action="store_true", help="a config/universe.yaml papirjain (alap: az indexeken)")
     p.add_argument("--sandbox", action="store_true", help="a homokozo parametereivel")
     p.add_argument("--etf", action="store_true", help="az ETF visszahuzas strategia, a sajat ETF-listajan")
+    p.add_argument("--deep", action="store_true", help="a Mely visszahuzas strategia (tag, 5 ATR-es stop)")
     p.add_argument("--neighbourhood", action="store_true", help="stabilitasvizsgalat a szomszedos beallitasokon")
     p.add_argument("--survivorship-check", action="store_true",
                    help="osszevetes a config/universe.yaml listaval (kiesett / csodbe ment papirokkal)")

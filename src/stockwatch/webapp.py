@@ -1123,7 +1123,8 @@ def strategies_payload() -> dict:
     cfg = settings.strategies
     tracker = positions.PositionTracker(settings, read_only=True)
     book = broker.BrokerBook(settings, read_only=True)
-    summaries = {"pullback": mr.load_summary(), "etf": mr.load_summary(mr.ETF_DIR),
+    summaries = {"pullback": mr.load_summary(), "deep": mr.load_summary(mr.DEEP_DIR),
+                 "etf": mr.load_summary(mr.ETF_DIR),
                  "sandbox": mr.load_summary(mr.SANDBOX_DIR)}
     out = []
     for sid in config.STRATEGY_IDS:
