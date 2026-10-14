@@ -90,7 +90,7 @@ def test_unfilled_limit_is_skipped(env):
 # Monitor-kor: rangsor, napi limit, naplo, nincs broker
 # ---------------------------------------------------------------------------
 def _cycle_env(env, monkeypatch, frames, paper="breakout"):
-    monkeypatch.setattr(monitor, "pullback_symbols", lambda s, allow_network=True: list(frames))
+    monkeypatch.setattr(monitor, "pullback_symbols", lambda s, allow_network=True, **k: list(frames))
     monkeypatch.setattr("stockwatch.store.load", lambda symbol, s=None, universe=False: frames[symbol])
     ctx = market.MarketContext({"QQQ": frames["A"], "^GSPC": frames["A"]}, frozenset(frames), frozenset())
     monkeypatch.setattr(monitor.market, "load_context", lambda *a, **k: ctx)

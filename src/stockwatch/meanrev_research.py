@@ -32,6 +32,7 @@ from .entry_research import HOLDOUT_START, SPLIT_DATE, log_holdout_opening, wils
 log = logging.getLogger(__name__)
 
 OUT_DIR = DATA_DIR / "research" / "meanrev"
+ETF_DIR = OUT_DIR / "etf"                     # az ETF visszahuzas validalasa
 SANDBOX_DIR = OUT_DIR / "sandbox"             # a homokozo backtestje (a labor-szolgaltatas futtatja)
 SANDBOX_REQUEST = SANDBOX_DIR / "request.json"
 SANDBOX_STATUS = SANDBOX_DIR / "status.json"
@@ -214,6 +215,18 @@ def gate(res: dict, res_2x: dict | None) -> dict:
 def neighbourhood(base: PullbackParams) -> list[tuple[str, PullbackParams]]:
     """Kis, elore megadott szomszedsag - NEM parametervalasztasra, hanem stabilitasvizsgalatra."""
     out = []
+    if base.limit_pct < 3:                     # ETF: kisebb mozgas, sekelyebb limit, SMA-kilepes
+        for rsi in (5.0, 10.0, 15.0):
+            for lim in (0.5, 1.0, 1.5):
+                for sma in (0, 5):
+                    for crsi in (50.0, 70.0):
+                        p = base.model_copy(update={"rsi2_max": rsi, "limit_pct": lim, "exit_sma": sma,
+                                                    "exit_crsi": crsi})
+                        out.append((f"RSI2<{rsi:g} limit {lim:g}% SMA{sma or '-'} CRSI>{crsi:g}", p))
+        out.append(("napi / nyitott korlat nelkul (referencia)",
+                    base.model_copy(update={"max_signals_per_day": 0, "max_open": 0})))
+        out.append(("stop nelkul (csak referencia: 10 ATR)", base.model_copy(update={"stop_atr": 10.0})))
+        return out
     for rsi in (2.0, 3.0):
         for lim in (4.0, 5.0, 6.0):
             for stop in (2.5, 3.0):
@@ -236,7 +249,7 @@ def evaluate_variant(data: dict[str, SymbolData], params: PullbackParams, holdou
 
 def run(symbols: list[str], settings: Settings | None = None, params: PullbackParams | None = None,
         holdout: bool = False, neighbourhood_check: bool = False, survivorship_symbols: list[str] | None = None,
-        progress=print, out_dir=None) -> dict:
+        progress=print, out_dir=None, study: str = "meanrev") -> dict:
     settings = settings or load_settings()
     params = params or settings.strategies.pullback.params
     ctx = market.load_context(settings, refresh=True)
@@ -254,7 +267,7 @@ def run(symbols: list[str], settings: Settings | None = None, params: PullbackPa
               "cost_2x": costly["split"]["visible"], "gate": gate(main["split"], costly["split"]),
               "earnings_known": sum(1 for d in data.values() if d.earnings) if earnings is not None else None}
     if holdout:
-        log_holdout_opening(["pullback: " + json.dumps(params.model_dump())], len(data), study="meanrev")
+        log_holdout_opening([f"{study}: " + json.dumps(params.model_dump())], len(data), study=study)
     if neighbourhood_check:
         rows = []
         for name, p in neighbourhood(params):
@@ -287,11 +300,13 @@ def _fmt(v, kind: str = "pct") -> str:
 
 def report_markdown(r: dict) -> str:
     p = r["params"]
+    sma_exit = f"vagy zaro > SMA{p['exit_sma']}" if p.get("exit_sma") else ""
     lines = [
         "# Visszahuzas (RSI2) - validalas",
         "",
         f"Szabalyok: RSI(2) < {p['rsi2_max']:g}, zaro > SMA{p['trend_sma']}, rezsim: {'igen' if p['regime_filter'] else 'nem'}, "
         f"limit -{p['limit_pct']:g}%, stop {p['stop_atr']:g} ATR({p['atr_period']}), kilepes CRSI > {p['exit_crsi']:g} "
+        f"{sma_exit} "
         f"(masnap nyitaskor), idokorlat {p['time_stop']} nap, napi max {p['max_signals_per_day'] or 'korlat nelkul'}, "
         f"max nyitott {p['max_open'] or 'korlat nelkul'}, koltseg {p['cost_bps']:g} bps / oldal.",
         f"Papirok: {r['symbols']} (csak a MOSTANI indextagok - felfele torzit).",

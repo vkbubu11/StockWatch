@@ -655,14 +655,23 @@ def cmd_meanrev_research(args) -> int:
         members = indexes_mod.IndexMembers(settings)
         symbols = list(dict.fromkeys(members.members("nasdaq100") + members.members("sp500")))
     params = settings.strategies.sandbox.params if args.sandbox else settings.strategies.pullback.params
-    print(f"Visszahuzas (RSI2) validalas {len(symbols)} papiron"
+    out_dir, study, name = mr.OUT_DIR, "meanrev", "Visszahuzas (RSI2)"
+    if args.etf:
+        from stockwatch import feed
+
+        symbols, params = list(settings.strategies.etf.symbols), settings.strategies.etf.params
+        out_dir, study, name = mr.ETF_DIR, "etf", "ETF visszahuzas"
+        print(f"ETF adatok frissitese ({len(symbols)} ETF)...")
+        feed.update(symbols, settings, universe=True)
+    print(f"{name} validalas {len(symbols)} papiron"
           f"{' (HOLDOUT megnyitva - naplozva!)' if args.holdout else ''}...")
     report = mr.run(symbols, settings, params, holdout=args.holdout, neighbourhood_check=args.neighbourhood,
-                    survivorship_symbols=_universe_symbols() if args.survivorship_check else None)
+                    survivorship_symbols=_universe_symbols() if args.survivorship_check and not args.etf else None,
+                    out_dir=out_dir, study=study)
     print()
     print(mr.report_markdown(__import__("json").loads(
         __import__("json").dumps(report, default=mr._default).replace("Infinity", "null"))))
-    print(f"Mentve: {mr.OUT_DIR}")
+    print(f"Mentve: {out_dir}")
     return 0
 
 
@@ -1118,6 +1127,7 @@ def main() -> int:
     p.add_argument("--symbols", **common)
     p.add_argument("--universe", action="store_true", help="a config/universe.yaml papirjain (alap: az indexeken)")
     p.add_argument("--sandbox", action="store_true", help="a homokozo parametereivel")
+    p.add_argument("--etf", action="store_true", help="az ETF visszahuzas strategia, a sajat ETF-listajan")
     p.add_argument("--neighbourhood", action="store_true", help="stabilitasvizsgalat a szomszedos beallitasokon")
     p.add_argument("--survivorship-check", action="store_true",
                    help="osszevetes a config/universe.yaml listaval (kiesett / csodbe ment papirokkal)")

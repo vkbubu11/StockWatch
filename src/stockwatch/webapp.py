@@ -1123,7 +1123,8 @@ def strategies_payload() -> dict:
     cfg = settings.strategies
     tracker = positions.PositionTracker(settings, read_only=True)
     book = broker.BrokerBook(settings, read_only=True)
-    summaries = {"pullback": mr.load_summary(), "sandbox": mr.load_summary(mr.SANDBOX_DIR)}
+    summaries = {"pullback": mr.load_summary(), "etf": mr.load_summary(mr.ETF_DIR),
+                 "sandbox": mr.load_summary(mr.SANDBOX_DIR)}
     out = []
     for sid in config.STRATEGY_IDS:
         switch = cfg.get(sid)
@@ -1136,6 +1137,7 @@ def strategies_payload() -> dict:
             "params": switch.params.model_dump() if hasattr(switch, "params") else None,
             "entry": ({k: getattr(settings.entry, k) for k in BREAKOUT_SUMMARY} if sid == "breakout"
                       else cfg.sandbox.entry if sid == "sandbox" else None),
+            "symbols": list(cfg.etf.symbols) if sid == "etf" else None,
             "stats": tracker.closed_stats(sid),
             "open": sum(1 for p in tracked if p.is_active),
             "paper_open": sum(1 for t in book.trades.values() if t.strategy == sid and t.is_active),
@@ -1174,7 +1176,8 @@ def strategies_action(body: dict) -> dict:
             raise ValueError(f"Ismeretlen strategia: {sid}")
         values = body.get("values") or {}
         allowed = ({"enabled", "alerts"} | ({"params"} if sid != "breakout" else set())
-                   | ({"engine", "entry"} if sid == "sandbox" else set()))
+                   | ({"engine", "entry"} if sid == "sandbox" else set())
+                   | ({"symbols"} if sid == "etf" else set()))
         unknown = set(values) - allowed
         if unknown:
             raise ValueError(f"Nem allithato: {', '.join(sorted(unknown))}")

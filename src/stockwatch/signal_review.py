@@ -198,7 +198,7 @@ def _review_pullback(record: dict, bars: pd.DataFrame, signal_date: pd.Timestamp
         out["outcome"] = "hianyos terv vagy adat"
         return out
     strategy = record.get("strategy") or entry.get("strategy") or "pullback"
-    params = settings.strategies.get(strategy).params if strategy in ("pullback", "sandbox") else None
+    params = settings.strategies.get(strategy).params if strategy in ("pullback", "etf", "sandbox") else None
     if params is None:
         return out
     feat = meanrev.features(bars, params)

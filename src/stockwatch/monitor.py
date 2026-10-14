@@ -759,12 +759,16 @@ def _emit(
 # ---------------------------------------------------------------------------
 # Visszahuzas (RSI2) - a teljes lista a zaron, rangsorolva, napi limittel
 # ---------------------------------------------------------------------------
-PULLBACK_STRATEGIES = ("pullback", "sandbox")
+PULLBACK_STRATEGIES = ("pullback", "etf", "sandbox")
 
 
-def pullback_symbols(settings: Settings, allow_network: bool = True) -> list[str]:
-    """Watchlist + a Nasdaq-100 es az S&P 500 MINDEN tagja (a strategia a ket index osszevont listajan fut)."""
+def pullback_symbols(settings: Settings, allow_network: bool = True, strategy: str = "pullback") -> list[str]:
+    """Watchlist + a Nasdaq-100 es az S&P 500 MINDEN tagja (a strategia a ket index osszevont listajan fut).
+    Az ETF visszahuzas a sajat ETF-listajan fut."""
     from . import indexes
+
+    if strategy == "etf":
+        return list(settings.strategies.etf.symbols)
 
     members = indexes.IndexMembers(settings)
     out = list(default_symbols(settings))
@@ -783,7 +787,7 @@ def pullback_cycle(settings: Settings, strategy: str, params, dispatcher: Dispat
     Minden jelolt dontese (kikuldve / kihagyva / elutasitva, okkal) a jelzesnaploba kerul."""
     from . import meanrev, store
 
-    symbols = pullback_symbols(settings, allow_network=refresh)
+    symbols = pullback_symbols(settings, allow_network=refresh, strategy=strategy)
     if refresh:
         # az indexszkenneles csak a bekapcsolt indexeket frissiti - a tobbi tag adata itt
         scanned = set(default_symbols(settings))

@@ -278,6 +278,7 @@ class PullbackParams(BaseModel):
     stop_atr: float = 3.0                   # stop: belepo - ennyi ATR
     atr_period: int = 10
     exit_crsi: float = 50.0                 # kilepes: ha a zaron ConnorsRSI(3,2,100) e felett -> masnap nyitaskor
+    exit_sma: int = 0                       # kilepes AKKOR IS, ha a zaro e mozgoatlag felett van (0 = ki; ETF: 5)
     time_stop: int = 10                     # legfeljebb ennyi kereskedesi nap tartas
     min_price: float = 5.0
     min_dollar_volume: float = 20_000_000   # 20 napos atlagos dollarforgalom
@@ -296,6 +297,8 @@ class PullbackParams(BaseModel):
             raise ValueError("pullback.limit_pct: 0 es 30 kozott")
         if not 0.5 <= self.stop_atr <= 10:
             raise ValueError("pullback.stop_atr: 0,5 es 10 kozott")
+        if not 0 <= self.exit_sma <= 50:
+            raise ValueError("pullback.exit_sma: 0 (ki) es 50 kozott")
         if not 1 <= self.time_stop <= 60 or not 0 <= self.max_signals_per_day <= 100 or not 0 <= self.max_open <= 500:
             raise ValueError("pullback: ervenytelen idokorlat / napi limit / max. nyitott")
         return self
@@ -316,6 +319,44 @@ class StrategySwitch(BaseModel):
 
 class PullbackStrategy(StrategySwitch):
     params: PullbackParams = Field(default_factory=PullbackParams)
+
+
+# Likvid reszveny-ETF-ek: szeles index, meret, szektor, nemzetkozi. Nincs gyorsjelentes, nincs egyedi
+# csodkockazat, es a nagy ETF-ek nem szunnek meg (a backtestben nincs tulelesi torzitas).
+ETF_UNIVERSE = ["SPY", "QQQ", "IWM", "DIA", "MDY", "RSP", "XLK", "XLF", "XLV", "XLI", "XLY", "XLP", "XLE", "XLU",
+                "XLB", "XLRE", "XLC", "SMH", "IBB", "KRE", "ITB", "EFA", "EEM", "EWJ"]
+
+
+def _etf_params() -> "PullbackParams":
+    """Az ETF visszahuzas szabalyai - a futtatas ELOTT rogzitve, a szakirodalom alapjan (Connors-Alvarez:
+    High Probability ETF Trading; az RSI(2) visszahuzas ETF-eken), nem a sajat adatunkra hangolva."""
+    return PullbackParams(
+        rsi2_max=10.0,                  # ETF-en ritkabb a melyrepules: RSI(2) < 10 mar eros tuladottsag
+        limit_pct=1.0,                  # az ETF napi mozgasa ~1-1,5%: a -5%-os limit szinte soha nem teljesulne
+        stop_atr=5.0,                   # tag, katasztrofa-stop: index-ETF-en a szoros stop rontja a talalati aranyt
+        exit_crsi=50.0, exit_sma=5,     # kilepes az elso eros visszapattanaskor (zaro > SMA5 vagy CRSI > 50)
+        time_stop=10,
+        min_dollar_volume=50_000_000,
+        earnings_blackout_days=0,       # az ETF-nek nincs gyorsjelentese
+        max_signals_per_day=2,          # az ETF-ek egyutt mozognak: egy esesnapon ne vegyunk 10 hasonlot
+        max_open=4,
+        cost_bps=3.0,                   # likvid ETF: szuk spread
+    )
+
+
+class EtfStrategy(PullbackStrategy):
+    """ETF visszahuzas: a Visszahuzas motorja likvid reszveny-ETF-eken, ETF-re szabott szabalyokkal."""
+
+    params: PullbackParams = Field(default_factory=_etf_params)
+    symbols: list[str] = Field(default_factory=lambda: list(ETF_UNIVERSE))
+
+    @field_validator("symbols")
+    @classmethod
+    def _symbols(cls, value: list[str]) -> list[str]:
+        out = list(dict.fromkeys(str(v).strip().upper() for v in value if str(v).strip()))
+        if not out or len(out) > 100:
+            raise ValueError("etf.symbols: 1-100 ticker")
+        return out
 
 
 class SandboxStrategy(StrategySwitch):
@@ -343,9 +384,10 @@ class SandboxStrategy(StrategySwitch):
         return value
 
 
-STRATEGY_IDS = ("breakout", "pullback", "sandbox")
-PAPER_STRATEGIES = ("breakout", "pullback")          # a homokozo soha nem kotheto a paper fiokhoz
-STRATEGY_LABELS = {"breakout": "Kitores", "pullback": "Visszahuzas (RSI2)", "sandbox": "Homokozo"}
+STRATEGY_IDS = ("breakout", "pullback", "etf", "sandbox")
+PAPER_STRATEGIES = ("breakout", "pullback", "etf")   # a homokozo soha nem kotheto a paper fiokhoz
+STRATEGY_LABELS = {"breakout": "Kitores", "pullback": "Visszahuzas (RSI2)", "etf": "ETF visszahuzas",
+                   "sandbox": "Homokozo"}
 
 
 class StrategiesSettings(BaseModel):
@@ -354,6 +396,7 @@ class StrategiesSettings(BaseModel):
     paper: str = "breakout"          # melyik strategia van a paper fiokhoz kotve (broker.auto_trade a fokapcsolo)
     breakout: StrategySwitch = Field(default_factory=StrategySwitch)
     pullback: PullbackStrategy = Field(default_factory=PullbackStrategy)
+    etf: EtfStrategy = Field(default_factory=EtfStrategy)
     sandbox: SandboxStrategy = Field(default_factory=SandboxStrategy)
 
     @field_validator("paper")

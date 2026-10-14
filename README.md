@@ -440,6 +440,7 @@ ha a brókernél eladtál, zárd le itt is.
 |---|---|---|
 | **Kitörés** | a kitöréses alakzat-motor (fent) | köthető – most ez az aktív |
 | **Visszahúzás (RSI2)** | mély, rövid visszahúzódás emelkedő trendben, a Nasdaq-100 + S&P 500 + watchlist teljes listáján | köthető |
+| **ETF visszahúzás** | rövid túladottság likvid részvény-ETF-eken (SPY, QQQ, IWM, szektor-ETF-ek…) emelkedő trendben | köthető |
 | **Homokozó** | szabad kutatói stratégia, választható motorral (visszahúzás / kitörés) és saját paraméterekkel | **soha** |
 
 - Mindhárom küld jelzést, naplóz és virtuálisan követ; a **paper fiókba csak a hozzá kötött** stratégia jelzései
@@ -473,6 +474,31 @@ csődbe ment papírokat is tartalmazó 104 papíros listán 70,4% (71 kötés). 
 adat (felfelé torzít), a kötések válságokban torlódnak, és az előre rögzített elfogadási feltételen
 (heti ≥ 0,7 kötés, a bootstrap-intervallum alsó határa > 0) nem ment át – ezért **kutatási stratégiaként** fut,
 nincs a paper fiókhoz kötve, amíg az élő eredmények nem igazolják.
+
+### ETF visszahúzás – szabályok és validálás
+
+Ugyanaz a motor, mint a Visszahúzásnál, de **likvid részvény-ETF-eken** (alap: SPY, QQQ, IWM, DIA, MDY, RSP,
+11 szektor-ETF, SMH, IBB, KRE, ITB, EFA, EEM, EWJ – a Stratégiák fülön szerkeszthető). Miért ETF-ek:
+
+- **nincs gyorsjelentés és nincs egyedi csődkockázat** – a részvényes visszahúzás nagy veszteségei jellemzően ebből jönnek
+  (rossz hír → a „túladott” papír tovább esik);
+- egy index-ETF túladottsága a szakirodalom szerint (Connors–Alvarez, *High Probability ETF Trading*) **megbízhatóbban
+  fordul vissza**, mint egy egyedi részvényé;
+- **nincs túlélési torzítás** a backtestben (a nagy ETF-ek nem szűnnek meg), és szűk a spread.
+
+Szabályok (**a futtatás előtt rögzítve, nem a saját adatunkra hangolva**): záró > SMA200 és saját trend emelkedő,
+**RSI(2) < 10**, vételi limit **1%-kal** a záró alatt (egynapos), katasztrófa-stop **5 ATR**, kilépés másnap nyitáskor, ha
+a záró **az SMA5 fölé ér vagy a ConnorsRSI > 50**, legkésőbb 10 nap. Az ETF-ek együtt mozognak, ezért **naponta
+legfeljebb 2, egyszerre legfeljebb 4** kötés. Költség: 3 bps / oldal.
+
+```bash
+python cli.py meanrev-research --etf                   # tanító / validáció, elfogadási feltétellel (az ETF-adatot is letölti)
+python cli.py meanrev-research --etf --neighbourhood   # stabilitás a szomszédos beállításokon
+python cli.py meanrev-research --etf --holdout         # a zárolt 2025.04 utáni időszak – EGYSZER, előre rögzített szabállyal
+```
+
+**Állapot:** új, még nincs validálva saját adaton. Alapból **megfigyel** (jelez, naplóz, virtuálisan követ); a
+paper fiókhoz a Stratégiák fülön köthető. Élesítés csak az élesítési kapu után (`python cli.py broker`).
 
 ## Jelzésnapló, életút, visszajátszás
 

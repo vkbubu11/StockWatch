@@ -52,6 +52,8 @@ def features(df: pd.DataFrame, params: PullbackParams) -> pd.DataFrame:
     out["sma_trend"] = indicators.sma(close, params.trend_sma)
     out["rsi2"] = indicators.rsi(close, 2)
     out["crsi"] = indicators.connors_rsi(close)
+    if params.exit_sma:
+        out["sma_exit"] = indicators.sma(close, params.exit_sma)
     out["atr"] = indicators.atr(df, params.atr_period)
     out["natr"] = out["atr"] / close * 100
     out["dollar_vol"] = (close * df["volume"].astype(float)).rolling(20, min_periods=20).mean()
@@ -78,7 +80,10 @@ def setup_mask(feat: pd.DataFrame, params: PullbackParams, regime: pd.Series | N
 
 
 def exit_flags(feat: pd.DataFrame, params: PullbackParams) -> pd.Series:
-    return (feat["crsi"] > params.exit_crsi).fillna(False)
+    flags = feat["crsi"] > params.exit_crsi
+    if params.exit_sma:
+        flags |= feat["close"] > feat["sma_exit"]
+    return flags.fillna(False)
 
 
 def order_levels(close: float, atr: float, params: PullbackParams) -> tuple[float, float]:
@@ -223,7 +228,8 @@ def evaluate(symbol: str, df: pd.DataFrame, settings: Settings, params: Pullback
         trigger_level=limit, target=close, invalidation=stop,
         start_date=as_of, end_date=as_of, trigger_date=as_of,
         extras={"engine": "meanrev", "rsi2": round(float(last["rsi2"]), 2), "crsi": round(float(last["crsi"]), 1),
-                "natr": round(float(last["natr"]), 2), "exit_crsi": params.exit_crsi, "time_stop": params.time_stop},
+                "natr": round(float(last["natr"]), 2), "exit_crsi": params.exit_crsi, "exit_sma": params.exit_sma,
+                "time_stop": params.time_stop},
     )
     cfg = settings.entry
     plan = entry.TradePlan(entry=limit, entry_limit=limit, stop=stop, target=close, atr=atr,
@@ -258,8 +264,9 @@ def format_body(signal, params: PullbackParams) -> str:
         f"Jelzes napja: {signal.as_of:%Y-%m-%d}  |  zaro {signal.price:.2f} $",
         f"VETELI LIMIT holnapra (egynapos): {plan.entry_limit:.2f} $  (-{params.limit_pct:g}%)",
         f"Stop: {plan.stop:.2f} $  ({params.stop_atr:g} x ATR)  |  darab: {plan.shares}",
-        f"Kilepes: ha a zaro ConnorsRSI {params.exit_crsi:g} fole megy -> masnap NYITASKOR; "
-        f"legkesobb {params.time_stop} nap utan.",
+        f"Kilepes: ha a zaro ConnorsRSI {params.exit_crsi:g} fole megy"
+        + (f" vagy a zaro az SMA{params.exit_sma} fole er" if params.exit_sma else "")
+        + f" -> masnap NYITASKOR; legkesobb {params.time_stop} nap utan.",
         f"Most: RSI(2) {extras.get('rsi2')}, ConnorsRSI {extras.get('crsi')}, NATR {extras.get('natr')}%",
         "",
         "Ha a limit holnap nem teljesul, a jelzes ervenyet veszti (ne vegyel utana).",

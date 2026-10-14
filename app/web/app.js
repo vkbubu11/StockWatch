@@ -43,6 +43,7 @@ const KIND = {
 const STRAT = {
   breakout: ["s-breakout", "Kitörés", "A kitöréses alakzat-motor: megerősített kitörés vagy visszateszt után long belépés."],
   pullback: ["s-pullback", "Visszahúzás (RSI2)", "Mély, rövid visszahúzódás emelkedő trendben: vételi limit a záró alatt, kilépés a ConnorsRSI 50 fölé emelkedésekor."],
+  etf: ["s-etf", "ETF visszahúzás", "Likvid részvény-ETF-ek (SPY, QQQ, szektorok…) rövid túladottsága emelkedő trendben: vételi limit 1%-kal a záró alatt, kilépés az első visszapattanáskor (záró > SMA5 vagy ConnorsRSI > 50). Nincs gyorsjelentés, nincs egyedi csődkockázat; naponta max. 2, egyszerre max. 4 kötés."],
   sandbox: ["s-sandbox", "Homokozó", "Szabad kutatói stratégia – soha nincs a paper fiókhoz kötve."],
 };
 const strategyBadge = (id, paper) => {
@@ -849,6 +850,7 @@ const PB_PARAMS = [
   ["limit_pct", "Vételi limit a záró alatt (%)", "Másnapra szóló, egynapos vételi limit ennyivel a jelzés napi záró alatt."],
   ["stop_atr", "Stop (ATR)", "A stop a belépő alatt ennyi ATR-rel."],
   ["exit_crsi", "Kilépés: ConnorsRSI e felett", "Ha a záró ConnorsRSI e fölé megy, másnap nyitáskor kilép."],
+  ["exit_sma", "Kilépés: záró > SMA (0 = ki)", "Akkor is kilép (másnap nyitáskor), ha a záró e mozgóátlag fölé ér – az első erős visszapattanás."],
   ["time_stop", "Időkorlát (nap)", "Legfeljebb ennyi kereskedési napig tart."],
   ["max_signals_per_day", "Napi jelzés-limit (0 = nincs)", "Naponta legfeljebb ennyi jelzés (a legalacsonyabb RSI(2) előrébb). A validálás szerint a limit rontja az eredményt."],
   ["max_open", "Max. nyitott kötés (0 = nincs)", "Ebben a stratégiában egyszerre legfeljebb ennyi nyitott / függő kötés."],
@@ -906,6 +908,9 @@ async function pageStrategies() {
         ${x.research ? `<dt title="Múltbeli validálás (2017–2025.03, költség után, csak a mostani indextagokon – felfelé torzít)">Validálás (múlt)</dt>
           <dd>${x.research.win != null ? fmt(x.research.win * 100, 0) + "%" : "–"} nyerő · ${x.research.n} kötés · heti ${x.research.per_week != null ? fmt(x.research.per_week, 2) : "–"}${x.research.ev != null ? ` · átlag ${signed(x.research.ev, 2, "%")}` : ""}</dd>` : ""}</dl>
       ${params ? `<details style="margin-top:8px"><summary class="small">Szabályok</summary><dl>${params}</dl></details>` : ""}
+      ${x.symbols ? `<details style="margin-top:8px"><summary class="small">ETF-lista (${x.symbols.length})</summary>
+        <div class="row" style="margin-top:6px"><input type="text" data-etf-symbols value="${esc(x.symbols.join(", "))}" style="flex:1;min-width:0">
+        <button class="btn" type="button" data-etf-save>Mentés</button></div></details>` : ""}
       ${x.can_paper && !x.paper ? `<div style="margin-top:10px"><button class="btn" type="button" data-paper="${esc(x.id)}" ${x.enabled ? "" : "disabled"}>Paper fiókhoz kötés</button></div>` : ""}
     </div></section>`;
   };
@@ -918,6 +923,12 @@ async function pageStrategies() {
     catch (e) { alert(e.message); }
     pageStrategies();
   }));
+  const etfSave = view.querySelector("button[data-etf-save]");
+  if (etfSave) etfSave.addEventListener("click", async () => {
+    const symbols = view.querySelector("input[data-etf-symbols]").value.split(/[\s,;]+/).filter(Boolean);
+    try { await strategyAction({ action: "update", strategy: "etf", values: { symbols } }); } catch (e) { alert(e.message); }
+    pageStrategies();
+  });
   view.querySelectorAll("button[data-paper]").forEach((b) => b.addEventListener("click", async () => {
     if (!confirm(`A paper fiókhoz mostantól a(z) „${STRAT[b.dataset.paper][1]}” stratégia jelzései mennek. A régi stratégia nyitott kötései a saját szabályaikkal zárulnak. Folytatod?`)) return;
     try { await strategyAction({ action: "paper", paper: b.dataset.paper }); } catch (e) { alert(e.message); }
