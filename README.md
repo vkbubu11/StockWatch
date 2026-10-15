@@ -517,6 +517,35 @@ python cli.py meanrev-research --deep --holdout        # a zárolt 2025.04 után
 Alapból **fut és virtuálisan követ, de értesítést nem küld** (a jelzései egyeznek a Visszahúzáséval); a paper fiókhoz
 a Stratégiák fülön köthető.
 
+## Backteszt oldal (Backteszt fül)
+
+Egy kiválasztott papír vagy ETF **teljes története a megadott kezdődátumtól** (akár 1980-tól), a rendszer
+stratégiáival. Terv és ütemezés: [`docs/BACKTEST-PAGE-DESIGN.md`](docs/BACKTEST-PAGE-DESIGN.md) (ticket #21).
+
+1. **Adatok összegyűjtése:** a papír napi gyertyái (split- és osztalékkorrigált), mellette a rezsim-indexek (`^GSPC`, `QQQ`) és a benchmark (`SPY`). Külön tárba kerülnek (`data/backtest/`, 300 MB plafon, a legrégebben használt papír törlődik). Az élő cache 10 éves plafonja erre nem vonatkozik. Utána adatminőség-jelentés jön: hiányzó napok, nulla volumen, split nélküli ugrások, a kértnél későbbi első nap.
+2. **Stratégia:** Visszahúzás (RSI2), Mély visszahúzás, ETF visszahúzás, Homokozó (visszahúzás-motorral). A paraméterek erre a futtatásra módosíthatók, az éles beállítás nem változik. A Kitörés-motor és a saját szabályszerkesztő a következő fázisokban jön.
+3. **Eredmény:**
+   - kötésszám, nyerési arány a 95%-os sávval, átlag, profit-faktor;
+   - CAGR, max. visszaesés, Sharpe, mindegyik a „vettem és tartottam” eredménnyel összevetve;
+   - tőkegörbe és visszaesés-diagram, ár-chart a belépésekkel és kilépésekkel;
+   - bontás tanító / validációs időszak és évek szerint, kötéslista, CSV-export;
+   - mentett futtatások (legfeljebb 50).
+
+Ugyanazok a függvények számolnak, mint az éles futásban és a `meanrev-research`-ben: egy teszt ellenőrzi, hogy a kötések
+egyeznek. A **zárolt holdout alapból rejtve** marad, mert az adat 2025-03-31-nél véget ér. Kapcsolóval megnyitható,
+naplózva. A felület figyelmeztet:
+- a kis mintára (30 kötés alatt);
+- a rövidebb rezsim-indexre;
+- a hiányos gyorsjelentés-naptárra;
+- arra, hogy a split-korrigált régi árak a min. ár alatt lehetnek (pl. NVDA 2016 előtt: állítsd a min. árat 0-ra);
+- a túlélési torzításra.
+
+```bash
+python cli.py backtest-symbol SPY --start 2000-01-01 --strategy etf            # első futáskor az adatot is letölti
+python cli.py backtest-symbol NVDA --start 2005-01-01 --strategy deep --set min_price=0 --fetch
+python cli.py backtest-symbol QQQ --strategy etf --set rsi2_max=5 --cost-bps 5 --json out.json
+```
+
 ## Jelzésnapló, életút, visszajátszás
 
 A jelzések megbízhatóságát csak akkor lehet mérni, ha minden döntés visszakereshető és reprodukálható.

@@ -1139,6 +1139,74 @@ BREAKOUT_SUMMARY = ("min_score", "confirm_breakout", "exit_mode", "partial_r", "
                     "earnings_blackout_days")
 
 
+# ---------------------------------------------------------------------------
+# Backteszt oldal (egy papir teljes tortenete) - docs/BACKTEST-PAGE-DESIGN.md
+# ---------------------------------------------------------------------------
+_BT_JOBS = None
+
+
+def backtest_jobs():
+    global _BT_JOBS
+    if _BT_JOBS is None:
+        from .backtest_page.jobs import Jobs
+
+        _BT_JOBS = Jobs()
+    return _BT_JOBS
+
+
+def backtest_payload() -> dict:
+    from .backtest_page import data as bt_data, runner as bt_runner, runs as bt_runs
+    from .entry_research import HOLDOUT_START
+
+    settings = load_settings()
+    return {"strategies": bt_runner.strategy_choices(settings), "symbols": bt_data.stored_symbols(),
+            "runs": bt_runs.listing(), "job": backtest_jobs().snapshot(),
+            "holdout_start": f"{HOLDOUT_START:%Y-%m-%d}", "usage_mb": round(bt_data.usage_bytes() / 1e6, 1),
+            "limit_mb": bt_data.LIMIT_MB}
+
+
+def backtest_action(action: str, body: dict) -> dict:
+    from .backtest_page import data as bt_data, runner as bt_runner, runs as bt_runs
+
+    jobs = backtest_jobs()
+    if action == "data":
+        symbol, start = bt_data.clean_symbol(body.get("symbol")), bt_data.parse_start(body.get("start"))
+
+        def work(progress):
+            m = bt_data.collect(symbol, start, load_settings(), progress=progress)
+            note = f" - figyelem: {'; '.join(m['quality']['issues'])}" if m["quality"]["issues"] else ""
+            return {"message": f"Kesz: {symbol} {m['first']} -> {m['last']} ({m['bars']} gyertya){note}."}
+        started = jobs.start("data", symbol, work)
+    elif action == "run":
+        symbol = bt_data.clean_symbol(body.get("symbol"))
+        strategy = str(body.get("strategy") or "")
+        settings = load_settings()
+        overrides = body.get("params") or {}
+        if not isinstance(overrides, dict):
+            raise ValueError("A parameterek formatuma hibas.")
+        cost = body.get("cost_bps")
+        cost = float(cost) if cost not in (None, "") else None
+        bt_runner.resolve_params(settings, strategy, overrides, cost)      # azonnali hibauzenet, ha rossz
+        if bt_data.load(symbol).empty:
+            raise ValueError(f"Nincs letoltott adat: {symbol} - elobb: Adatok osszegyujtese.")
+        kwargs = dict(start=body.get("start") or None, end=body.get("end") or None, overrides=overrides,
+                      cost_bps=cost, include_holdout=bool(body.get("include_holdout")),
+                      capital=float(body.get("capital") or bt_runner.DEFAULT_CAPITAL),
+                      alloc_pct=float(body.get("alloc_pct") or 100))
+
+        def work(progress):
+            result = bt_runner.run(symbol, strategy, load_settings(), progress=progress, **kwargs)
+            return {"run_id": bt_runs.save(result), "message": bt_runner.summary_line(result)}
+        started = jobs.start("run", symbol, work)
+    elif action == "delete":
+        return {"deleted": bt_runs.delete(str(body.get("id") or "")), **backtest_payload()}
+    else:
+        raise ValueError(f"Ismeretlen muvelet: {action}")
+    if not started:
+        raise ValueError("Mar fut egy backteszt-feladat - varj, amig befejezodik.")
+    return {"started": True, "job": jobs.snapshot()}
+
+
 def strategies_payload() -> dict:
     from . import meanrev_research as mr
 
@@ -1527,6 +1595,18 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                     return self._json(settings_payload())
                 if path == "/api/lab":
                     return self._json(lab_payload())
+                if path == "/api/backtest":
+                    return self._json(backtest_payload())
+                if path == "/api/backtest/job":
+                    return self._json(backtest_jobs().snapshot())
+                if path.startswith("/api/backtest/run/"):
+                    from .backtest_page import runs as bt_runs
+
+                    run_id = path.rsplit("/", 1)[-1]
+                    if not bt_runs.RUN_ID_RE.match(run_id):
+                        return self._error(400, "Ervenytelen futtatas-azonosito")
+                    result = bt_runs.load(run_id)
+                    return self._json(result) if result else self._error(404, "Nincs ilyen futtatas")
                 if path == "/api/best":
                     return self._json({"result": app.best, "job": app.job})
                 return self._static(path)
@@ -1587,6 +1667,8 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                     return self._json(holding_action(app, path.rsplit("/", 1)[-1], body))
                 if path.startswith("/api/lab/"):
                     return self._json(lab_action(path.rsplit("/", 1)[-1], body))
+                if path.startswith("/api/backtest/"):
+                    return self._json(backtest_action(path.rsplit("/", 1)[-1], body))
                 return self._error(404, "Nem talalhato")
             except (ValueError, TypeError, broker.BrokerError, LockTimeout) as exc:
                 return self._error(400, str(exc))

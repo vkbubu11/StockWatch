@@ -1,6 +1,6 @@
 # „Backteszt” oldal – egy papír vagy ETF teljes története, bármilyen stratégiával
 
-Állapot: **terv**, még nincs implementálva. Ticket: [#21](https://github.com/vkbubu11/StockWatch/issues/21).
+Állapot: **1–2. fázis kész** (adatgyűjtés, Visszahúzás-család, eredmény-oldal, CLI). A 3–5. fázis még hátravan. Ticket: [#21](https://github.com/vkbubu11/StockWatch/issues/21).
 
 ## 1. Cél
 

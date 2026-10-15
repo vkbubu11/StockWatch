@@ -18,6 +18,7 @@
     python cli.py entry-research [--universe]    belepesi szabalyvaltozatok osszehasonlitasa
     python cli.py levels --symbol AAPL
     python cli.py backtest [--symbols all] [--walk-forward] [--purge-cache]
+    python cli.py backtest-symbol SPY --start 2000-01-01 --strategy deep [--set stop_atr=4]
     python cli.py monitor [--once] [--dry-run]
     python cli.py data-usage
     python cli.py test-alert
@@ -639,6 +640,44 @@ def cmd_fetch_universe(args) -> int:
     return 0
 
 
+def cmd_backtest_symbol(args) -> int:
+    """Backteszt oldal parancssorbol: egy papir teljes tortenete, egy strategia."""
+    import json
+
+    from stockwatch.backtest_page import data as bt_data, runner as bt_runner, runs as bt_runs
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings)
+    symbol = args.symbol.upper()
+    if args.fetch or bt_data.load(symbol).empty:
+        m = bt_data.collect(symbol, args.start, settings, progress=print)
+        print(f"Adat: {m['first']} -> {m['last']} ({m['bars']} gyertya)"
+              + (f"  FIGYELEM: {'; '.join(m['quality']['issues'])}" if m["quality"]["issues"] else ""))
+    overrides = {}
+    for item in args.set or []:
+        key, sep, value = item.partition("=")
+        if not sep:
+            print(f"Hibas --set: {item} (alak: kulcs=ertek)")
+            return 2
+        overrides[key.strip()] = value.strip()
+    result = bt_runner.run(symbol, args.strategy, settings, start=args.start, end=args.end, overrides=overrides,
+                           cost_bps=args.cost_bps, include_holdout=args.include_holdout, alloc_pct=args.alloc)
+    run_id = bt_runs.save(result)
+    print()
+    print(bt_runner.summary_line(result))
+    for name, label in (("train", "Tanito (<2022)"), ("test", "Validacio (2022-2025.03)"), ("holdout", "HOLDOUT")):
+        s = result["periods"].get(name)
+        if s and s.get("n"):
+            print(f"  {label:<26} {s['n']:>4} kotes  nyeresi {s['win'] * 100:5.1f}%  atlag {s['ev']:+.2f}%  "
+                  f"PF {s['pf'] if s['pf'] is not None else float('inf'):.2f}")
+    for w in result["warnings"]:
+        print(f"  ! {w}")
+    if args.json:
+        Path(args.json).write_text(json.dumps(bt_runs.load(run_id), ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"Mentve: {run_id} (a felulet Backteszt fulen is megnyithato)")
+    return 0
+
+
 def cmd_meanrev_research(args) -> int:
     """A Visszahuzas (RSI2) strategia validalasa: tanito / validacio / (holdout), evenkent, elfogadasi feltetellel."""
     from stockwatch import meanrev_research as mr
@@ -1136,6 +1175,19 @@ def main() -> int:
                    help="osszevetes a config/universe.yaml listaval (kiesett / csodbe ment papirokkal)")
     p.add_argument("--holdout", action="store_true", help="a ZAROLT vegso teszt-idoszak megnyitasa (naplozva)")
     p.set_defaults(func=cmd_meanrev_research)
+
+    p = subparsers.add_parser("backtest-symbol", help="egy papir / ETF teljes tortenete, egy strategiaval")
+    p.add_argument("symbol")
+    p.add_argument("--start", default="2000-01-01", help="kezdodatum (alap: 2000-01-01)")
+    p.add_argument("--end", help="vege (alap: a zarolt holdout elott)")
+    p.add_argument("--strategy", default="pullback", help="pullback | deep | etf | sandbox")
+    p.add_argument("--set", action="append", metavar="KULCS=ERTEK", help="parameter-feluliras (tobbszor is)")
+    p.add_argument("--cost-bps", type=float, help="koltseg bps / oldal (alap: a strategiae)")
+    p.add_argument("--alloc", type=float, default=100.0, help="a toke hany %%-a megy egy kotesbe (alap: 100)")
+    p.add_argument("--include-holdout", action="store_true", help="a zarolt holdout is (naplozva)")
+    p.add_argument("--fetch", action="store_true", help="adat frissitese futtatas elott")
+    p.add_argument("--json", help="a teljes eredmeny mentese ide")
+    p.set_defaults(func=cmd_backtest_symbol)
 
     p = subparsers.add_parser("levels", help="support/rezisztencia szintek egy papirra")
     p.add_argument("--symbol", required=True)

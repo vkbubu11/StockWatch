@@ -433,3 +433,31 @@ tr.lab-detail h3, #lab-ml h3 { font-size: 13px; margin: 6px 0; }
 .best-list { list-style: none; padding: 0; margin: 0; font-size: 13px; }
 .best-list li { padding: 3px 0; }
 .nowrap { white-space: nowrap; }
+
+/* --- Backteszt oldal --- */
+:root { --series-2: #8a8f98; }
+.bt-form { display: grid; gap: 10px; }
+.bt-form fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.bt-form legend { font-weight: 600; padding: 0 4px; }
+.bt-form #bt-data, .bt-form details { flex-basis: 100%; }
+.bt-params { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 16px; margin-top: 8px; }
+.bt-params label { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 13px; }
+.bt-chart { width: 100%; display: block; user-select: none; }
+.bt-chart .grid line { stroke: var(--grid); }
+.bt-chart .axis text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.bt-chart .bt-line { fill: none; stroke-width: 1.8; stroke-linejoin: round; }
+.bt-chart .bt-line.s1, .bt-chart .bt-line.price { stroke: var(--series-1); }
+.bt-chart .bt-line.s2 { stroke: var(--series-2); stroke-dasharray: 5 3; }
+.bt-chart .bt-line.dd { stroke: var(--down); stroke-width: 1.2; }
+.bt-chart .bt-area { fill: var(--down); opacity: .15; }
+.bt-chart .bt-mark { stroke: var(--surface); stroke-width: .8; }
+.bt-chart .bt-mark.win { fill: var(--up); }
+.bt-chart .bt-mark.loss { fill: var(--down); }
+.bt-chart .bt-mark.open { fill: var(--warn); }
+.bt-chart .cross { stroke: var(--muted); stroke-dasharray: 3 3; opacity: .7; }
+.bt-key { display: inline-block; width: 14px; height: 3px; margin: 0 4px 3px 2px; vertical-align: middle; }
+.bt-key.s1 { background: var(--series-1); }
+.bt-key.s2 { background: var(--series-2); }
+.bt-trades { max-height: 560px; overflow-y: auto; }
+.bt-trades tr.bt-unfilled { display: none; }
+.bt-trades.show-unfilled tr.bt-unfilled { display: table-row; }

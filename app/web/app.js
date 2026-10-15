@@ -1819,7 +1819,7 @@ async function pageSettings() {
 // ---------------------------------------------------------------------------
 async function route() {
   const hash = location.hash || "#/";
-  const tab = hash.startsWith("#/ledger") || hash.startsWith("#/signal/") ? "ledger" : hash.startsWith("#/broker") ? "broker" : hash.startsWith("#/holdings") ? "holdings" : hash.startsWith("#/positions") ? "positions" : hash.startsWith("#/alerts") ? "alerts" : hash.startsWith("#/settings") ? "settings" : hash.startsWith("#/lab") ? "lab" : hash.startsWith("#/strategies") ? "strategies" : hash.startsWith("#/sandbox") ? "sandbox" : "overview";
+  const tab = hash.startsWith("#/ledger") || hash.startsWith("#/signal/") ? "ledger" : hash.startsWith("#/broker") ? "broker" : hash.startsWith("#/holdings") ? "holdings" : hash.startsWith("#/positions") ? "positions" : hash.startsWith("#/alerts") ? "alerts" : hash.startsWith("#/settings") ? "settings" : hash.startsWith("#/lab") ? "lab" : hash.startsWith("#/strategies") ? "strategies" : hash.startsWith("#/sandbox") ? "sandbox" : hash.startsWith("#/backtest") ? "backtest" : "overview";
   document.querySelectorAll(".tabs a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
   tooltip.hidden = true;
   try {
@@ -1836,6 +1836,10 @@ async function route() {
     else if (tab === "lab") await pageLab();
     else if (tab === "strategies") await pageStrategies();
     else if (tab === "sandbox") await pageSandbox();
+    else if (tab === "backtest") {
+      const rm = hash.match(/^#\/backtest\/run\/([0-9a-f]{12})$/);
+      await pageBacktest(rm ? rm[1] : null);
+    }
     else await pageOverview();
   } catch (e) {
     view.innerHTML = `<div class="empty">Hiba: ${esc(e.message)}</div>`;
@@ -2143,3 +2147,334 @@ $("#logout").addEventListener("click", () => {
 });
 window.addEventListener("hashchange", route);
 route();
+
+// ---------------------------------------------------------------------------
+// Backteszt: egy papir / ETF teljes tortenete a kivalasztott datumig, a rendszer strategiaival
+// (docs/BACKTEST-PAGE-DESIGN.md). A szamolas ugyanaz, mint az eles futasban es a kutatasban.
+// ---------------------------------------------------------------------------
+var btTimer = null;         // var: a route() a fajl betoltesekor, e sor elott is lefut
+var BT_FORM_KEY = "sw-backtest-form";
+var BT_PARAM_LABELS = {
+  rsi2_max: "RSI(2) küszöb (alatta jelez)", trend_sma: "Trend SMA (záró felette)", regime_filter: "Rezsimszűrő",
+  limit_pct: "Vételi limit a záró alatt (%)", stop_atr: "Stop (ATR-szeres)", atr_period: "ATR periódus",
+  exit_crsi: "Kilépés: ConnorsRSI felett", exit_sma: "Kilépés: záró az SMA felett (0 = ki)", time_stop: "Időkorlát (nap)",
+  min_price: "Min. ár ($)", min_dollar_volume: "Min. dollárforgalom ($/nap)", earnings_blackout_days: "Gyorsjelentés-tilalom (nap)",
+  max_signals_per_day: "Napi max. jelzés (0 = nincs)", max_open: "Max. nyitott (0 = nincs)", cost_bps: "Költség (bps / oldal)",
+};
+var BT_REASON = { signal: "kilépési jel", time: "időkorlát", stop: "stop", gap_stop: "rés a stop alatt" };
+
+function btLoadForm() {
+  try { return JSON.parse(localStorage.getItem(BT_FORM_KEY) || "{}"); } catch (_) { return {}; }
+}
+function btSaveForm(v) {
+  try { localStorage.setItem(BT_FORM_KEY, JSON.stringify(v)); } catch (_) { /* privat mod */ }
+}
+
+async function pageBacktest(runId) {
+  clearInterval(btTimer);
+  const d = await api("/api/backtest");
+  const result = runId ? await api(`/api/backtest/run/${runId}`).catch((e) => ({ error: e.message })) : null;
+  // mentett futtatas megnyitasakor az urlap a futtatas beallitasait mutatja (igy konnyu modositani)
+  const saved = result && !result.error
+    ? { symbol: result.symbol, start: result.start, end: result.holdout ? result.end : "", strategy: result.strategy,
+      params: result.overrides || {}, capital: result.capital, alloc_pct: result.alloc_pct }
+    : btLoadForm();
+  const strategies = d.strategies;
+  const sym = (saved.symbol || (d.symbols[0] && d.symbols[0].symbol) || "SPY").toUpperCase();
+  const strat = strategies.find((s) => s.id === saved.strategy && s.available) || strategies.find((s) => s.available);
+
+  view.innerHTML = `
+    <section class="card">
+      <h2>Backteszt <span class="muted">– egy papír vagy ETF teljes története a kiválasztott dátumig, a rendszer stratégiáival</span></h2>
+      <div class="card-body">
+        <form id="bt-form" class="bt-form" autocomplete="off">
+          <fieldset><legend>1. Adat</legend>
+            <label>Ticker <input name="symbol" list="bt-symbols" value="${esc(sym)}" required maxlength="12" style="width:8em;text-transform:uppercase"></label>
+            <datalist id="bt-symbols">${d.symbols.map((m) => `<option value="${esc(m.symbol)}">${esc(m.first)} → ${esc(m.last)}</option>`).join("")}</datalist>
+            <label>Kezdődátum <input type="date" name="start" value="${esc(saved.start || "2000-01-01")}" min="1980-01-01" required></label>
+            <button class="btn" type="button" id="bt-fetch">Adatok összegyűjtése</button>
+            <div id="bt-data" class="small muted" style="margin-top:6px"></div>
+          </fieldset>
+          <fieldset><legend>2. Stratégia</legend>
+            <label>Stratégia <select name="strategy">${strategies.map((s) => `<option value="${esc(s.id)}" ${s === strat ? "selected" : ""} ${s.available ? "" : "disabled"}>${esc(STRAT[s.id] ? STRAT[s.id][1] : s.label)}${s.available ? "" : " (hamarosan)"}</option>`).join("")}</select></label>
+            <details id="bt-params-box"><summary>Paraméterek <span class="muted small">(a módosítás csak erre a futtatásra érvényes, az éles beállítást nem írja át)</span></summary>
+              <div id="bt-params" class="bt-params"></div></details>
+          </fieldset>
+          <fieldset><legend>3. Futtatás</legend>
+            <label>Vége <input type="date" name="end" value="${esc(saved.end || "")}"> <span class="muted small">üres: a zárolt holdout előtt (${esc(d.holdout_start)} előtti nap)</span></label>
+            <label>Kezdőtőke ($) <input type="number" name="capital" value="${esc(saved.capital || 10000)}" min="100" step="100" style="width:8em"></label>
+            <label>Pozíció a tőke %-ában <input type="number" name="alloc_pct" value="${esc(saved.alloc_pct || 100)}" min="1" max="100" step="1" style="width:5em"></label>
+            <label><input type="checkbox" name="include_holdout"> a zárolt holdout is (${esc(d.holdout_start)}-tól – naplózva)</label>
+            <button class="btn primary" type="submit" id="bt-run">Futtatás</button>
+          </fieldset>
+        </form>
+        <div id="bt-job" class="small" style="margin-top:8px"></div>
+      </div>
+    </section>
+    <div id="bt-result">${result ? (result.error ? `<section class="card"><div class="card-body empty">${esc(result.error)}</div></section>` : btResult(result)) : ""}</div>
+    ${btRunsCard(d)}`;
+
+  const form = $("#bt-form");
+  const showData = () => {
+    const s = form.symbol.value.trim().toUpperCase();
+    const m = d.symbols.find((x) => x.symbol === s);
+    $("#bt-data").innerHTML = m
+      ? `Letöltve: <b>${esc(m.first)} → ${esc(m.last)}</b> (${fmt(m.bars, 0)} gyertya, ${esc(new Date(m.fetched_at).toLocaleString("hu-HU", { dateStyle: "short", timeStyle: "short" }))})`
+        + (m.quality && m.quality.issues.length ? ` · <span style="color:var(--warn)">${esc(m.quality.issues.join("; "))}</span>` : " · adatminőség: rendben")
+        + (m.stale ? ` · <span style="color:var(--warn)">elavult – gyűjtsd újra</span>` : "")
+      : `Erről a papírról még nincs adat – nyomd meg az „Adatok összegyűjtése” gombot. <span class="muted">(Tár: ${fmt(d.usage_mb, 1)} / ${d.limit_mb} MB)</span>`;
+  };
+  const showParams = () => {
+    const s = strategies.find((x) => x.id === form.strategy.value);
+    const over = (saved.strategy === s.id && saved.params) || {};
+    $("#bt-params").innerHTML = s.params ? Object.entries(s.params).map(([k, v]) => {
+      const cur = k in over ? over[k] : v;
+      const input = typeof v === "boolean"
+        ? `<input type="checkbox" data-param="${esc(k)}" data-default="${v}" ${cur ? "checked" : ""}>`
+        : `<input type="number" step="any" data-param="${esc(k)}" data-default="${esc(v)}" value="${esc(cur)}" style="width:9em">`;
+      return `<label title="${esc(k)} – alapérték: ${esc(v)}">${esc(BT_PARAM_LABELS[k] || k)} ${input}</label>`;
+    }).join("") : `<span class="muted">${esc(s.note || "")}</span>`;
+    if (Object.keys(over).length) $("#bt-params-box").open = true;
+  };
+  const values = () => {
+    const params = {};
+    view.querySelectorAll("#bt-params [data-param]").forEach((el) => {
+      const k = el.dataset.param;
+      if (el.type === "checkbox") { if (String(el.checked) !== el.dataset.default) params[k] = el.checked; }
+      else if (el.value !== "" && Number(el.value) !== Number(el.dataset.default)) params[k] = Number(el.value);
+    });
+    return { symbol: form.symbol.value.trim().toUpperCase(), start: form.start.value, end: form.end.value,
+      strategy: form.strategy.value, params, capital: Number(form.capital.value), alloc_pct: Number(form.alloc_pct.value),
+      include_holdout: form.include_holdout.checked };
+  };
+  showData(); showParams();
+  form.symbol.addEventListener("input", showData);
+  form.strategy.addEventListener("change", showParams);
+
+  const poll = () => {
+    clearInterval(btTimer);
+    btTimer = setInterval(async () => {
+      if (!location.hash.startsWith("#/backtest")) { clearInterval(btTimer); return; }
+      const job = await api("/api/backtest/job").catch(() => null);
+      if (!job) return;
+      btJob(job);
+      if (job.state !== "running") {
+        clearInterval(btTimer);
+        if (job.state === "done" && job.kind === "run" && job.run_id) location.hash = `#/backtest/run/${job.run_id}`;
+        else if (job.state === "done") pageBacktest(runId);
+      }
+    }, 1500);
+  };
+  btJob(d.job);
+  if (d.job.state === "running") poll();
+
+  $("#bt-fetch").addEventListener("click", async () => {
+    const v = values();
+    btSaveForm({ ...btLoadForm(), symbol: v.symbol, start: v.start });
+    try { const r = await api("/api/backtest/data", { method: "POST", body: JSON.stringify({ symbol: v.symbol, start: v.start }) }); btJob(r.job); poll(); }
+    catch (e) { btJob({ state: "error", message: e.message }); }
+  });
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const v = values();
+    if (v.include_holdout && !confirm("A zárolt holdout megnyitása naplózódik, és utána ez az időszak már nem független teszt. Biztosan?")) return;
+    btSaveForm(v);
+    try { const r = await api("/api/backtest/run", { method: "POST", body: JSON.stringify(v) }); btJob(r.job); poll(); }
+    catch (e) { btJob({ state: "error", message: e.message }); }
+  });
+  bindRowLinks();
+  view.querySelectorAll("button[data-bt-delete]").forEach((b) => b.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    if (!confirm("Törlöd ezt a mentett futtatást?")) return;
+    await api("/api/backtest/delete", { method: "POST", body: JSON.stringify({ id: b.dataset.btDelete }) });
+    location.hash = "#/backtest"; pageBacktest(null);
+  }));
+  const unf = $("#bt-unfilled");
+  if (unf) unf.addEventListener("change", () => $("#bt-trades").classList.toggle("show-unfilled", unf.checked));
+  const csv = $("#bt-csv");
+  if (csv && result && !result.error) csv.addEventListener("click", () => btDownloadCsv(result));
+  if (result && !result.error) btDrawCharts(result);
+}
+
+function btJob(job) {
+  const el = $("#bt-job");
+  if (!el || !job || job.state === "idle") { if (el) el.innerHTML = ""; return; }
+  const cls = job.state === "error" ? "down" : job.state === "done" ? "up" : "";
+  const label = job.state === "running" ? "Fut" : job.state === "done" ? "Kész" : "Hiba";
+  el.innerHTML = `<span class="badge ${job.state === "error" ? "bad" : job.state === "done" ? "go" : "watch"}">${label}</span>
+    <span class="${cls}">${esc(job.kind === "data" ? "Adatgyűjtés" : "Futtatás")}${job.symbol ? ` (${esc(job.symbol)})` : ""}: ${esc(job.message)}</span>`;
+}
+
+function btResult(r) {
+  const a = r.periods.all, sm = r.strategy_metrics, bm = r.buy_hold_metrics;
+  const ci = r.win_ci && r.win_ci[0] !== null ? ` <span class="muted small">(${fmt(r.win_ci[0] * 100, 0)}–${fmt(r.win_ci[1] * 100, 0)}%)</span>` : "";
+  const kpi = (label, value, sub, cls = "") => `<div class="kpi"><div class="label">${label}</div><div class="value ${cls}">${value}</div><div class="sub">${sub}</div></div>`;
+  const pl = (v, d = 1) => (v === null || v === undefined ? "–" : pct(v, d));
+  const periodRow = (name, label) => {
+    const s = r.periods[name];
+    if (!s) return "";
+    return `<tr><td>${label}</td><td class="num">${s.n || 0}</td><td class="num">${s.win === null || s.win === undefined ? "–" : fmt(s.win * 100, 1) + "%"}
+      ${s.win_lo !== undefined && s.win_lo !== null ? `<span class="muted small">(${fmt(s.win_lo * 100, 0)}–${fmt(s.win_hi * 100, 0)})</span>` : ""}</td>
+      <td class="num ${tone(s.ev)}">${pl(s.ev, 2)}</td><td class="num">${s.avg_win !== undefined ? `${pl(s.avg_win, 2)} / ${pl(s.avg_loss, 2)}` : "–"}</td>
+      <td class="num">${s.pf === null || s.pf === undefined ? (s.n ? "∞" : "–") : fmt(s.pf, 2)}</td><td class="num">${s.held !== undefined ? fmt(s.held, 1) : "–"}</td>
+      <td class="num">${s.stop_share !== undefined ? fmt(s.stop_share * 100, 0) + "%" : "–"}</td></tr>`;
+  };
+  const params = Object.entries(r.overrides || {});
+  return `
+  <section class="card">
+    <h2>${esc(r.symbol)} · ${esc(STRAT[r.strategy] ? STRAT[r.strategy][1] : r.strategy_label)} <span class="muted">– ${esc(r.start)} → ${esc(r.end)} · költség ${fmt(r.params.cost_bps, 0)} bps / oldal · pozíció ${fmt(r.alloc_pct, 0)}%</span>
+      <span style="margin-left:auto;font-weight:400"><button class="btn" type="button" id="bt-csv">Kötések CSV</button></span></h2>
+    <div class="card-body">
+      ${params.length ? `<div class="small" style="margin-bottom:6px">Módosított paraméterek: ${params.map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join(" ")}</div>` : ""}
+      ${r.warnings.map((w) => `<div class="callout" style="margin:4px 0">${esc(w)}</div>`).join("")}
+      ${r.hidden_after ? `<div class="muted small" style="margin-top:4px">A zárolt holdout (${esc(r.hidden_after)} utáni időszak) rejtve – a backtest adatai ennél a napnál véget érnek.</div>` : ""}
+    </div>
+    <div class="kpis">
+      ${kpi("Lezárt kötés", fmt(a.n || 0, 0), `${r.open_at_end ? `+ ${r.open_at_end} nyitott a végén · ` : ""}heti ${fmt(a.fills_per_week, 2)}`)}
+      ${kpi("Nyerési arány", a.win === null || a.win === undefined ? "–" : fmt(a.win * 100, 1) + "%" + ci, `PF ${a.pf === null || a.pf === undefined ? (a.n ? "∞" : "–") : fmt(a.pf, 2)}`)}
+      ${kpi("Átlag nettó / kötés", pl(a.ev, 2), `nyerő ${pl(a.avg_win, 2)} · vesztes ${pl(a.avg_loss, 2)}`, tone(a.ev))}
+      ${kpi("CAGR", pl(sm.cagr), `vettem és tartottam: ${pl(bm.cagr)}`, tone(sm.cagr))}
+      ${kpi("Max. visszaesés", pl(sm.max_dd), `vettem és tartottam: ${pl(bm.max_dd)}`)}
+      ${kpi("Sharpe", fmt(sm.sharpe, 2), `vettem és tartottam: ${fmt(bm.sharpe, 2)} · piacon: ${fmt(sm.exposure, 0)}%`)}
+    </div>
+  </section>
+  <section class="card chart-card"><h2>Tőkegörbe <span class="muted">– <span class="bt-key s1"></span>stratégia, <span class="bt-key s2"></span>vettem és tartottam (${fmt(r.capital, 0)} $ kezdőtőke, logaritmikus skála)</span></h2>
+    <div class="card-body"><svg id="bt-equity" class="bt-chart" role="img" aria-label="Tőkegörbe"></svg>
+    <svg id="bt-dd" class="bt-chart" role="img" aria-label="Visszaesés"></svg></div></section>
+  <section class="card chart-card"><h2>${esc(r.symbol)} árfolyam a kötésekkel <span class="muted">– <span class="up">▲</span> belépés, <span class="down">▼</span> kilépés (zöld: nyerő, piros: vesztes)</span></h2>
+    <div class="card-body"><svg id="bt-price" class="bt-chart" role="img" aria-label="Árfolyam a kötésekkel"></svg></div></section>
+  <section class="card"><h2>Időszakok</h2><div class="table-wrap"><table>
+    <thead><tr><th>Időszak</th><th class="num">Kötés</th><th class="num">Nyerési arány (95%)</th><th class="num">Átlag nettó</th><th class="num">Átl. nyerő / vesztes</th><th class="num">PF</th><th class="num">Tartás (nap)</th><th class="num">Stop-arány</th></tr></thead>
+    <tbody>${periodRow("all", "Teljes vizsgált időszak")}${periodRow("train", "Tanító (2022 előtt)")}${periodRow("test", "Validáció (2022 – 2025.03)")}${periodRow("holdout", "HOLDOUT (2025.04-től)")}</tbody></table></div></section>
+  <section class="card"><h2>Évenként</h2><div class="table-wrap"><table>
+    <thead><tr><th>Év</th><th class="num">Stratégia</th><th class="num">Vettem és tartottam</th><th class="num">Kötés</th><th class="num">Nyerési arány</th></tr></thead>
+    <tbody>${r.years.map((y) => `<tr><td>${y.year}</td><td class="num ${tone(y.strategy)}">${pl(y.strategy)}</td><td class="num ${tone(y.buy_hold)}">${pl(y.buy_hold)}</td>
+      <td class="num">${y.n}</td><td class="num">${y.win === null ? "–" : fmt(y.win * 100, 0) + "%"}</td></tr>`).join("")}</tbody></table></div></section>
+  <section class="card"><h2>Kötések <span class="muted">– ${r.trades.filter((t) => t.entry_date).length} teljesült, ${r.trades.filter((t) => !t.entry_date).length} nem teljesült limit</span>
+    <label class="small muted" style="margin-left:auto;font-weight:400"><input type="checkbox" id="bt-unfilled"> nem teljesültek is</label></h2>
+    <div class="table-wrap bt-trades" id="bt-trades"><table>
+    <thead><tr><th>Jelzés napja</th><th>Állapot</th><th class="num">Limit</th><th class="num">Stop</th><th>Belépés</th><th class="num">Ár</th><th>Kilépés</th><th class="num">Ár</th><th>Ok</th><th class="num">Nap</th><th class="num">Nettó</th><th class="num">R</th></tr></thead>
+    <tbody>${r.trades.slice().reverse().map((t) => `<tr${t.entry_date ? "" : ` class="bt-unfilled"`}>
+      <td>${esc(t.signal_date)}<div class="muted small">RSI(2) ${fmt(t.rsi2, 1)}</div></td>
+      <td>${t.status === "closed" ? (t.net_pct > 0 ? `<span class="badge go">nyerő</span>` : `<span class="badge bad">vesztes</span>`) : t.status === "unfilled" ? `<span class="badge fail">nem teljesült</span>` : `<span class="badge watch">nyitott</span>`}</td>
+      <td class="num">${fmt(t.limit)}</td><td class="num">${fmt(t.stop)}</td>
+      <td>${esc(t.entry_date || "–")}</td><td class="num">${t.entry_price ? fmt(t.entry_price) : "–"}</td>
+      <td>${esc(t.exit_date || "–")}</td><td class="num">${t.exit_price ? fmt(t.exit_price) : "–"}</td>
+      <td>${esc(BT_REASON[t.reason] || t.reason || "–")}</td><td class="num">${t.held || "–"}</td>
+      <td class="num ${tone(t.net_pct)}">${t.net_pct === null || t.net_pct === undefined ? "–" : pct(t.net_pct, 2)}</td>
+      <td class="num">${t.r === null || t.r === undefined ? "–" : signed(t.r, 2)}</td></tr>`).join("")}</tbody></table></div></section>`;
+}
+
+function btRunsCard(d) {
+  if (!d.runs.length) return "";
+  return `<section class="card"><h2>Mentett futtatások <span class="muted">– legfeljebb 50, a legújabb elöl</span></h2><div class="table-wrap"><table>
+    <thead><tr><th>Mikor</th><th>Papír</th><th>Stratégia</th><th>Időszak</th><th class="num">Kötés</th><th class="num">Nyerési arány</th><th class="num">Átlag</th><th class="num">CAGR</th><th class="num">Vettem és tartottam</th><th class="num">Max DD</th><th></th></tr></thead>
+    <tbody>${d.runs.map((x) => `<tr class="clickable" data-href="#/backtest/run/${esc(x.id)}">
+      <td>${esc(new Date(x.created_at).toLocaleString("hu-HU", { dateStyle: "short", timeStyle: "short" }))}</td>
+      <td class="ticker">${esc(x.symbol)}</td>
+      <td>${esc(STRAT[x.strategy] ? STRAT[x.strategy][1] : x.strategy_label)}${Object.keys(x.overrides || {}).length ? ` <span class="muted small">(${Object.entries(x.overrides).map(([k, v]) => `${esc(k)}=${esc(v)}`).join(", ")})</span>` : ""}</td>
+      <td>${esc(x.start)} → ${esc(x.end)}${x.holdout ? ` <span class="badge warn">holdout</span>` : ""}</td>
+      <td class="num">${x.n || 0}</td><td class="num">${x.win === null || x.win === undefined ? "–" : fmt(x.win * 100, 1) + "%"}</td>
+      <td class="num ${tone(x.ev)}">${x.ev === null || x.ev === undefined ? "–" : pct(x.ev, 2)}</td>
+      <td class="num ${tone(x.cagr)}">${pct(x.cagr, 1)}</td><td class="num">${pct(x.bh_cagr, 1)}</td><td class="num">${pct(x.max_dd, 1)}</td>
+      <td><button class="btn" type="button" data-bt-delete="${esc(x.id)}" title="Törlés">✕</button></td></tr>`).join("")}</tbody></table></div></section>`;
+}
+
+function btDownloadCsv(r) {
+  const cols = ["signal_date", "status", "limit", "stop", "rsi2", "natr", "entry_date", "entry_price", "exit_date", "exit_price", "reason", "held", "gross_pct", "net_pct", "r"];
+  const lines = [cols.join(";")].concat(r.trades.map((t) => cols.map((c) => (t[c] === null || t[c] === undefined ? "" : String(t[c]).replace(".", ","))).join(";")));
+  const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `backteszt-${r.symbol}-${r.strategy}-${r.start}-${r.end}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// Egyszeru, tobbsoros vonaldiagram datum-tengellyel (log skalaval is), opcionalis jelolokkel.
+function btLineChart(svg, t, series, opts = {}) {
+  if (!svg || !t.length) return;
+  const W = Math.max(320, svg.parentElement.clientWidth);
+  const H = opts.height || 260;
+  const pad = { l: 8, r: 72, t: 12, b: 24 };
+  const tr = opts.log ? (v) => Math.log10(Math.max(v, 1e-9)) : (v) => v;
+  const all = series.flatMap((s) => s.v).filter((v) => v !== null && Number.isFinite(v));
+  let lo = Math.min(...all.map(tr)), hi = Math.max(...all.map(tr));
+  if (opts.zeroTop) hi = Math.max(hi, 0);
+  const span = hi - lo || 1;
+  lo -= span * 0.06; hi += span * 0.06;
+  const n = t.length;
+  const x = (i) => pad.l + (i / Math.max(1, n - 1)) * (W - pad.l - pad.r);
+  const y = (v) => pad.t + (hi - tr(v)) / (hi - lo) * (H - pad.t - pad.b);
+  const parts = [];
+  const ticks = opts.log ? niceTicks(lo, hi, 4).map((v) => 10 ** v) : niceTicks(lo, hi, 4);
+  parts.push(`<g class="grid">${ticks.map((v) => `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}"/>`).join("")}</g>`);
+  parts.push(`<g class="axis">${ticks.map((v) => `<text x="${W - pad.r + 8}" y="${y(v) + 4}">${opts.fmtY ? opts.fmtY(v) : fmt(v, 0)}</text>`).join("")}</g>`);
+  let lastYear = null;
+  const yearTicks = [];
+  t.forEach((d, i) => { const yr = d.slice(0, 4); if (yr !== lastYear) { yearTicks.push([i, yr]); lastYear = yr; } });
+  const every = Math.max(1, Math.ceil(yearTicks.length / Math.max(2, Math.floor(W / 70))));
+  parts.push(`<g class="axis">${yearTicks.filter((_, k) => k % every === 0).map(([i, yr]) => `<text x="${x(i)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : "middle"}">${yr}</text>`).join("")}</g>`);
+  if (opts.area) {
+    const s = series[0];
+    const path = s.v.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+    parts.push(`<path class="bt-area" d="${path}L${x(n - 1).toFixed(1)},${y(0)}L${x(0).toFixed(1)},${y(0)}Z"/>`);
+  }
+  series.forEach((s) => {
+    let pen = "M";
+    const path = s.v.map((v, i) => {
+      if (v === null || !Number.isFinite(v)) { pen = "M"; return ""; }
+      const seg = `${pen}${x(i).toFixed(1)},${y(v).toFixed(1)}`;
+      pen = "L";
+      return seg;
+    }).join("");
+    parts.push(`<path class="bt-line ${s.cls}" d="${path}"/>`);
+  });
+  (opts.markers || []).forEach((m) => {
+    const i = btIndex(t, m.date);
+    if (i < 0) return;
+    const cx = x(i), cy = y(m.price);
+    const pts = m.up ? `${cx},${cy + 2} ${cx - 5},${cy + 10} ${cx + 5},${cy + 10}` : `${cx},${cy - 2} ${cx - 5},${cy - 10} ${cx + 5},${cy - 10}`;
+    parts.push(`<polygon class="bt-mark ${m.cls}" points="${pts}"><title>${esc(m.title)}</title></polygon>`);
+  });
+  parts.push(`<g class="bt-cross"></g><rect class="bt-hit" x="${pad.l}" y="${pad.t}" width="${W - pad.l - pad.r}" height="${H - pad.t - pad.b}" fill="transparent"/>`);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("height", H);
+  svg.innerHTML = parts.join("");
+  const hit = svg.querySelector(".bt-hit"), cross = svg.querySelector(".bt-cross");
+  hit.addEventListener("mousemove", (ev) => {
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) * (W / r.width);
+    const i = Math.max(0, Math.min(n - 1, Math.round((px - pad.l) / ((W - pad.l - pad.r) / Math.max(1, n - 1)))));
+    cross.innerHTML = `<line class="cross" x1="${x(i)}" x2="${x(i)}" y1="${pad.t}" y2="${H - pad.b}"/>`;
+    tooltip.innerHTML = `<strong>${esc(t[i])}</strong>` + series.map((s) => `<div class="row"><span>${esc(s.name)}</span><span>${s.v[i] === null || s.v[i] === undefined ? "–" : opts.fmtTip ? opts.fmtTip(s.v[i]) : fmt(s.v[i], 2)}</span></div>`).join("");
+    tooltip.hidden = false;
+    tooltip.style.left = `${ev.clientX + 16 + 200 > window.innerWidth ? ev.clientX - 216 : ev.clientX + 16}px`;
+    tooltip.style.top = `${ev.clientY + 12}px`;
+  });
+  hit.addEventListener("mouseleave", () => { cross.innerHTML = ""; tooltip.hidden = true; });
+}
+
+function btIndex(t, date) {        // az elso index, amelyik >= date (ISO datumok, rendezve)
+  let lo = 0, hi = t.length - 1;
+  if (!date || date < t[0] || date > t[hi]) return -1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (t[mid] < date) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+
+function btDrawCharts(r) {
+  const eq = r.equity, bh = r.buy_hold;
+  const bhOnEq = eq.t.map((d) => { const i = btIndex(bh.t, d); return i < 0 ? null : bh.v[i]; });
+  btLineChart($("#bt-equity"), eq.t, [{ name: "Stratégia", v: eq.v, cls: "s1" }, { name: "Vettem és tartottam", v: bhOnEq, cls: "s2" }],
+    { log: true, fmtY: (v) => fmt(v, 0), fmtTip: (v) => (v === null ? "–" : `${fmt(v, 0)} $`) });
+  btLineChart($("#bt-dd"), r.drawdown.t, [{ name: "Visszaesés", v: r.drawdown.v, cls: "dd" }],
+    { height: 120, area: true, zeroTop: true, fmtY: (v) => `${fmt(v, 0)}%`, fmtTip: (v) => `${fmt(v, 1)}%` });
+  const markers = [];
+  r.trades.filter((t) => t.entry_date).forEach((t) => {
+    const win = t.status === "closed" ? (t.net_pct > 0 ? "win" : "loss") : "open";
+    markers.push({ date: t.entry_date, price: t.entry_price, up: true, cls: win, title: `Belépés ${t.entry_date}: ${fmt(t.entry_price)} $` });
+    if (t.exit_date) markers.push({ date: t.exit_date, price: t.exit_price, up: false, cls: win, title: `Kilépés ${t.exit_date}: ${fmt(t.exit_price)} $ (${BT_REASON[t.reason] || t.reason}, ${pct(t.net_pct, 2)})` });
+  });
+  btLineChart($("#bt-price"), r.price.t, [{ name: r.symbol, v: r.price.v, cls: "price" }],
+    { height: 300, log: true, markers, fmtY: (v) => fmt(v, v < 10 ? 2 : 0), fmtTip: (v) => `${fmt(v, 2)} $` });
+}
