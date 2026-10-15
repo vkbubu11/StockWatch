@@ -546,6 +546,39 @@ python cli.py backtest-symbol NVDA --start 2005-01-01 --strategy deep --set min_
 python cli.py backtest-symbol QQQ --strategy etf --set rsi2_max=5 --cost-bps 5 --json out.json
 ```
 
+## Hírek és hangulat (sentiment) – árnyék-üzem
+
+A belépési jelöltek mellé a rendszer kiírja, milyen hírek és bejelentések jelentek meg a papírról az utolsó 3
+kereskedési napban. **Csak tájékoztat: a jelzés kimenetelét nem változtatja meg**, amíg a validáció nem mutat mérhető
+hatást (terv: [`docs/SENTIMENT-DESIGN.md`](docs/SENTIMENT-DESIGN.md), ticket #20).
+
+**Források:**
+- **SEC EDGAR:** 8-K bejelentések a tételkódokkal (pl. 4.02 könyvelési helyesbítés, 3.01 kivezetési értesítés, 1.03 csőd, 4.01 könyvvizsgáló-csere) és kibocsátási prospektusok. Ingyenes, évtizedekre visszamenőleg, ezért visszatesztelhető. A SEC azonosító User-Agentet kér: a `.env`-be írd be: `SEC_USER_AGENT="Neved email@cimed"`.
+- **Yahoo:** a legfrissebb ~25 hír, kulcs nélkül. Csak az a hír számít, amelynek címében a ticker vagy a cégnév szerepel.
+- **Alpaca News** (Benzinga): a paper kulcsokkal, ha a fiók csomagja tartalmazza.
+
+**Pontozás:** két réteg kell az egyetértéshez:
+1. általános hangulat-lexikon (VADER);
+2. saját pénzügyi szólista és eseményfelismerés: leminősítés, előrejelzés-csökkentés, kibocsátás, per és vizsgálat, FDA, csőd stb., „lényegesség” 0–3 skálán.
+
+A cégnevet és a tickert pontozás előtt kivesszük a szövegből: a „Super Micro” ne legyen pozitív.
+
+**Point-in-time:** a *t* napi döntés csak a *t* nap 16:00 (New York) előtt megjelent híreket látja. A hír-volumen
+z-értéke csak teljes lefedettségnél számolódik; hiányos lefedettségnél a felület „részleges lefedettség”-et ír,
+és nem „nincs negatív hír”-t.
+
+**Hol látszik:**
+- a jelzés szűrőlistájában „Hírek: …” sorként (nem dönt);
+- a Discord / Telegram értesítésben;
+- a jelzésnaplóban (`news` mező);
+- a belépési jelöltek táblázatában (▼ hír = lényeges negatív hír);
+- a papír-oldal „Hírek” kártyáján, frissítés gombbal.
+
+```bash
+python cli.py news NVDA --fetch                         # letöltés + pontozott lista + a mai hír-jellemzők
+python cli.py news SMCI --fetch --since 2024-01-01 --as-of 2024-10-31   # mit látott volna a döntés azon a napon
+```
+
 ## Jelzésnapló, életút, visszajátszás
 
 A jelzések megbízhatóságát csak akkor lehet mérni, ha minden döntés visszakereshető és reprodukálható.

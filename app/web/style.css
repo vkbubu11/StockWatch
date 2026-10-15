@@ -461,3 +461,8 @@ tr.lab-detail h3, #lab-ml h3 { font-size: 13px; margin: 6px 0; }
 .bt-trades { max-height: 560px; overflow-y: auto; }
 .bt-trades tr.bt-unfilled { display: none; }
 .bt-trades.show-unfilled tr.bt-unfilled { display: table-row; }
+
+/* --- Hirek (sentiment) --- */
+.news-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; max-height: 520px; overflow-y: auto; }
+.news-list li { font-size: 13px; line-height: 1.35; }
+.news-list a { color: inherit; }

@@ -154,6 +154,13 @@ class AppState:
             entry_sink=sink, refresh=False,
         )
         self.forecasts = {f.symbol: f for f in forecasts}
+        try:                    # a tarolt hirekbol (halozat nelkul) - a frissitest a monitor / a gomb vegzi
+            from .sentiment import service as news
+
+            news.annotate([s for s in sink if s.passed and s.kind != "setup" and s.news is None], settings,
+                          refresh_news=False)
+        except Exception:
+            log.exception("A hir-jellemzok hibara futottak (felulet)")
         self.signals = {}
         for s in sink:
             self.signals.setdefault(s.symbol, []).append(s)
@@ -1154,6 +1161,23 @@ def backtest_jobs():
     return _BT_JOBS
 
 
+def news_payload(symbol: str, refresh: bool = False) -> dict:
+    """Egy papir hirei (pontozva) es a mai point-in-time hir-jellemzok. GET: csak a tarolt adat."""
+    from .sentiment import features as nf, service as news, store as news_store
+
+    settings = load_settings()
+    result = news.refresh(symbol, settings, force=True) if refresh else None
+    data = news_store.load(symbol)
+    arts = sorted(news_store.articles(symbol), key=lambda a: a.published_at, reverse=True)
+    day = pd.Timestamp.now(tz=nf.MARKET_TZ).tz_localize(None).normalize()
+    f = news.features_for(symbol, day)
+    return {"symbol": symbol, "enabled": settings.sentiment.enabled, "features": f, "summary": news.summary(f),
+            "coverage": data.get("coverage", {}), "fetched": data.get("fetched", {}), "refresh": result,
+            "event_labels": news.EVENT_LABELS,
+            "articles": [{k: a.to_dict()[k] for k in ("source", "kind", "published_at", "title", "url", "publisher",
+                                                     "form", "items", "score", "also")} for a in arts[:60]]}
+
+
 def backtest_payload() -> dict:
     from .backtest_page import data as bt_data, runner as bt_runner, runs as bt_runs
     from .entry_research import HOLDOUT_START
@@ -1595,6 +1619,11 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                     return self._json(settings_payload())
                 if path == "/api/lab":
                     return self._json(lab_payload())
+                if path.startswith("/api/news/"):
+                    symbol = path.rsplit("/", 1)[-1].upper()
+                    if not SYMBOL_RE.match(symbol):
+                        return self._error(400, "Ervenytelen ticker")
+                    return self._json(news_payload(symbol))
                 if path == "/api/backtest":
                     return self._json(backtest_payload())
                 if path == "/api/backtest/job":
@@ -1669,6 +1698,11 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                     return self._json(lab_action(path.rsplit("/", 1)[-1], body))
                 if path.startswith("/api/backtest/"):
                     return self._json(backtest_action(path.rsplit("/", 1)[-1], body))
+                if path == "/api/news/refresh":
+                    symbol = str(body.get("symbol") or "").upper()
+                    if not SYMBOL_RE.match(symbol):
+                        return self._error(400, "Ervenytelen ticker")
+                    return self._json(news_payload(symbol, refresh=True))
                 return self._error(404, "Nem talalhato")
             except (ValueError, TypeError, broker.BrokerError, LockTimeout) as exc:
                 return self._error(400, str(exc))

@@ -168,3 +168,12 @@ lab:
   #       szuroknel | on: mindig, ha van mentett modell | off: soha
   # Arnyek-uzemben a becsles a jelzes melle kerul es naplozodik, de SEMMIROL nem dont.
   shadow: auto
+
+# --- Hir- es hangulatelemzes (sentiment) - ARNYEK-UZEM: a jelzes melle irja, NEM dont ---
+# Terv: docs/SENTIMENT-DESIGN.md. A SEC kerese: .env-ben SEC_USER_AGENT="Nev e-mail@cim".
+sentiment:
+  enabled: true
+  sources: [edgar, yahoo, alpaca]   # alpaca: csak paper kulccsal es ha a fiok csomagja tartalmazza a hireket
+  history_days: 120                 # elo frissiteskor ennyi napra vissza (EDGAR, Alpaca)
+  cache_minutes: 60                 # forrasonkent ennyi ideig nem kerdezzuk ujra ugyanazt a papirt
+  max_symbols_per_cycle: 30         # egy monitor-korben legfeljebb ennyi papir hirei frissulnek

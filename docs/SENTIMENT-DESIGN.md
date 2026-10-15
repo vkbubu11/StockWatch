@@ -1,6 +1,12 @@
 # Hír- és hangulatelemzés (sentiment) – terv a StockWatch-hoz
 
-Állapot: **terv**, még nincs implementálva. Kiindulópont: a [shirosaidev/stocksight](https://github.com/shirosaidev/stocksight)
+Állapot: **a 0–1. fázis kész** (adat, pontozás, árnyék-üzem, felület). A 2. fázis (visszatesztelés) következik.
+
+Eltérések a tervtől (a megvalósítás során):
+- A **SEC EDGAR** már a 0. fázisba bekerült, mert ingyenes, történeti és visszatesztelhető; így akkor is van mivel validálni, ha az Alpaca-fiók csomagja nem tartalmazza a hírarchívumot.
+- A Loughran–McDonald szólista helyett **saját, rövid pénzügyi szólista** és eseményfelismerés készült (az LM-lista szabadon csak tudományos kutatásra használható, ezért nem csomagoljuk a programhoz). Ha a felhasználó letölti, később betölthető.
+- A Yahoo „relatedTickers” mezője megbízhatatlan, ezért a relevancia csak a címből jön (ticker vagy cégnév).
+- Az EDGAR `acceptanceDateTime` értelmezése konzervatív: a UTC- és a New York-i értelmezés közül a későbbi számít. Kiindulópont: a [shirosaidev/stocksight](https://github.com/shirosaidev/stocksight)
 átnézése (2026-10-15).
 
 ---

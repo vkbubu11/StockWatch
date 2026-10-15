@@ -19,6 +19,7 @@
     python cli.py levels --symbol AAPL
     python cli.py backtest [--symbols all] [--walk-forward] [--purge-cache]
     python cli.py backtest-symbol SPY --start 2000-01-01 --strategy deep [--set stop_atr=4]
+    python cli.py news NVDA [--fetch] [--since 2016-01-01] [--as-of 2025-03-14]   hirek es hir-jellemzok
     python cli.py monitor [--once] [--dry-run]
     python cli.py data-usage
     python cli.py test-alert
@@ -678,6 +679,33 @@ def cmd_backtest_symbol(args) -> int:
     return 0
 
 
+def cmd_news(args) -> int:
+    """Hirek (sentiment, arnyek-uzem): letoltes, pontozott lista es a napi point-in-time jellemzok."""
+    import pandas as pd
+
+    from stockwatch.sentiment import features as nf, service as news, store as news_store
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings)
+    for symbol in [x.strip().upper() for x in args.symbol.split(",") if x.strip()]:
+        if args.fetch:
+            res = news.refresh(symbol, settings, since=args.since, force=True)
+            print(f"{symbol}: " + ", ".join(f"{k}: " + (f"+{v['added']} (osszesen {v['total']})" if "added" in v
+                                                        else v.get("error", "cache")) for k, v in res.items()))
+        arts = news_store.articles(symbol)
+        day = pd.Timestamp(args.as_of) if args.as_of else pd.Timestamp.now(tz=nf.MARKET_TZ).tz_localize(None).normalize()
+        f = news.features_for(symbol, day)
+        print(f"\n{symbol} - {len(arts)} tarolt hir / bejelentes. Dontes {f['as_of']} (latott hirek: {f['cutoff']} elott)")
+        print(f"  {news.summary(f)}")
+        shown = [a for a in arts if a.published < nf.decision_cutoff(day)][-args.limit:]
+        for a in reversed(shown):
+            when = a.published.tz_convert(nf.MARKET_TZ)
+            sc = a.score
+            ev = f" [{news.EVENT_LABELS.get(sc.get('event'), sc.get('event'))}]" if sc.get("event") else ""
+            print(f"  {when:%Y-%m-%d %H:%M} {a.source:<6} {sc.get('label', '?'):<8} {sc.get('polarity', 0):+.2f}{ev}  {a.title[:100]}")
+    return 0
+
+
 def cmd_meanrev_research(args) -> int:
     """A Visszahuzas (RSI2) strategia validalasa: tanito / validacio / (holdout), evenkent, elfogadasi feltetellel."""
     from stockwatch import meanrev_research as mr
@@ -1188,6 +1216,14 @@ def main() -> int:
     p.add_argument("--fetch", action="store_true", help="adat frissitese futtatas elott")
     p.add_argument("--json", help="a teljes eredmeny mentese ide")
     p.set_defaults(func=cmd_backtest_symbol)
+
+    p = subparsers.add_parser("news", help="hirek es hir-jellemzok (sentiment, arnyek-uzem)")
+    p.add_argument("symbol", help="ticker (vagy tobb, vesszovel)")
+    p.add_argument("--fetch", action="store_true", help="letoltes a bekapcsolt forrasokbol")
+    p.add_argument("--since", help="letoltes ettol a datumtol (alap: sentiment.history_days)")
+    p.add_argument("--as-of", help="a dontes napja (alap: ma) - csak az aznap 16:00 NY elotti hirek latszanak")
+    p.add_argument("--limit", type=int, default=15, help="ennyi hir listazasa")
+    p.set_defaults(func=cmd_news)
 
     p = subparsers.add_parser("levels", help="support/rezisztencia szintek egy papirra")
     p.add_argument("--symbol", required=True)

@@ -174,6 +174,7 @@ class EntrySignal:
     strategy: str = "breakout"              # melyik strategia kuldte (config.STRATEGY_IDS)
     # a kiertekeles pontos idopontja (UTC) - az elbukott jelolteknel is; a jelazonositoba NEM szamit bele
     evaluated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    news: dict | None = None                # hir-jellemzok (sentiment, arnyek-uzem) - nem dont
 
     @property
     def score(self) -> float:
@@ -241,6 +242,7 @@ class EntrySignal:
             "earnings_date": self.earnings_date.isoformat() if self.earnings_date else None,
             "warnings": self.warnings,
             "ml": self.ml,
+            "news": self.news,
         }
 
 

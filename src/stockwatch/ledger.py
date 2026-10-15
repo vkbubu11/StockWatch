@@ -329,6 +329,7 @@ class Ledger:
             "history": signal.history_text,
             "earnings_date": signal.earnings_date.isoformat() if signal.earnings_date else None,
             "warnings": signal.warnings,
+            "news": getattr(signal, "news", None),     # hir-jellemzok (arnyek-uzem, nem dont)
             "regime": regime_source,
             "versions": self.versions,
             "data": {

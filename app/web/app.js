@@ -71,7 +71,24 @@ function mlNote(s) {
   return `<div class="muted small" title="Gépi tanulás árnyék-üzemben – nem dönt">ML: ${signed(s.ml.pred_r, 2, "R")} ${s.ml.pick ? "✓ választaná" : "✗ nem választaná"}</div>`;
 }
 
+// Hir-jellemzok (sentiment, arnyek-uzem): csak tajekoztat, a jelzest nem befolyasolja
+function newsBadge(n) {
+  if (!n) return "";
+  const latest = (n.latest || []).slice(0, 3).map((a) => `• ${a.title}`).join("\n");
+  if (n.material_neg_3d) {
+    const m = n.material[0];
+    return ` <span class="badge bad" title="Lényeges negatív hír (tájékoztató, nem dönt): ${esc(m.title)}\n${esc(latest)}">▼ hír</span>`;
+  }
+  if (!n.count_3d) return n.coverage ? ` <span class="muted small" title="3 napban nincs releváns hír">nincs hír</span>` : "";
+  const tone = n.sent_mean_3d === null || Math.abs(n.sent_mean_3d) < 0.1 ? "" : n.sent_mean_3d > 0 ? "up" : "down";
+  return ` <span class="muted small ${tone}" title="${esc(`3 napban ${n.count_3d} hír (${n.neg_3d} negatív, ${n.pos_3d} pozitív)${n.coverage ? "" : " – részleges lefedettség"}\n${latest}`)}">${n.count_3d} hír</span>`;
+}
+
 function verdict(s) {
+  return verdictBase(s) + newsBadge(s.news);
+}
+
+function verdictBase(s) {
   if (s.qualifies) return s.kind === "setup" ? `<span class="badge watch">Figyeld</span>` : `<span class="badge go">Belépési jelzés</span>`;
   if (s.failed && s.failed.length) return `<span class="badge fail" title="${esc(s.failed.join(", "))}">Bukott: ${esc(s.failed.join(", "))}</span>`;
   return `<span class="badge fail">Pont a küszöb alatt</span>`;
@@ -380,6 +397,7 @@ async function pageSymbol(symbol) {
         <section class="card"><h2>Felismert alakzatok</h2>${patternsTable(d.patterns)}</section>
       </div>
       <aside>
+        <section class="card" id="news-card"><h2>Hírek <span class="muted">– betöltés…</span></h2></section>
         ${d.holdings.length ? `<section class="card"><h2>Saját pozíció</h2><div class="card-body">${d.holdings.map((h) => holdingCard(h, false)).join("")}</div></section>` : ""}
         <section class="card"><h2>Belépési helyzet</h2><div class="card-body">
           ${signals.length ? signals.map(signalCard).join("") : `<div class="muted">Ma nincs belépési helyzet ezen a papíron (nincs friss kitörés és nincs kitörés-közeli alakzat).</div>`}
@@ -473,6 +491,7 @@ function setupChart(d, signals) {
   if (chartRO) chartRO.disconnect();
   chartRO = new ResizeObserver(() => draw());
   chartRO.observe(svg.parentElement);
+  loadNews(d.symbol);
 }
 
 function drawChart(svg, d, signal) {
@@ -2477,4 +2496,47 @@ function btDrawCharts(r) {
   });
   btLineChart($("#bt-price"), r.price.t, [{ name: r.symbol, v: r.price.v, cls: "price" }],
     { height: 300, log: true, markers, fmtY: (v) => fmt(v, v < 10 ? 2 : 0), fmtTip: (v) => `${fmt(v, 2)} $` });
+}
+
+
+// ---------------------------------------------------------------------------
+// Hirek egy papirra (sentiment, arnyek-uzem) - docs/SENTIMENT-DESIGN.md
+// ---------------------------------------------------------------------------
+const NEWS_LABEL = { negative: ["bad", "negatív"], positive: ["go", "pozitív"], neutral: ["fail", "semleges"] };
+const NEWS_SOURCE = { edgar: "SEC", yahoo: "Yahoo", alpaca: "Alpaca" };
+
+async function loadNews(symbol, refresh = false) {
+  const card = $("#news-card");
+  if (!card) return;
+  try {
+    const d = refresh ? await api("/api/news/refresh", { method: "POST", body: JSON.stringify({ symbol }) })
+      : await api(`/api/news/${encodeURIComponent(symbol)}`);
+    if (!$("#news-card")) return;
+    card.innerHTML = newsCard(d);
+    const btn = $("#news-refresh");
+    if (btn) btn.addEventListener("click", async () => { btn.disabled = true; btn.textContent = "Frissítés…"; await loadNews(symbol, true); });
+  } catch (e) {
+    card.innerHTML = `<h2>Hírek</h2><div class="card-body muted">Nem tölthető be: ${esc(e.message)}</div>`;
+  }
+}
+
+function newsCard(d) {
+  const f = d.features || {};
+  const when = (iso) => new Date(iso).toLocaleString("hu-HU", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const last = Object.values(d.fetched || {}).sort().pop();
+  const rows = d.articles.slice(0, 25).map((a) => {
+    const sc = a.score || {};
+    const [cls, label] = NEWS_LABEL[sc.label] || ["fail", "?"];
+    const ev = sc.event ? ` <span class="muted small">· ${esc(d.event_labels[sc.event] || sc.event)}${sc.materiality >= 2 ? " (lényeges)" : ""}</span>` : "";
+    const title = a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.title)}</a>` : esc(a.title);
+    return `<li><span class="badge ${cls}">${label}</span> ${title}${ev}
+      <div class="muted small">${esc(when(a.published_at))} · ${esc(NEWS_SOURCE[a.source] || a.source)}${a.publisher && a.source !== "edgar" ? ` · ${esc(a.publisher)}` : ""}</div></li>`;
+  }).join("");
+  return `<h2>Hírek <span class="muted">– tájékoztató, a jelzést nem befolyásolja</span>
+      <button class="btn" type="button" id="news-refresh" style="margin-left:auto" title="Letöltés: SEC EDGAR, Yahoo${d.fetched && d.fetched.alpaca ? ", Alpaca" : ""}">Frissítés</button></h2>
+    <div class="card-body">
+      <div class="${f.material_neg_3d ? "down" : ""}"><b>Ma:</b> ${esc(d.summary)}</div>
+      <div class="muted small">A döntés csak a 16:00 (New York) előtt megjelent híreket látja. ${last ? `Utolsó letöltés: ${esc(when(last))}.` : "Még nem volt letöltés."}</div>
+      ${rows ? `<ul class="news-list">${rows}</ul>` : `<div class="muted" style="margin-top:6px">Nincs tárolt hír – nyomd meg a „Frissítés” gombot.</div>`}
+    </div>`;
 }

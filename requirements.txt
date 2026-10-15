@@ -13,6 +13,9 @@ scipy>=1.13.0
 # --- Strategia-labor: gepi tanulas (lab_ml.py) ---
 scikit-learn>=1.5.0
 
+# --- Hir-hangulat (sentiment, arnyek-uzem) - nelkule csak a penzugyi szolista pontoz ---
+vaderSentiment>=3.3.2
+
 # --- Chart ---
 plotly>=5.22.0
 kaleido>=0.2.1

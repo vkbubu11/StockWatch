@@ -23,3 +23,12 @@ def _isolated_broker_book(tmp_path, monkeypatch):
     from stockwatch.config import Settings
 
     monkeypatch.setattr(Settings, "broker_path", property(lambda self: tmp_path / "broker-isolated.json"))
+
+
+@pytest.fixture(autouse=True)
+def _isolated_news(tmp_path, monkeypatch):
+    """A tesztek nem mennek halozatra hirekert, es nem irnak a valodi hirtarba (data/news)."""
+    from stockwatch.sentiment import service, store
+
+    monkeypatch.setattr(store, "NEWS_DIR", tmp_path / "news")
+    monkeypatch.setattr(service, "refresh", lambda *a, **k: {})

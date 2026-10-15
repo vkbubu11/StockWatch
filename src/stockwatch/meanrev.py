@@ -271,6 +271,11 @@ def format_body(signal, params: PullbackParams) -> str:
         "",
         "Ha a limit holnap nem teljesul, a jelzes ervenyet veszti (ne vegyel utana).",
     ]
+    news = getattr(signal, "news", None)
+    if news:
+        from .sentiment.service import summary
+
+        lines.append(f"Hirek (tajekoztato, nem dont): {summary(news)}")
     for w in signal.warnings:
         lines.append(f"Figyelem: {w}")
     lines += ["", "Nem befektetesi tanacs."]

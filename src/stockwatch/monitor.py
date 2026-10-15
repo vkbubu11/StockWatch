@@ -292,6 +292,15 @@ def scan(
                                             ctx, earnings)
             except Exception:
                 log.exception("A belepesi motor hibara futott: %s", symbol)
+            if signals and final_bar:
+                # hir-jellemzok arnyek-uzemben (sentiment): a szuron atjutott jelolteknek - nem dont
+                try:
+                    from .sentiment import service as news
+
+                    news.annotate([s for s in signals if s.passed and s.kind != "setup"], settings,
+                                  refresh_news=refresh)
+                except Exception:
+                    log.exception("A hir-jellemzok hibara futottak: %s", symbol)
             if signals:
                 # gepi tanulas arnyek-uzemben: becsles a jelzes melle, naplozas zaras utan - nem dont
                 try:
@@ -841,6 +850,12 @@ def pullback_cycle(settings: Settings, strategy: str, params, dispatcher: Dispat
                      if p.strategy == strategy and day is not None and p.signal_date == f"{day:%Y-%m-%d}")
     room = max(0, min(params.daily_cap - sent_today, params.open_cap - len(active)))
     held = {p.symbol for p in active}
+    try:                                   # hir-jellemzok arnyek-uzemben (sentiment) - nem dont
+        from .sentiment import service as news
+
+        news.annotate([s for s in found if s.passed], settings)
+    except Exception:
+        log.exception("A hir-jellemzok hibara futottak (%s)", strategy)
     ranked = sorted(found, key=lambda s: (not s.passed,) + meanrev.rank_key(s))
     alerted = []
     for rank, signal in enumerate(ranked, 1):

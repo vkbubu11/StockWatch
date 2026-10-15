@@ -440,6 +440,25 @@ def benchmark_for(scan: "ScanSettings") -> str:
     return "SPY" if scan.sp500 else "QQQ"
 
 
+class SentimentSettings(BaseModel):
+    """Hir- es hangulatelemzes (sentiment) - ARNYEK-UZEM: a jelzes melle irja a hir-jellemzoket, nem dont.
+    Terv: docs/SENTIMENT-DESIGN.md."""
+
+    enabled: bool = True
+    sources: list[str] = Field(default_factory=lambda: ["edgar", "yahoo", "alpaca"])
+    history_days: int = 120          # elo frissiteskor ennyi napra visszamenoleg (EDGAR, Alpaca)
+    cache_minutes: int = 60          # forrasonkent legfeljebb ilyen gyakran kerdezzuk ujra ugyanazt a papirt
+    max_symbols_per_cycle: int = 30  # egy monitor-korben legfeljebb ennyi papir hireit frissitjuk
+
+    @field_validator("sources")
+    @classmethod
+    def _sources(cls, value: list[str]) -> list[str]:
+        unknown = set(value) - {"edgar", "yahoo", "alpaca"}
+        if unknown:
+            raise ValueError(f"sentiment.sources: ismeretlen forras: {', '.join(sorted(unknown))}")
+        return list(dict.fromkeys(value))
+
+
 class Settings(BaseModel):
     data: DataSettings = Field(default_factory=DataSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
@@ -454,6 +473,7 @@ class Settings(BaseModel):
     scan: ScanSettings = Field(default_factory=ScanSettings)
     lab: LabSettings = Field(default_factory=LabSettings)
     strategies: StrategiesSettings = Field(default_factory=StrategiesSettings)
+    sentiment: SentimentSettings = Field(default_factory=SentimentSettings)
 
     @model_validator(mode="after")
     def _resolve_benchmark(self) -> "Settings":
