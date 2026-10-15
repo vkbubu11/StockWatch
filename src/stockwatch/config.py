@@ -250,7 +250,7 @@ class BrokerSettings(BaseModel):
 
     auto_trade: bool = False        # a monitor maga kuldi-e be a belepesi jelzeseket
     size_from_account: bool = True  # darabszam a paper szamla toke-jebol (kulonben entry.account_size)
-    max_open_trades: int = 5        # egyszerre ennyi nyitott / fuggo broker-trade (Visszahuzas: csak a teljesult)
+    max_open_trades: int = 5        # egyszerre ennyi nyitott + fuggo broker-trade (a fuggo limit is helyet foglal)
     # Kitores: a belepo csak a NYITASKOR teljesulhet (mint a backtestben). Ha a nyitas utan ennyi perccel
     # sem teljesult (a nyito a limit folott volt), visszavonjuk. 0 = ki (a limit egesz nap el).
     entry_window_min: int = 5

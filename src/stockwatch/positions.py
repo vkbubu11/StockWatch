@@ -29,6 +29,8 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+
 import pandas as pd
 
 from .config import Settings
@@ -86,6 +88,9 @@ class TrackedPosition:
     held: int = 0                  # tartott kereskedesi napok (indikatoros kilepesnel)
     exit_pending: str = ""         # a zaron szuletett kilepesi jel (signal | time) - holnap nyitaskor zar
     result_pct: float | None = None   # netto eredmeny %-ban (koltseg utan) - a nyerest ez donti el
+    signal_at: str = ""            # mikor kuldte ki a rendszer a jelzest (ISO UTC)
+    submitted_at: str = ""         # a paper megbizas bekuldese (ISO UTC)
+    entry_at: str = ""             # a paper belepes teljesulese (ISO UTC, az Alpaca szerint)
 
     @property
     def is_active(self) -> bool:
@@ -149,6 +154,7 @@ class PositionTracker:
             signal_id=getattr(signal, "signal_id", ""),
             strategy=getattr(signal, "strategy", "breakout"),
             params=params.model_dump() if params is not None else None,
+            signal_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         )
         self.positions[pid] = position
         return position
@@ -369,7 +375,7 @@ def position_from_trade(trade, settings: Settings) -> TrackedPosition:
         atr=0.0, shares=trade.shares, horizon=trade.horizon, exit_mode=trade.exit_mode,
         partial_r=settings.entry.partial_r, trail_atr=settings.entry.trail_atr,
         last_date=trade.signal_date, signal_id=getattr(trade, "signal_id", ""),
-        strategy=getattr(trade, "strategy", "breakout"),
+        strategy=getattr(trade, "strategy", "breakout"), signal_at=trade.submitted_at,
     )
 
 
@@ -382,6 +388,8 @@ def mirror_trade(position: TrackedPosition, trade) -> None:
     position.broker_status = trade.status
     position.stop, position.target = trade.stop, trade.target
     position.broker_partial = trade.partial_price
+    position.submitted_at = trade.submitted_at
+    position.entry_at = getattr(trade, "filled_ts", None) or ""
 
     if trade.status == "submitted":
         position.status, position.reason, position.closed_at = "pending", "", None

@@ -215,6 +215,7 @@ class Leg:
     exit_intent: str = ""           # miert kuldtuk az exit_order-t (timeout | manual)
     exit_price: float | None = None
     exit_reason: str = ""           # take_profit | stop | timeout | manual | not_filled
+    exit_ts: str = ""               # a kilepes teljesulesenek pontos ideje (Alpaca, ISO UTC)
 
     @property
     def done(self) -> bool:
@@ -238,7 +239,8 @@ class BrokerTrade:
     status: str = "submitted"       # submitted | open | closed | expired | cancelled | error
     legs: list[dict] = field(default_factory=list)
     submitted_at: str = ""
-    filled_at: str | None = None
+    filled_at: str | None = None     # a belepes napja (New York, YYYY-MM-DD)
+    filled_ts: str | None = None     # a belepes teljesulesenek pontos ideje (Alpaca, ISO UTC)
     entry_price: float | None = None
     closed_at: str | None = None
     realised_pnl: float | None = None
@@ -393,10 +395,11 @@ def submit(signal, settings: Settings, client: AlpacaClient, book: BrokerBook) -
 
 
 def occupied_slots(book: BrokerBook) -> list[BrokerTrade]:
-    """A max. nyitott trade-szamba szamito trade-ek. A Visszahuzas fuggo -5%-os limitje NEM foglal helyet:
-    a tobbsege nem teljesul, es a validalas szerint a fuggo megbizasokra szamolt korlat rontja az eredmenyt
-    (a nyertes valtozat korlat nelkuli). A fuggo vetelek a szabad keszpenzt igy is lekotik (free_cash)."""
-    return [t for t in book.active() if not (t.exit_mode == "indicator" and t.status == "submitted")]
+    """A max. nyitott trade-szamba szamito trade-ek: a nyitottak ES a fuggok (a Visszahuzas -5%-os limitje
+    is). Igy egy esesnapon sem nyilhat a korlatnal tobb pozicio, akkor sem, ha minden fuggo limit egyszerre
+    teljesul. A validalas szerint ez a gyengebb valtozat (a limitek tobbsege nem teljesul, megis helyet
+    foglal) - tudatos dontes a szigoru korlat javara."""
+    return book.active()
 
 
 def _checked_shares(signal, settings: Settings, client: AlpacaClient, book: BrokerBook,
@@ -500,6 +503,14 @@ def _read_children(leg: Leg, order: dict) -> None:
 def _fill_price(order: dict) -> float | None:
     value = order.get("filled_avg_price")
     return float(value) if value not in (None, "") else None
+
+
+def _fill_ts(order: dict) -> str | None:
+    """A teljesules pontos ideje ISO UTC-ben (az Alpaca `filled_at`-jebol)."""
+    stamp = order.get("filled_at")
+    if not stamp:
+        return None
+    return pd.Timestamp(stamp).tz_convert("UTC").isoformat(timespec="seconds")
 
 
 def _fill_date(order: dict) -> str | None:
@@ -612,6 +623,8 @@ def _sync_trade(trade: BrokerTrade, settings: Settings, client: AlpacaClient,
         leg.entry_fill = _fill_price(parent) or leg.entry_fill
         if parent.get("status") == "filled" and not trade.filled_at:
             trade.filled_at = _fill_date(parent)
+        if leg.filled_qty and not trade.filled_ts:
+            trade.filled_ts = _fill_ts(parent)
         if parent.get("status") in ("canceled", "expired", "rejected") and leg.filled_qty == 0:
             leg.exit_reason = "not_filled"
             continue
@@ -624,6 +637,7 @@ def _sync_trade(trade: BrokerTrade, settings: Settings, client: AlpacaClient,
             if status == "filled":
                 leg.exit_price = _fill_price(exit_order)
                 leg.exit_reason = leg.exit_intent or "manual"
+                leg.exit_ts = _fill_ts(exit_order) or ""
             elif status in ("canceled", "expired", "rejected") and not float(exit_order.get("filled_qty") or 0):
                 # A cel / stop mar vissza van vonva: e nelkul a pozicio vedtelenul ragadna (pl. egy
                 # nyitoaukcion nem teljesult OPG, vagy egy elutasitott eladas). Ujra piaci aron.
@@ -740,6 +754,7 @@ def _check_children(client: AlpacaClient, leg: Leg) -> str:
         setattr(leg, attr, child.get("id", child_id))     # ha kozben lecsereltek
         if child.get("status") == "filled":
             leg.exit_reason, leg.exit_price = reason, _fill_price(child)
+            leg.exit_ts = _fill_ts(child) or ""
             return reason
     return ""
 
@@ -888,11 +903,26 @@ def close_trade(trade: BrokerTrade, client: AlpacaClient) -> None:
 # ---------------------------------------------------------------------------
 # Szoveg
 # ---------------------------------------------------------------------------
+def format_stamp(iso: str | None) -> str:
+    """Pontos idopont magyar idoben, zarojelben a New York-i ido (a piac ideje)."""
+    if not iso:
+        return ""
+    try:
+        ts = pd.Timestamp(iso)
+    except (TypeError, ValueError):
+        return str(iso)
+    ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts
+    return f"{ts.tz_convert('Europe/Budapest'):%Y-%m-%d %H:%M} (New York {ts.tz_convert(MARKET_TZ):%H:%M})"
+
+
 def format_event(trade: BrokerTrade, event: str, extra: str = "") -> tuple[str, str]:
     title = f"{trade.symbol}: {trade.pattern} - {EVENT_LABELS.get(event, event)}"
     lines = [f"Jelzes napja: {trade.signal_date}  |  {trade.shares} db"]
+    if trade.submitted_at:
+        lines.append(f"Bekuldve: {format_stamp(trade.submitted_at)}")
     if trade.entry_price:
-        lines.append(f"Belepo (teljesult): {trade.entry_price:.2f} $")
+        lines.append(f"Belepo (teljesult): {trade.entry_price:.2f} $"
+                     + (f"  |  {format_stamp(trade.filled_ts)}" if trade.filled_ts else ""))
     else:
         lines.append(f"Belepo-limit: {trade.entry_limit:.2f} $")
     lines.append(f"Stop: {trade.stop:.2f} $ | Cel: {trade.target:.2f} $"

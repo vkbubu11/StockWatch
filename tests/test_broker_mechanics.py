@@ -158,14 +158,18 @@ def test_dead_exit_order_is_resubmitted(mr_env, monkeypatch):  # noqa: F811
 # ---------------------------------------------------------------------------
 # Helyfoglalas es eles kapu
 # ---------------------------------------------------------------------------
-def test_pending_pullback_orders_do_not_occupy_slots(mr_env):  # noqa: F811
-    df = uptrend_with_drop()
-    sig = meanrev.evaluate("ABC", df, mr_env, P, REGIME)
+def test_pending_pullback_orders_occupy_slots(mr_env):  # noqa: F811
+    """A fuggo limit is helyet foglal: a korlatnal tobb megbizas nem megy be, igy esesnapon sem
+    nyilhat a max.-nal tobb pozicio, ha minden limit egyszerre teljesul."""
+    mr_env.broker.max_open_trades = 2
     fake, book = FakeOto(), broker.BrokerBook(mr_env)
-    trade = broker.submit_pullback(sig, mr_env, fake, book, P)
-    assert broker.occupied_slots(book) == []
-    trade.status = "open"
-    assert broker.occupied_slots(book) == [trade]
+    sigs = [meanrev.evaluate(symbol, uptrend_with_drop(symbol_seed=k), mr_env, P, REGIME)
+            for k, symbol in enumerate(("AAA", "BBB", "CCC"))]
+    trades = [broker.submit_pullback(sig, mr_env, fake, book, P) for sig in sigs[:2]]
+    assert all(t.status == "submitted" for t in trades) and broker.occupied_slots(book) == trades
+    with pytest.raises(broker.NoRoom):
+        broker.submit_pullback(sigs[2], mr_env, fake, book, P)
+    assert len(book.active()) == 2
 
 
 def _closed(book, n_win, n_loss, strategy, win_pnl=100.0, loss_pnl=-80.0):
@@ -205,3 +209,17 @@ def test_entry_window_setting_validated():
         BrokerSettings(entry_window_min=-1)
     with pytest.raises(ValueError):
         BrokerSettings(live_gate_win=1.5)
+
+
+def test_fill_times_are_recorded_and_shown(mr_env, monkeypatch):  # noqa: F811
+    df = uptrend_with_drop()
+    sig = meanrev.evaluate("ABC", df, mr_env, P, REGIME)
+    fake, book = FakeOto(), broker.BrokerBook(mr_env)
+    trade = broker.submit_pullback(sig, mr_env, fake, book, P)
+    monkeypatch.setattr(broker.store, "load", lambda symbol, s=None, universe=False: df)
+    fake.fill(trade.leg_objs()[0].order_id, sig.plan.entry_limit, day="2024-03-04")
+    broker.sync(mr_env, fake, book)
+    assert trade.status == "open" and trade.filled_at == "2024-03-04"
+    assert trade.filled_ts == "2024-03-04T15:00:00+00:00"
+    _, body = broker.format_event(trade, "broker_filled")
+    assert "2024-03-04 16:00 (New York 10:00)" in body and "Bekuldve:" in body

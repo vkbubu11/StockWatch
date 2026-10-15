@@ -638,8 +638,8 @@ python cli.py broker sync     # szinkronizálás kézzel
 > ahogy a backtest is kihagyja. (A napközben kézzel beküldött megbízásra nem vonatkozik; `0` = egész nap él.)
 >
 > **Visszahúzás:** a kilépési jel utáni reggel 9:05-kor (NY) a monitor az eladást a **nyitóaukcióra** (OPG) küldi,
-> így az a backtest szerinti nyitóáron teljesül. A függő −5%-os limitek nem foglalnak helyet a `max_open_trades`-ből
-> (a szabad készpénzt lekötik). Ha egy kilépő megbízást az Alpaca elutasít vagy visszavon, a rendszer újraküldi –
+> így az a backtest szerinti nyitóáron teljesül. A függő −5%-os limitek is helyet foglalnak a `max_open_trades`-ből,
+> így esésnapon sem nyílhat a korlátnál több pozíció (a validáció szerint ez a gyengébb változat – tudatos döntés). Ha egy kilépő megbízást az Alpaca elutasít vagy visszavon, a rendszer újraküldi –
 > a pozíció nem maradhat stop nélkül.
 >
 > **Élesítési kapu:** a `python cli.py broker` és a napi életjel stratégiánként mutatja, átment-e: ≥ 50 lezárt paper

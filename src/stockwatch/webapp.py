@@ -463,6 +463,7 @@ def _position_dict(p: positions.TrackedPosition) -> dict:
         "bars_held": state.bars_held if state else p.held, "horizon": p.horizon, "exit_mode": p.exit_mode,
         "result_pct": p.result_pct, "exit_pending": p.exit_pending,
         "signal_id": p.signal_id, "source": p.source, "broker_status": p.broker_status, "strategy": p.strategy,
+        "signal_at": p.signal_at, "submitted_at": p.submitted_at, "entry_at": p.entry_at,
         **({"partial_price": p.broker_partial} if p.source == "alpaca" else {}),
     }
 
@@ -650,8 +651,30 @@ def _client() -> broker.AlpacaClient:
     return client
 
 
-def _trade_dict(t: broker.BrokerTrade) -> dict:
-    return {**asdict(t), "is_active": t.is_active, "risk_amount": t.risk_amount}
+def _trade_dict(t: broker.BrokerTrade, settings=None) -> dict:
+    out = {**asdict(t), "is_active": t.is_active, "risk_amount": t.risk_amount}
+    if t.status == "submitted":
+        out["waiting"] = _waiting_info(t, settings)
+    return out
+
+
+def _waiting_info(t: broker.BrokerTrade, settings=None) -> dict:
+    """Miert var meg a belepo: a limit a jelzes napi zaro alatt van, es csak a jelzes utani kereskedesi
+    napon ervenyes (kitoresnel csak a nyitaskor). Az utolso ismert ar a cache-bol (zaras utan friss)."""
+    entry_day = pd.Timestamp(t.signal_date) + pd.offsets.BDay(1)      # unnepnapot nem ismer
+    info = {"entry_day": f"{entry_day:%Y-%m-%d}", "limit_pct": (t.params or {}).get("limit_pct"),
+            "last_price": None, "last_date": None, "gap_pct": None}
+    try:
+        bars = store.load(t.symbol, settings)
+        if bars.empty:
+            bars = store.load(t.symbol, settings, universe=True)
+    except Exception:
+        bars = pd.DataFrame()
+    if not bars.empty and t.entry_limit:
+        last = float(bars["close"].iloc[-1])
+        info.update(last_price=last, last_date=f"{bars.index[-1]:%Y-%m-%d}",
+                    gap_pct=(last / t.entry_limit - 1) * 100)
+    return info
 
 
 def broker_payload(app: AppState) -> dict:
@@ -676,7 +699,7 @@ def broker_payload(app: AppState) -> dict:
         "credentials": creds,
         "settings": settings.broker.model_dump(),
         "exit_mode": settings.entry.exit_mode,
-        "trades": [_trade_dict(t) for t in trades],
+        "trades": [_trade_dict(t, settings) for t in trades],
         "stats": book.stats(),
         "candidates": candidates,
         "account": None, "clock": None, "positions": [], "orders": [], "error": None,

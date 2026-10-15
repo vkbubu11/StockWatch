@@ -19,6 +19,15 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const fmt = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v) ? "–" : Number(v).toLocaleString("hu-HU", { minimumFractionDigits: d, maximumFractionDigits: d }));
 const money = (v) => (v === null || v === undefined ? "–" : `${fmt(v, 2)} $`);
 const pct = (v, d = 1) => (v === null || v === undefined ? "–" : `${v > 0 ? "+" : ""}${fmt(v, d)}%`);
+// pontos idopont (a bongeszo, azaz magyar ido szerint); a tooltipben a New York-i ido
+const when = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return esc(iso);
+  const opts = { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" };
+  const ny = d.toLocaleString("hu-HU", { ...opts, timeZone: "America/New_York" });
+  return `<span title="New York: ${esc(ny)}">${esc(d.toLocaleString("hu-HU", opts))}</span>`;
+};
 const signed = (v, d = 2, unit = "") => (v === null || v === undefined ? "–" : `${v > 0 ? "+" : ""}${fmt(v, d)}${unit}`);
 
 async function api(path, options = {}) {
@@ -845,8 +854,8 @@ function positionsTable(list, withTicker) {
       const note = p.status === "skipped" ? p.reason : p.status === "closed" ? (REASON[p.reason] || p.reason) : p.partial_done ? "fele eladva, stop a belépőn" : "";
       return `<tr ${withTicker ? `class="clickable" data-href="#/p/${esc(p.symbol)}"` : ""}>
         ${withTicker ? `<td class="ticker">${esc(p.symbol)}</td>` : ""}
-        <td>${strategyBadge(p.strategy)}</td><td>${esc(p.signal_date)}</td><td>${esc(p.pattern)}</td><td><span class="badge ${cls}">${label}</span> ${posSource(p)}</td>
-        <td class="num">${p.entry_price ? fmt(p.entry_price) : "–"}</td><td class="num">${fmt(p.stop)}</td>
+        <td>${strategyBadge(p.strategy)}</td><td>${esc(p.signal_date)}${p.signal_at ? `<div class="muted small">kiküldve ${when(p.signal_at)}</div>` : ""}${p.submitted_at && p.submitted_at !== p.signal_at ? `<div class="muted small">beküldve ${when(p.submitted_at)}</div>` : ""}</td><td>${esc(p.pattern)}</td><td><span class="badge ${cls}">${label}</span> ${posSource(p)}</td>
+        <td class="num">${p.entry_price ? `${fmt(p.entry_price)}<div class="muted small">${when(p.entry_at) || esc(p.entry_date || "")}</div>` : "–"}</td><td class="num">${fmt(p.stop)}</td>
         <td class="num">${p.partial_price ? fmt(p.partial_price) : "–"}${p.partial_done ? " ✓" : ""}</td>
         <td class="num">${fmt(p.target)}</td><td class="num">${p.bars_held || "–"}${p.status === "open" ? ` / ${p.horizon}` : ""}</td>
         <td class="num ${p.result_r > 0 ? "up" : p.result_r < 0 ? "down" : ""}">${p.result_r != null ? signed(p.result_r, 2, "R") : "–"}</td>
@@ -1159,6 +1168,7 @@ function pnlKpis(d, a, s, active) {
   const p = d.pnl;
   const c = d.capital;
   const dir = (v) => (v > 0 ? "▲ " : v < 0 ? "▼ " : "");   // az irany ne csak szinnel latszodjon
+  const pending = active.filter((t) => t.status === "submitted").length;
   return `<div class="kpis">
     <div class="kpi pnl-hero" title="A paper számla eredménye a nyitás óta: mostani equity mínusz a kezdő érték. A számlán kézzel nyitott trade-ek is benne vannak.">
       <div class="label">Eddigi eredmény (számla)</div>
@@ -1172,7 +1182,7 @@ function pnlKpis(d, a, s, active) {
       <div class="label">Lekötött tőke</div><div class="value">${c ? `${fmt(c.invested, 0)} $ <span class="muted" style="font-size:.6em">${fmt(c.invested_pct, 1)}%</span>` : "–"}</div>
       <div class="sub">${c ? `szabad keret ${fmt(c.free, 0)} $${c.pending ? ` · függő vétel ${fmt(c.pending, 0)} $` : ""} · számla ${fmt(c.equity, 0)} $` : ""}</div></div>
     <div class="kpi"><div class="label">Aktív trade</div><div class="value">${active.length} / ${d.settings.max_open_trades}</div>
-      <div class="sub">automata beküldés: <strong>${d.settings.auto_trade ? "BE" : "KI"}</strong> · kilépés: ${esc(d.exit_mode)}</div></div>
+      <div class="sub">${pending ? `ebből ${pending} függő (belépésre vár) · ` : ""}automata beküldés: <strong>${d.settings.auto_trade ? "BE" : "KI"}</strong> · kilépés: ${esc(d.exit_mode)}</div></div>
   </div>`;
 }
 
@@ -1260,16 +1270,29 @@ function sendButton(s) {
 
 function tradeRow(t) {
   const [cls, label] = BT_STATUS[t.status] || ["fail", t.status];
-  const legs = t.legs.map((l) => `${l.name === "partial" ? "½" : "cél"} ${l.qty} db${l.filled_qty ? ` · ${l.filled_qty} teljesült` : ""}${l.exit_reason ? ` → ${LEG_EXIT[l.exit_reason] || l.exit_reason}${l.exit_price ? ` @ ${fmt(l.exit_price)}` : ""}` : ""}`).join("<br>");
-  return `<tr><td class="ticker"><a href="#/p/${esc(t.symbol)}">${esc(t.symbol)}</a></td><td>${esc(t.signal_date)}<div class="muted small">${esc(t.pattern)}</div><div>${strategyBadge(t.strategy)}</div></td>
-    <td><span class="badge ${cls}">${label}</span>${t.breakeven_done ? `<div class="muted small">stop a belépőn</div>` : ""}</td>
-    <td class="num">${t.shares}</td><td class="num">${fmt(t.entry_limit)}</td><td class="num">${t.entry_price ? fmt(t.entry_price) : "–"}</td>
+  const legs = t.legs.map((l) => `${l.name === "partial" ? "½" : "cél"} ${l.qty} db${l.filled_qty ? ` · ${l.filled_qty} teljesült` : ""}${l.exit_reason ? ` → ${LEG_EXIT[l.exit_reason] || l.exit_reason}${l.exit_price ? ` @ ${fmt(l.exit_price)}` : ""}${l.exit_ts ? ` · ${when(l.exit_ts)}` : ""}` : ""}`).join("<br>");
+  return `<tr><td class="ticker"><a href="#/p/${esc(t.symbol)}">${esc(t.symbol)}</a></td><td>${esc(t.signal_date)}<div class="muted small">beküldve ${when(t.submitted_at) || "–"}</div><div class="muted small">${esc(t.pattern)}</div><div>${strategyBadge(t.strategy)}</div></td>
+    <td><span class="badge ${cls}">${label}</span>${t.breakeven_done ? `<div class="muted small">stop a belépőn</div>` : ""}${t.waiting ? waitingNote(t) : ""}</td>
+    <td class="num">${t.shares}</td><td class="num">${fmt(t.entry_limit)}</td><td class="num">${t.entry_price ? `${fmt(t.entry_price)}<div class="muted small">${when(t.filled_ts) || esc(t.filled_at || "")}</div>` : "–"}</td>
     <td class="num">${fmt(t.stop)}</td><td class="num">${t.partial_price ? fmt(t.partial_price) : "–"}</td><td class="num">${fmt(t.target)}</td>
     <td class="small">${t.signal_id ? `${signalLink(t.signal_id)}<br>` : ""}${legs}${t.notes.length ? `<details><summary>napló</summary><div class="small muted">${t.notes.map(esc).join("<br>")}</div></details>` : ""}</td>
     <td class="num ${tone(t.realised_pnl != null ? t.realised_pnl : t.unrealized_pl)}">${t.realised_pnl != null ? signed(t.realised_pnl, 2, " $")
       : t.unrealized_pl != null ? `${signed(t.unrealized_pl, 2, " $")}<div class="muted small">nyitott · ár ${fmt(t.current_price)}</div>` : "–"}</td>
     <td>${t.status === "submitted" ? `<button class="btn" type="button" data-bk="close" data-id="${esc(t.id)}" data-confirm="Visszavonod a(z) ${esc(t.symbol)} belépő megbízást?">Visszavonás</button>`
       : t.status === "open" ? `<button class="btn danger" type="button" data-bk="close" data-id="${esc(t.id)}" data-confirm="Lezárod a(z) ${esc(t.symbol)} paper pozíciót piaci áron?">Zárás most</button>` : ""}</td></tr>`;
+}
+
+// Miert var meg a belepo: hol a limit, meddig ervenyes, mennyire van tole az utolso ar
+function waitingNote(t) {
+  const w = t.waiting;
+  const day = esc(w.entry_day);
+  const rule = t.exit_mode === "indicator"
+    ? `A vételi limit a jelzés napi záró alatt van${w.limit_pct != null ? ` (−${fmt(w.limit_pct, 0)}%)` : ""}: csak akkor vesz, ha ${day} folyamán az ár ${fmt(t.entry_limit)} $-ig esik. Ha nem, a nap végén visszavonja.`
+    : `Csak ${day} nyitásakor teljesülhet (ha a nyitó ár ≤ ${fmt(t.entry_limit)} $). Ha nem, a nyitás után pár perccel visszavonja.`;
+  const gap = w.last_price != null
+    ? `Utolsó ismert ár: ${fmt(w.last_price)} $ (${esc(w.last_date)}) – ${w.gap_pct > 0 ? `${fmt(w.gap_pct, 1)}%-kal a limit felett` : "a limiten vagy alatta"}.`
+    : "";
+  return `<div class="muted small" style="max-width:260px;margin-top:4px">${rule} ${gap}</div>`;
 }
 
 function bindBrokerButtons() {
@@ -1380,7 +1403,7 @@ async function pageLedger() {
           const [cls, label, help] = DECISION[r.decision] || ["fail", r.decision, ""];
           const k = KIND[r.kind] || { text: r.kind, cls: "fail" };
           return `<tr class="clickable" data-href="#/signal/${esc(r.signal_id)}">
-            <td>${esc(r.as_of)}</td><td class="ticker">${esc(r.symbol)}</td><td>${strategyBadge(r.strategy)}</td>
+            <td>${esc(r.as_of)}${r.recorded_at ? `<div class="muted small">${when(r.recorded_at)}</div>` : ""}</td><td class="ticker">${esc(r.symbol)}</td><td>${strategyBadge(r.strategy)}</td>
             <td><span class="badge ${k.cls}">${k.text}</span></td>
             <td><span class="with-info">${esc(r.pattern)}${infoButton(r.pattern, "bullish", r.kind, statsFor(r.pattern, "bullish"))}</span></td>
             <td>${scorebar(r.score)}</td>
@@ -1699,7 +1722,7 @@ const FIELDS = [
   ["Paper trading (Alpaca)", [
     ["auto_trade", "Automatikus beküldés", "check", "A monitor zárás után a belépési jelzéseket magától beküldi a paper számlára. Kikapcsolva csak a Paper trading fülön, kézzel."],
     ["size_from_account", "Méret a paper számla tőkéjéből", "check", "A darabszámot a paper számla equity-jéből és a kockázat/trade %-ból számolja (különben a fenti számlaméretből)."],
-    ["max_open_trades", "Max. nyitott paper trade", "number", "Egyszerre legfeljebb ennyi nyitott vagy függő trade.", { min: 1, max: 50, step: 1 }],
+    ["max_open_trades", "Max. nyitott paper trade", "number", "Egyszerre legfeljebb ennyi nyitott vagy függő trade (a belépésre váró limit is helyet foglal).", { min: 1, max: 50, step: 1 }],
   ]],
   ["Piaci környezet és értesítések", [
     ["regime_filter", "Piaci rezsim-szűrő (index > SMA200)", "check", "Gyenge piacon nincs belépési jelzés. Az index a fenti „Átnézett papírok” szerint: ha az S&P 500 be van kapcsolva, az SPY, különben a QQQ (Nasdaq-100) 200 napos átlagát nézi."],
