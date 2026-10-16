@@ -1703,6 +1703,13 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                     if not SYMBOL_RE.match(symbol):
                         return self._error(400, "Ervenytelen ticker")
                     return self._json(news_payload(symbol, refresh=True))
+                if path == "/api/check":
+                    from . import quickcheck
+
+                    symbol = str(body.get("symbol") or "").strip().upper()
+                    if not SYMBOL_RE.match(symbol):
+                        return self._error(400, "Ervenytelen ticker")
+                    return self._json(quickcheck.evaluate_symbol(symbol))
                 return self._error(404, "Nem talalhato")
             except (ValueError, TypeError, broker.BrokerError, LockTimeout) as exc:
                 return self._error(400, str(exc))

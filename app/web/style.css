@@ -466,3 +466,26 @@ tr.lab-detail h3, #lab-ml h3 { font-size: 13px; margin: 6px 0; }
 .news-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; max-height: 520px; overflow-y: auto; }
 .news-list li { font-size: 13px; line-height: 1.35; }
 .news-list a { color: inherit; }
+
+/* "Papir kiertekelese" - kereso a fooldalon es a felugro ablak */
+.quick-card { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 16px; }
+.quick-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.quick-form label { font-weight: 600; font-size: 14px; }
+.quick-form input { font: inherit; font-size: 14px; width: 9em; padding: 6px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--surface); color: var(--text); text-transform: uppercase; }
+.quick-form input::placeholder { text-transform: none; }
+.quick-form input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.check-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0 14px; }
+.check-bar .quick-form label { font-size: 13px; font-weight: 500; color: var(--muted); }
+.best-head .price { font-size: 18px; font-weight: 600; margin-left: 6px; font-variant-numeric: tabular-nums; }
+.best-head h2 .up, .best-head h2 .down { font-size: 14px; }
+.check-kpis { margin-bottom: 10px; }
+.check-kpis .kpi { box-shadow: none; padding: 10px 12px; }
+.check-kpis .value { font-size: 22px; }
+.check-kpis .value .badge { font-size: 13px; }
+.check-h { font-size: 15px; margin: 18px 0 8px; }
+.check-h .muted { font-weight: 400; }
+.check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.check-grid .signal { margin-bottom: 0; min-width: 0; }
+.check-more { margin: 14px 0 8px; }
+@media (max-width: 720px) { .check-grid { grid-template-columns: minmax(0, 1fr); } .check-bar { justify-content: flex-start; } }

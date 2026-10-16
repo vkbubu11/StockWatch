@@ -676,13 +676,17 @@ def evaluate(
     resistance: Level | None = None,
     today: date | None = None,
     regime: market.Regime | None = None,
+    kind_of=None,
 ) -> list[EntrySignal]:
     """Minden bikas mintat kiertekel; a meg nem felelteket is visszaadja
     (a `passed` es a `failed_checks` mondja meg, miert nem).
 
     `regime`: a papir sajat rezsimje (market.MarketContext.regime); ha nincs megadva, a `benchmark`-bol.
-    A `benchmark` a relativ ero indexe."""
+    A `benchmark` a relativ ero indexe.
+    `kind_of(match)`: a helyzet felismerese helyett (alapbol `classify`) - a gyors kiertekeles
+    (quickcheck.py) ezzel pontozza a meg formalodo, jelzest nem ado mintakat is."""
     cfg = settings.entry
+    kind_of = kind_of or (lambda m: classify(m, df, cfg))
     calibration = calibration or Calibration()
     if df.empty:
         return []
@@ -700,7 +704,7 @@ def evaluate(
     seen: set[str] = set()
 
     for match in matches:
-        kind = classify(match, df, cfg)
+        kind = kind_of(match)
         if kind is None:
             continue
         # Ugyanaz a minta tobbszor is visszajohet kisse mas geometriaval -

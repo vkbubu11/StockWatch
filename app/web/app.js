@@ -215,6 +215,199 @@ function bestSide(side, s) {
 }
 
 // ---------------------------------------------------------------------------
+// "Papir kiertekelese": egy beirt papir allapota MOST (quickcheck.py) - jelzesek, formalodo
+// alakzatok "ha most neznenk" pontszammal, a Visszahuzas-strategiak szabalyai
+// ---------------------------------------------------------------------------
+let checkData = null;
+let checkView = "live";
+let checkSeq = 0;
+
+const quickForm = (value = "", id = "quick") => `<form class="quick-form" data-quick autocomplete="off">
+    <label for="${id}-symbol">Papír kiértékelése most</label>
+    <input id="${id}-symbol" name="symbol" value="${esc(value)}" placeholder="pl. AAPL" maxlength="12" required
+      spellcheck="false" autocapitalize="characters" list="quick-symbols">
+    <button class="btn primary" type="submit">Kiértékelés</button>
+  </form>`;
+
+function bindQuickForms(root) {
+  root.querySelectorAll("form[data-quick]").forEach((f) => f.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const symbol = f.elements.symbol.value.trim().toUpperCase();
+    if (symbol) quickCheck(symbol);
+  }));
+}
+
+async function quickCheck(symbol) {
+  const dlg = $("#check-dialog");
+  const seq = ++checkSeq;           // ha kozben ujat kernek, a regi valasz mar ne irja felul
+  dlg.innerHTML = `<div class="best-head"><h2>${esc(symbol)} kiértékelése…</h2><button class="btn icon" type="button" data-close aria-label="Bezárás">✕</button></div>
+    <div class="loading">Friss árfolyam letöltése és kiértékelés (néhány másodperc)…</div>`;
+  dlg.querySelector("[data-close]").addEventListener("click", () => dlg.close());
+  if (!dlg.open) dlg.showModal();
+  try {
+    const d = await api("/api/check", { method: "POST", body: JSON.stringify({ symbol }) });
+    if (seq !== checkSeq) return;
+    checkData = d;
+    checkView = d.views.live ? "live" : "closed";
+    renderCheck();
+  } catch (e) {
+    if (seq !== checkSeq) return;
+    dlg.innerHTML = `<div class="best-head"><h2>${esc(symbol)}</h2><button class="btn icon" type="button" data-close aria-label="Bezárás">✕</button></div>
+      <div class="callout">Nem sikerült kiértékelni: ${esc(e.message)}</div>${quickForm(symbol, "quick-dlg")}`;
+    dlg.querySelector("[data-close]").addEventListener("click", () => dlg.close());
+    bindQuickForms(dlg);
+  }
+}
+
+function checkStatus(v, live) {
+  const sig = v.signals;
+  if (sig.some((s) => s.qualifies && s.kind !== "setup")) return ["go", "Belépési jelzés", "minden szűrő ✔, a pont a küszöb felett"];
+  const pb = v.pullback.find((p) => p.passed && p.enabled && p.in_universe);
+  if (pb) return ["go", live ? "Visszahúzás – ha most zárna" : "Visszahúzás-jelzés", `${pb.label}: vételi limit ${fmt(pb.limit)} $`];
+  if (sig.some((s) => s.qualifies)) return ["watch", "Figyeld – kitörés-közeli", "előkészület: vétel csak a trigger feletti záró után"];
+  if (v.forming.some((s) => s.would_pass)) return ["watch", "Formálódik", "egy alakzat most átmenne a szűrőkön, de még nem jelez"];
+  if (sig.length) return ["fail", "Helyzet van, de elbukik", "lásd a szűrőket lent"];
+  if (v.forming.length) return ["fail", "Formálódik – gyenge", "az alakuló alakzat most elbukna a szűrőkön"];
+  return ["fail", "Nincs belépési helyzet", "nincs kitörés, visszateszt vagy bikás alakuló alakzat"];
+}
+
+function renderCheck() {
+  const d = checkData;
+  const dlg = $("#check-dialog");
+  const live = checkView === "live" && d.views.live;
+  const v = live ? d.views.live : d.views.closed;
+  const all = v.signals.concat(v.forming);
+  const top = all.slice().sort((a, b) => b.score - a.score)[0];
+  const [cls, status, statusSub] = checkStatus(v, live);
+  const pb = v.pullback.find((p) => p.strategy === "pullback") || v.pullback[0];
+  const f = v.forecast;
+  const when = new Date(d.computed_at).toLocaleString("hu-HU", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const toggle = d.views.live ? `<div class="segmented" role="group" aria-label="Nézet">
+      <button type="button" class="seg ${live ? "on" : ""}" data-view="live" title="A mai, még alakuló gyertyával – mintha az ár most zárna">Élő (most)</button>
+      <button type="button" class="seg ${live ? "" : "on"}" data-view="closed" title="Az utolsó lezárt nap – ezt értékeli a monitor">Utolsó lezárt nap (${esc(d.views.closed.as_of)})</button></div>` : "";
+
+  dlg.innerHTML = `<div class="best-head">
+      <h2><a class="ticker" href="#/p/${esc(d.symbol)}">${esc(d.symbol)}</a>
+        <span class="price">${fmt(v.price)} $</span> <span class="${v.change_pct > 0 ? "up" : v.change_pct < 0 ? "down" : ""}">${pct(v.change_pct, 2)}</span></h2>
+      <button class="btn icon" type="button" data-close aria-label="Bezárás">✕</button></div>
+    <p class="muted small">${live ? "élő ár (a mai gyertya még alakul)" : `lezárt nap: ${esc(v.as_of)}`} · kiértékelve ${esc(when)}
+      ${d.watched ? " · figyelt papír" : " · nincs a figyelt listán"}${d.index ? ` · ${esc(d.index)}` : ""}
+      · gyorsjelentés: ${esc(d.earnings_date || "nem ismert")}</p>
+    <div class="check-bar">${toggle}${quickForm("", "quick-dlg")}</div>
+    ${d.notes.map((n) => `<div class="callout">${esc(n)}</div>`).join("")}
+    <div class="kpis check-kpis">
+      <div class="kpi"><div class="label">Állapot</div><div class="value"><span class="badge ${cls}">${esc(status)}</span></div><div class="sub">${esc(statusSub)}</div></div>
+      <div class="kpi"><div class="label">Kitörés-pontszám most</div><div class="value">${top ? `${fmt(top.score, 0)}<span class="muted small"> / 100</span>` : "–"}</div>
+        <div class="sub">${top ? `${esc(top.pattern)} · ${top.hypothetical ? "formálódó" : esc((KIND[top.kind] || {}).text || top.kind)} · ` : "nincs bikás alakzat · "}küszöb ${fmt(d.min_score, 0)}</div></div>
+      <div class="kpi"><div class="label">Visszahúzás (RSI2)</div><div class="value">${pb && pb.rsi2 != null ? fmt(pb.rsi2, 1) : "–"}</div>
+        <div class="sub">${pb && pb.rsi2 != null ? `jelzés ${fmt(pb.rsi2_max, 0)} alatt · ${pb.met}/${pb.total} szabály teljesül` : esc((pb && pb.error) || "–")}</div></div>
+      <div class="kpi"><div class="label">Irányjelzés</div><div class="value ${f.score > .15 ? "up" : f.score < -.15 ? "down" : ""}" style="font-size:19px">${esc(f.label)}</div>
+        <div class="sub">kompozit ${signed(f.score * 100, 0)} · RSI ${fmt(v.rsi, 0)} · ADX ${fmt(v.adx, 0)} · vol. ${fmt(v.volume_ratio, 2)}×</div></div>
+    </div>
+
+    <h3 class="check-h">Belépési jelzések most <span class="muted small">– amit a monitor is jelezne</span></h3>
+    ${v.signals.length ? `<div class="check-grid">${v.signals.map(checkCard).join("")}</div>`
+      : `<div class="callout">Nincs kitörés, visszateszt vagy kitörés-közeli (≤1 ATR) alakzat.</div>`}
+
+    <h3 class="check-h">Formálódó jelzések <span class="muted small">– ha most néznénk: ugyanazok a szűrők és pontozás, de ez még NEM jelzés</span></h3>
+    ${v.forming.length ? `<div class="check-grid">${v.forming.map(checkCard).join("")}</div>`
+      : `<div class="callout">Nincs a triggertől távolabb alakuló vagy ma kitört, még meg nem erősített bikás alakzat.</div>`}
+
+    <h3 class="check-h">Visszahúzás-stratégiák <span class="muted small">– a jelzés a záron dől el${live ? "; most: ha így zárna" : ""}</span></h3>
+    ${pullbackTable(v.pullback, live)}
+
+    ${v.patterns.length ? `<h3 class="check-h">Minden aktív alakzat</h3>${checkPatterns(v.patterns)}` : ""}
+    <details class="check-more"><summary>Irányjelzés összetevői</summary><div class="parts">${f.components.map((c) => `
+      <div class="part"><span>${esc(c.name)}</span><span class="num ${c.score > 0 ? "up" : c.score < 0 ? "down" : ""}">${signed(c.score, 2)}</span><span class="muted">${esc(c.reason)}</span></div>`).join("")}</div></details>
+    <p class="muted small"><a href="#/p/${esc(d.symbol)}">Részletes oldal charttal és hírekkel →</a> · Nem befektetési tanács – a program semmit nem vásárol.</p>`;
+
+  dlg.querySelector("[data-close]").addEventListener("click", () => dlg.close());
+  dlg.querySelectorAll("a").forEach((a) => a.addEventListener("click", () => dlg.close()));
+  dlg.querySelectorAll("button[data-view]").forEach((b) => b.addEventListener("click", () => { checkView = b.dataset.view; renderCheck(); }));
+  bindQuickForms(dlg);
+}
+
+// Hol tart az alakzat a jelzeshez kepest
+function checkStage(s) {
+  const trig = `${fmt(s.trigger_level)} $`;
+  const dist = s.distance_atr != null ? `${fmt(s.distance_atr, 1)} ATR (${fmt(s.distance_pct, 1)}%)` : `${fmt(s.distance_pct, 1)}%`;
+  if (!s.hypothetical) {
+    return { breakout: `Megerősített kitörés: két egymást követő napon a ${trig} trigger fölött zárt.`,
+      retest: `Visszateszt: a kitörés után visszajött a ${trig} szinthez, megtartotta és felfelé fordult.`,
+      setup: `Kitörés-közeli: ${dist} a ${trig} triggertől – vétel csak a trigger fölötti záró után.` }[s.kind] || "";
+  }
+  if (s.kind === "breakout") return `MA tört ki a ${trig} trigger fölé. Ha a következő záró is fölötte marad, megerősített kitörés lesz belőle – ez még nem jelzés.`;
+  return `Alakul: ${dist} a ${trig} triggertől. ${fmt(checkData.setup_max_distance_atr, 0)} ATR-en belül előkészület, a trigger fölötti záró után jelzés lesz belőle.`;
+}
+
+function checkCard(s) {
+  const p = s.plan;
+  const k = KIND[s.kind] || { text: s.kind, cls: "fail" };
+  const badge = s.hypothetical
+    ? `<span class="badge fail" title="Ugyanazzal a szűrő- és pontrendszerrel értékelve, mintha most jelezne">formálódó · ${s.kind === "breakout" ? "kitörés ma" : "alakul"}</span>`
+    : `<span class="badge ${k.cls}">${k.text}</span>`;
+  const verdictHtml = !s.hypothetical ? verdictBase(s)
+    : s.would_pass ? `<span class="badge watch">Most átmenne a szűrőkön</span>`
+    : s.failed.length ? `<span class="badge fail" title="${esc(s.failed.join(", "))}">Most bukna: ${esc(s.failed.join(", "))}</span>`
+    : `<span class="badge fail">Pont a küszöb alatt</span>`;
+  const checks = s.checks.map((c) => {
+    const [mc, mark] = c.passed === true ? ["ok", "✓"] : c.passed === false ? ["no", "✗"] : ["unk", "?"];
+    return `<li><span class="mark ${mc}">${mark}</span><span><strong>${esc(c.name)}</strong> <span class="muted">${esc(c.detail)}</span></span></li>`;
+  }).join("");
+  const parts = s.score_parts.map((x) => `
+    <div class="part"><span>${esc(x.name)}</span><span class="track"><span class="fill" style="width:${(x.points / x.max) * 100}%"></span></span>
+    <span class="muted small">${fmt(x.points, 0)}/${x.max} · ${esc(x.reason)}</span></div>`).join("");
+  const waiting = s.kind === "setup";
+  return `<div class="signal ${s.qualifies && !waiting ? "go" : ""}">
+    <div class="signal-head"><strong>${esc(s.pattern)}</strong>${badge}</div>
+    <div>${verdictHtml} ${scorebar(s.score)}${mlNote(s)}</div>
+    <div class="muted small" style="margin-top:6px">${esc(checkStage(s))}</div>
+    <div class="plan">
+      <span class="k">${waiting ? "Trigger (vétel felette)" : "Belépő / limit"}</span><span class="v">${fmt(p.entry)}${waiting ? "" : ` / ${fmt(p.entry_limit)}`}</span><span class="p">${s.distance_pct != null && waiting ? `+${fmt(s.distance_pct, 1)}%` : ""}</span>
+      <span class="k">Stop</span><span class="v down">${fmt(p.stop)}</span><span class="p">−${fmt(p.stop_pct, 1)}%</span>
+      <span class="k">Cél</span><span class="v up">${fmt(p.target)}</span><span class="p">+${fmt(p.target_pct, 1)}%</span>
+      <span class="k">Hozam / kockázat</span><span class="v">1 : ${fmt(p.risk_reward)}</span><span class="p"></span>
+      <span class="k">Méret</span><span class="v">${p.shares} db</span><span class="p">kockázat ${fmt(p.risk_amount, 0)} $</span>
+    </div>
+    <details ${s.passed ? "" : "open"}><summary>Szűrők</summary><ul class="checks">${checks}</ul></details>
+    <details><summary>Pontszám összetevői</summary><div class="parts">${parts}</div></details>
+  </div>`;
+}
+
+function pullbackTable(list, live) {
+  const state = (r) => {
+    if (r.error) return `<span class="muted">${esc(r.error)}</span>`;
+    const why = !r.enabled ? ` <span class="muted small">(a stratégia ki van kapcsolva)</span>`
+      : !r.in_universe ? ` <span class="muted small">(ezt a papírt nem figyeli)</span>` : "";
+    if (r.passed) return `<span class="badge go">${live ? "Ha most zárna: jelzés" : "Jelzés a záron"}</span>${why}`;
+    return `<span class="badge fail" title="${esc(r.failed.join(", "))}">Nincs: ${esc(r.failed.join(", "))}</span>${why}`;
+  };
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Stratégia</th><th class="num">RSI(2) most</th><th class="num">Szabályok</th><th>Állapot</th><th class="num">Limit / stop</th></tr></thead>
+    <tbody>${list.map((r) => `<tr>
+      <td>${strategyBadge(r.strategy)}</td>
+      <td class="num">${r.rsi2 != null ? `${fmt(r.rsi2, 1)} <span class="muted small">/ &lt;${fmt(r.rsi2_max, 0)}</span>` : "–"}</td>
+      <td class="num">${r.total ? `${r.met}/${r.total}` : "–"}</td>
+      <td>${state(r)}${r.checks ? `<details><summary class="small">részletek</summary><ul class="checks">${r.checks.map((c) =>
+        `<li><span class="mark ${c.passed === true ? "ok" : c.passed === false ? "no" : "unk"}">${c.passed === true ? "✓" : c.passed === false ? "✗" : "?"}</span><span><strong>${esc(c.name)}</strong> <span class="muted">${esc(c.detail)}</span></span></li>`).join("")}</ul></details>` : ""}</td>
+      <td class="num">${r.limit != null ? `${fmt(r.limit)} <span class="muted small">(−${fmt(r.limit_pct, 0)}%)</span> / ${fmt(r.stop)}` : "–"}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+function checkPatterns(list) {
+  const status = (m) => (m.status === "triggered" ? `kitört${m.trigger_date ? ` ${esc(String(m.trigger_date).slice(0, 10))}` : ""}` : "alakul");
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Alakzat</th><th>Irány</th><th>Állapot</th><th class="num">Trigger</th><th class="num">Távolság</th><th class="num">Cél</th><th class="num">Minőség</th></tr></thead>
+    <tbody>${list.map((m) => `<tr>
+      <td>${esc(m.name)}</td>
+      <td>${m.direction === "bullish" ? `<span class="up">▲ bikás</span>` : m.direction === "bearish" ? `<span class="down">▼ medvés</span>` : `<span class="muted">● semleges</span>`}</td>
+      <td>${status(m)}</td>
+      <td class="num">${fmt(m.trigger)}</td>
+      <td class="num">${m.distance_atr != null ? `${signed(m.distance_atr, 1)} ATR <span class="muted small">${signed(m.distance_pct, 1, "%")}</span>` : "–"}</td>
+      <td class="num">${fmt(m.target)}</td>
+      <td class="num">${fmt(m.quality * 100, 0)}%</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+// ---------------------------------------------------------------------------
 // Attekintes
 // ---------------------------------------------------------------------------
 async function loadOverview(force = false) {
@@ -239,6 +432,12 @@ async function pageOverview() {
 
   const regimeText = !o.regime.enabled ? "kikapcsolva" : (o.regime.indexes || []).map((i) => `${i.symbol} ${regimeWord(i.ok)}`).join(" · ") || "Nincs adat";
   view.innerHTML = `
+    <section class="card quick-card">
+      ${quickForm()}
+      <span class="muted small">Friss árral bármely papírra (a figyelt listán kívül is): belépési jelzések, formálódó alakzatok
+        és a pontszám, amit most kapna.</span>
+      <datalist id="quick-symbols">${o.rows.map((r) => `<option value="${esc(r.symbol)}">`).join("")}</datalist>
+    </section>
     <div class="kpis">
       <div class="kpi"><div class="label">Piaci rezsim (${esc(regimeName(o.regime))})</div>
         <div class="value ${o.regime.ok === true ? "up" : o.regime.ok === false ? "down" : ""}" style="font-size:17px">${regimeText}</div>
@@ -269,6 +468,7 @@ async function pageOverview() {
       </table></div>
     </section>`;
   bindRowLinks();
+  bindQuickForms(view);
   const ixBtn = $("#index-scan");
   if (ixBtn) ixBtn.addEventListener("click", async () => {
     ixBtn.disabled = true;
