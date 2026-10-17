@@ -101,6 +101,29 @@ def test_input_validation():
     assert p.rsi2_max == 5.0 and p.regime_filter is False and p.cost_bps == 7.0
 
 
+def test_commission_from_settings_reaches_every_engine(tmp_path, monkeypatch):
+    s = Settings(broker={"commission_pct": 0.1})
+    assert s.entry.commission_bps == 10 and s.entry.total_cost_bps == s.entry.slippage_bps + 10
+    for sid in ("pullback", "deep", "etf", "momentum", "sandbox"):
+        p = s.strategies.get(sid).params
+        assert p.commission_bps == 10 and p.total_cost_bps == p.cost_bps + 10
+    assert meanrev.net_return(100, 110, 10)[1] < meanrev.net_return(100, 110, 0)[1]
+    with pytest.raises(ValueError):
+        Settings(broker={"commission_pct": 5})
+    # a strategies.yaml-ba nem irodik (kulonben ketszer szamolodna)
+    from stockwatch import config
+    monkeypatch.setattr(config, "STRATEGIES_PATH", tmp_path / "strategies.yaml")
+    config.save_strategies(s.strategies)
+    assert "commission_bps" not in (tmp_path / "strategies.yaml").read_text(encoding="utf-8")
+
+
+def test_commission_lowers_backtest_result(store):
+    plain = runner.run("TEST", "etf", Settings(), start="2012-01-02")
+    costly = runner.run("TEST", "etf", Settings(broker={"commission_pct": 0.2}), start="2012-01-02")
+    assert costly["params"]["commission_bps"] == 20
+    assert costly["periods"]["all"]["ev"] < plain["periods"]["all"]["ev"]
+
+
 def test_trades_match_research_engine(store):
     """Egyetlen igazsagforras: azonos adatra es parameterre ugyanazok a kotesek, mint a kutatasban."""
     s = Settings()
@@ -173,11 +196,55 @@ def test_runs_saved_listed_and_capped(store, monkeypatch):
         runs.load("../../etc")
 
 
+def _wait_job(timeout=30.0):
+    import time
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        job = webapp.backtest_jobs().snapshot()
+        if job["state"] != "running":
+            return job
+        time.sleep(0.05)
+    raise AssertionError("a backteszt-feladat nem fejezodott be")
+
+
+def test_web_run_fetches_data_first(store, monkeypatch):
+    """A Futtatas maga gyujti az adatot (kulon gomb nelkul), a tozsdere lepes elotti kezdodatumot igazitja."""
+    from stockwatch import feed
+
+    monkeypatch.setattr(webapp, "_BT_JOBS", None)
+    monkeypatch.setattr(feed, "get_provider", lambda settings: store)
+    store.frames["NEW"] = synthetic("2014-03-03", seed=9)
+    store.first_trade_date = lambda s: pd.Timestamp("2014-03-03") if s == "NEW" else None
+    assert data.load("NEW").empty
+    webapp.backtest_action("run", {"symbol": "NEW", "strategy": "etf", "start": "2000-01-01"})
+    job = _wait_job()
+    assert job["state"] == "done" and job["run_id"], job
+    assert data.meta("NEW")["first"] == "2014-03-03" and runs.load(job["run_id"])["start"] >= "2014-03-03"
+    webapp.backtest_action("run", {"symbol": "NOPE", "strategy": "etf", "start": "2012-01-02"})
+    job = _wait_job()
+    assert job["state"] == "error" and "Nincs elerheto adat" in job["message"]
+
+
+def test_listing_date_cached_and_bounds_start(store):
+    calls = []
+    store.first_trade_date = lambda s: calls.append(s) or (pd.Timestamp("2012-05-18") if s == "META" else None)
+    assert data.earliest_start("META", Settings(), store) == (pd.Timestamp("2012-05-18"), pd.Timestamp("2012-05-18"))
+    assert data.listing_date("META", Settings(), store) == pd.Timestamp("2012-05-18")
+    assert calls == ["META"]                                                 # masodszor a gyorsitotarbol
+    store.first_trade_date = lambda s: pd.Timestamp("1962-01-02")
+    assert data.earliest_start("IBM", Settings(), store)[0] == data.MIN_START   # 1980 elott nincs adat
+    store.first_trade_date = lambda s: None
+    assert data.earliest_start("XYZ", Settings(), store) == (data.MIN_START, None)
+
+
 def test_web_actions_validate_before_starting(store):
-    with pytest.raises(ValueError, match="Nincs letoltott adat"):
-        webapp.backtest_action("run", {"symbol": "NOPE", "strategy": "etf"})
+    with pytest.raises(ValueError, match="Ervenytelen ticker"):
+        webapp.backtest_action("run", {"symbol": "rossz ticker!", "strategy": "etf"})
     with pytest.raises(ValueError, match="Ismeretlen parameter"):
         webapp.backtest_action("run", {"symbol": "TEST", "strategy": "etf", "params": {"x": 1}})
+    with pytest.raises(ValueError):
+        webapp.backtest_action("run", {"symbol": "TEST", "strategy": "etf", "start": "1900-01-01"})
     with pytest.raises(ValueError):
         webapp.backtest_action("data", {"symbol": "TEST", "start": "1900-01-01"})
     payload = webapp.backtest_payload()

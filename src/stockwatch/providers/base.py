@@ -36,6 +36,10 @@ class PriceProvider(ABC):
         feldolgozasat.
         """
 
+    def first_trade_date(self, symbol: str) -> pd.Timestamp | None:
+        """A papir elso kereskedesi napja (tozsdere lepes), ha a szolgaltato tudja; kulonben None."""
+        return None
+
     @staticmethod
     def normalise(df: pd.DataFrame) -> pd.DataFrame:
         """Tetszoleges szolgaltatoi tablat a kanonikus alakra hoz."""

@@ -388,7 +388,7 @@ def _trade(
     if open_ > close * (1 + cfg.entry_max_gap_pct / 100) or open_ <= plan.stop:
         return None
 
-    slip = cfg.slippage_bps / 10_000
+    slip = cfg.total_cost_bps / 10_000
     entry_price = open_ * (1 + slip)
     r, reason, held = simulate_exit(
         enriched, entry_bar, entry_price, plan.stop, plan.target, event.horizon,

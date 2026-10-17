@@ -111,6 +111,11 @@ def test_http_requires_login(server):
     assert _req(server, "GET", "/app.js").status == 303
     assert _req(server, "GET", "/login").status == 200
     assert _req(server, "GET", "/style.css").status == 200
+    # a belepo oldal is fordul: a forditoreteg es a katalogus nyilvanos (csak feluleti szoveg), mas nem
+    assert _req(server, "GET", "/i18n.js").status == 200
+    assert _req(server, "GET", "/i18n/en.json").status == 200
+    assert _req(server, "GET", "/i18n/xx.json").status == 404
+    assert _req(server, "GET", "/i18n/../app.js").status in (303, 404)
     # bejelentkezes nelkul POST sem megy at, a fejleccel sem
     assert _req(server, "POST", "/api/refresh", b"{}", {"X-StockWatch": "1"}).status == 401
 

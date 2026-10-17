@@ -66,7 +66,7 @@ def simulate(panel: dict[str, pd.DataFrame], params: MomentumParams) -> dict:
     scores = momentum.score_frame(close, panel["volume"], params).to_numpy()
     o, lo, c = open_.to_numpy(), low.to_numpy(), close.to_numpy()
     reb = set(momentum.rebalance_days(idx))
-    cost = params.cost_bps / 1e4
+    cost = params.total_cost_bps / 1e4
 
     held: dict[int, dict] = {}
     to_buy: list[int] = []
@@ -76,7 +76,7 @@ def simulate(panel: dict[str, pd.DataFrame], params: MomentumParams) -> dict:
     base_rets = []
 
     def book(j: int, p: dict, k: int, price: float, reason: str) -> None:
-        gross, net = momentum.net_return(p["entry"], price, params.cost_bps)
+        gross, net = momentum.net_return(p["entry"], price, params.total_cost_bps)
         trades.append({"symbol": names[j], "signal_date": idx[p["signal"]], "entry_date": idx[p["k"]],
                        "entry_price": p["entry"], "exit_date": idx[k], "exit_price": price, "reason": reason,
                        "held": k - p["k"], "gross_pct": gross, "net_pct": net})

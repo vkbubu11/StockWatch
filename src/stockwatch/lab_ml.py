@@ -125,7 +125,7 @@ def sample(event: er.Event, frame: pd.DataFrame, settings: Settings, bench: pd.D
         return None                                # elesben sem lett volna belepes
     if entry_bar + max_hold(event.horizon, cfg.exit_mode) > len(frame) - 1:
         return None                                # a trade meg nem futott le - a kimenete nem ismert
-    slip = cfg.slippage_bps / 10_000
+    slip = cfg.total_cost_bps / 10_000
     price = open_ * (1 + slip)
     r, reason, held = er.simulate_exit(frame, entry_bar, price, plan.stop, plan.target, event.horizon,
                                        plan.atr, cfg.exit_mode, cfg.partial_r, cfg.trail_atr)

@@ -245,7 +245,7 @@ cat <<EOF
   Labor:          sudo stockwatch-cli lab status           (naplo: journalctl -u stockwatch-lab -f)
   Ujrainditas:    sudo systemctl restart stockwatch-monitor stockwatch-web
   Jelszocsere:    sudo stockwatch-password
-  Discord:        sudo stockwatch-cli discord && sudo systemctl restart stockwatch-monitor
+  Discord:        a feluleten (Beallitasok -> Discord ertesitesek) vagy: sudo stockwatch-cli discord
   CLI parancs:    sudo stockwatch-cli <parancs>   (pl. positions, broker, test-alert)
   Titkok:         sudo -u $SVC_USER nano $ENV_FILE   (utana: ujrainditas)
 EOF

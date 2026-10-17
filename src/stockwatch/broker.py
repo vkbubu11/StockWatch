@@ -250,6 +250,7 @@ class BrokerTrade:
     strategy: str = "breakout"      # melyik strategia kuldte - a szinkron e szerint kezeli (valtas utan is)
     params: dict | None = None      # Visszahuzas: a kilepesi szabalyok a bekuldeskor (config.PullbackParams)
     exit_pending: str = ""          # Visszahuzas: a zaron szuletett kilepesi jel (signal | time) - nyitaskor zar
+    commission_pct: float = 0.0     # kotesi dij oldalankent a bekuldeskor (broker.commission_pct) - a P/L-bol levonva
 
     @property
     def is_active(self) -> bool:
@@ -364,6 +365,7 @@ def submit(signal, settings: Settings, client: AlpacaClient, book: BrokerBook) -
         partial_price=partial if len(legs) == 2 else None, shares=shares, horizon=plan.horizon or 40,
         exit_mode=cfg.exit_mode, submitted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         signal_id=getattr(signal, "signal_id", ""), strategy=getattr(signal, "strategy", "breakout"),
+        commission_pct=settings.broker.commission_pct,
     )
     prefix = "sw-" + hashlib.sha1(tid.encode()).hexdigest()[:16]
     placed: list[Leg] = []
@@ -467,6 +469,7 @@ def submit_pullback(signal, settings: Settings, client: AlpacaClient, book: Brok
         partial_price=None, shares=shares, horizon=params.time_stop, exit_mode="indicator",
         submitted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         signal_id=signal.signal_id, strategy=signal.strategy, params=params.model_dump(),
+        commission_pct=settings.broker.commission_pct,
     )
     trade.set_legs([leg])
     trade.note(f"bekuldve (OTO): {shares} db, limit {limit}, stop {stop}; kilepes: ConnorsRSI > "
@@ -520,6 +523,7 @@ def submit_momentum(signal, settings: Settings, client: AlpacaClient, book: Brok
         target=price(close), partial_price=None, shares=shares, horizon=0, exit_mode="indicator",
         submitted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         signal_id=signal.signal_id, strategy="momentum", params=params.model_dump(),
+        commission_pct=settings.broker.commission_pct,
     )
     trade.set_legs([leg])
     trade.note(f"bekuldve: {shares} db piaci vetel nyitaskor (~{100 / params.top_n:.0f}% toke)"
@@ -874,9 +878,12 @@ def _maybe_close(trade: BrokerTrade, legs: list[Leg], events: list) -> None:
         trade.status = "cancelled"
         return
     trade.status = "closed"
-    trade.realised_pnl = round(sum(((leg.exit_price or 0) - (leg.entry_fill or 0)) * leg.filled_qty
-                                   for leg in traded), 2)
-    trade.note(f"lezarva, eredmeny {trade.realised_pnl:+.2f} $")
+    gross = sum(((leg.exit_price or 0) - (leg.entry_fill or 0)) * leg.filled_qty for leg in traded)
+    # a kotesi dij a vetel es az eladas erteke utan is (a csuszas mar benne van a valodi kitoltesi arakban)
+    fee = trade.commission_pct / 100 * sum(((leg.exit_price or 0) + (leg.entry_fill or 0)) * leg.filled_qty
+                                           for leg in traded)
+    trade.realised_pnl = round(gross - fee, 2)
+    trade.note(f"lezarva, eredmeny {trade.realised_pnl:+.2f} $" + (f" (kotesi dij: {fee:.2f} $)" if fee else ""))
     events.append((trade, "broker_closed"))
 
 

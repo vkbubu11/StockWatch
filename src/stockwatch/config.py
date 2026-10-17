@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = PROJECT_ROOT / "config"
 DATA_DIR = PROJECT_ROOT / "data"
+LANGUAGES = ("hu", "en", "de", "es")          # a felulet es az ertesitesek nyelvei (i18n.py)
 LOG_DIR = PROJECT_ROOT / "logs"
 ENV_PATH = Path(os.getenv("STOCKWATCH_ENV_FILE") or PROJECT_ROOT / ".env")
 
@@ -113,12 +114,23 @@ class AlertSettings(BaseModel):
     #   both  - mindketto
     # A poziciokovetes, a sajat poziciok es a paper trading ertesitesei mindig mennek.
     direction: str = "long"
+    # Az ertesitesek (Discord, Telegram, webhook, konzol) nyelve: hu, en, de, es. A jelzesnaplo (jsonl)
+    # mindig magyar marad; a felulet a sajat, bongeszonkenti nyelvvalasztoja szerint jeleniti meg.
+    language: str = "hu"
 
     @field_validator("direction")
     @classmethod
     def _direction(cls, value: str) -> str:
         if value not in ("long", "short", "both"):
             raise ValueError(f"direction: {value} - lehetseges: long, short, both")
+        return value
+
+    @field_validator("language")
+    @classmethod
+    def _language(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value not in LANGUAGES:
+            raise ValueError(f"language: {value} - lehetseges: {', '.join(LANGUAGES)}")
         return value
 
     @property
@@ -200,6 +212,11 @@ class EntrySettings(BaseModel):
     # --- vegrehajtas modellezese a backtestben ---
     entry_max_gap_pct: float = 1.0          # masnapi nyito ennyivel lehet a zaro folott
     slippage_bps: float = 5.0               # oldalankent
+    commission_bps: float = 0.0             # kotesi dij oldalankent - a broker.commission_pct-bol (Settings tolti)
+
+    @property
+    def total_cost_bps(self) -> float:
+        return self.slippage_bps + self.commission_bps
 
 
     @field_validator("exit_mode")
@@ -258,11 +275,21 @@ class BrokerSettings(BaseModel):
     live_gate_min_trades: int = 50  # ennyi lezart paper trade kell a donteshez
     live_gate_win: float = 0.70     # nyeresi arany legalabb
     live_gate_pf: float = 1.3       # profit-faktor legalabb
+    # Kotesi dij a kotes ertekenek %-aban, oldalankent (vetelkor es eladaskor is). Minden stratégia
+    # (eles kovetes, backteszt, kutatas) a sajat csuszas-koltsegen FELUL ezzel szamol, es a paper trade-ek
+    # eredmenyebol is levonodik. Az Alpaca jutalekmentes: 0.
+    commission_pct: float = 0.0
+
+    @property
+    def commission_bps(self) -> float:
+        return self.commission_pct * 100
 
     @model_validator(mode="after")
     def _check(self) -> "BrokerSettings":
         if not 0 <= self.entry_window_min <= 390:
             raise ValueError("broker.entry_window_min: 0 es 390 perc kozott")
+        if not 0 <= self.commission_pct <= 2:
+            raise ValueError("broker.commission_pct: 0 es 2% kozott")
         if not 0 < self.live_gate_win < 1 or self.live_gate_min_trades < 1 or self.live_gate_pf <= 0:
             raise ValueError("broker.live_gate_*: ervenytelen kuszob")
         return self
@@ -287,7 +314,12 @@ class PullbackParams(BaseModel):
     # nem teljesul, es a rangsor elejen a legmelyebben zuhano, legrosszabb jeloltek maradnak)
     max_signals_per_day: int = 0            # naponta legfeljebb ennyi jelzes (rangsor: legalacsonyabb RSI2)
     max_open: int = 0                       # egyszerre legfeljebb ennyi nyitott / fuggo kotes (0 = korlat nelkul)
-    cost_bps: float = 5.0                   # oldalankent (jutalek + csuszas) - a netto eredmenyhez
+    cost_bps: float = 5.0                   # oldalankent (csuszas + spread) - a netto eredmenyhez
+    commission_bps: float = 0.0             # kotesi dij oldalankent - a broker.commission_pct-bol (Settings tolti)
+
+    @property
+    def total_cost_bps(self) -> float:
+        return self.cost_bps + self.commission_bps
 
     @model_validator(mode="after")
     def _check(self) -> "PullbackParams":
@@ -420,7 +452,12 @@ class MomentumParams(BaseModel):
     r_unit_pct: float = 20.0                # stop nelkul az R-statisztika egysege: 1R = ennyi % (csak kimutatas)
     min_price: float = 5.0
     min_dollar_volume: float = 20_000_000   # 20 napos atlagos dollarforgalom
-    cost_bps: float = 5.0                   # oldalankent (jutalek + csuszas)
+    cost_bps: float = 5.0                   # oldalankent (csuszas + spread)
+    commission_bps: float = 0.0             # kotesi dij oldalankent - a broker.commission_pct-bol (Settings tolti)
+
+    @property
+    def total_cost_bps(self) -> float:
+        return self.cost_bps + self.commission_bps
 
     @model_validator(mode="after")
     def _check(self) -> "MomentumParams":
@@ -519,6 +556,18 @@ class Settings(BaseModel):
             self.entry.benchmark = benchmark_for(self.scan)
         else:
             self.entry.benchmark = self.entry.benchmark.strip().upper()
+        return self
+
+    @model_validator(mode="after")
+    def _apply_commission(self) -> "Settings":
+        """A kotesi dij egy helyen allithato (broker.commission_pct); innen kerul minden motor parametereibe.
+        A strategies.yaml-ba nem irodik (save_strategies kiszuri), igy nem szamolodik ketszer."""
+        bps = self.broker.commission_bps
+        self.entry.commission_bps = bps
+        for sid in STRATEGY_IDS:
+            params = getattr(getattr(self.strategies, sid), "params", None)
+            if params is not None and hasattr(params, "commission_bps"):
+                params.commission_bps = bps
         return self
 
     def sandbox_breakout(self) -> "Settings | None":
@@ -626,7 +675,11 @@ def save_strategies(strategies: StrategiesSettings) -> None:
     tmp = STRATEGIES_PATH.with_suffix(".yaml.tmp")
     with tmp.open("w", encoding="utf-8") as fh:
         fh.write("# A feluletrol irt strategia-beallitasok (Strategiak ful). Kezzel is szerkesztheto.\n")
-        yaml.safe_dump(strategies.model_dump(), fh, allow_unicode=True, sort_keys=False)
+        data = strategies.model_dump()
+        for value in data.values():                      # a kotesi dij a settings.yaml-bol jon (broker)
+            if isinstance(value, dict) and isinstance(value.get("params"), dict):
+                value["params"].pop("commission_bps", None)
+        yaml.safe_dump(data, fh, allow_unicode=True, sort_keys=False)
     tmp.replace(STRATEGIES_PATH)
     load_settings.cache_clear()
 
@@ -717,7 +770,9 @@ def save_env(updates: dict[str, str]) -> None:
 def env_value(key: str) -> str | None:
     """Egy titok mindig frissen a titokfajlbol (futas kozben is valtozhat), kulonben a kornyezetbol."""
     values = dotenv_values(ENV_PATH) if ENV_PATH.exists() else {}
-    return values.get(key) or os.getenv(key) or None
+    if key in values:                  # a fajl az irany: a feluletrol torolt (ures) titok ne essen vissza
+        return values[key] or None     # a folyamat inditaskor betoltott, regi kornyezeti ertekere
+    return os.getenv(key) or None
 
 
 def ensure_dirs() -> None:

@@ -73,9 +73,11 @@ EDITABLE = {
     "earnings_blackout_days": ("entry", int),
     "pattern_events": ("alerts", bool),
     "direction": ("alerts", str),
+    "language": ("alerts", str),
     "auto_trade": ("broker", bool),
     "size_from_account": ("broker", bool),
     "max_open_trades": ("broker", int),
+    "commission_pct": ("broker", float),
     "nasdaq100": ("scan", bool),
     "sp500": ("scan", bool),
     "index_setups": ("scan", bool),
@@ -1050,7 +1052,57 @@ def settings_payload() -> dict:
     values = {}
     for key, (section, _) in EDITABLE.items():
         values[key] = getattr(getattr(settings, section), key)
-    return {"values": values, "watchlist": load_watchlist().symbols}
+    return {"values": values, "watchlist": load_watchlist().symbols, "discord": discord_status()}
+
+
+# ---------------------------------------------------------------------------
+# Discord webhook a feluletrol - az URL maga a jelszo: csak a titokfajlba kerul, a felulet sosem kapja vissza
+# ---------------------------------------------------------------------------
+def discord_status() -> dict:
+    url = config.discord_webhook_url() or ""
+    from .alerts.discord import is_discord_url
+
+    return {"configured": bool(url), "valid": is_discord_url(url),
+            "hint": f"…/{url.rstrip('/').rsplit('/', 2)[-2]}/…{url[-4:]}" if is_discord_url(url) else "",
+            "enabled": load_settings().alerts.discord}
+
+
+def _discord_test_message(channel) -> bool:
+    from .alerts import Alert
+    from .i18n import translate
+
+    lang = load_settings().alerts.language
+    return channel.send(Alert(symbol="STOCKWATCH", title=translate("StockWatch: proba uzenet a feluletrol", lang),
+                              body=translate("A Discord webhook mukodik - ide erkeznek az ertesitesek.", lang),
+                              forecast=None, event="heartbeat"))
+
+
+def discord_action(action: str, body: dict) -> dict:
+    from .alerts.discord import DiscordChannel, is_discord_url
+
+    settings = load_settings()
+    if action == "save":
+        url = str(body.get("url") or "").strip()
+        if not is_discord_url(url):
+            raise ValueError("Ez nem Discord webhook cim (https://discord.com/api/webhooks/<szam>/<token>).")
+        channel = DiscordChannel(settings, url=url)
+        name = channel.test()                       # GET a webhookra - uzenetet nem kuld
+        if not name:
+            raise ValueError("A Discord nem fogadta el a webhookot (torolve lett, vagy elirtad?).")
+        config.save_env({"DISCORD_WEBHOOK_URL": url})
+        sent = _discord_test_message(channel) if body.get("test") else None
+        return {"ok": True, "name": name, "sent": sent, "discord": discord_status()}
+    if action == "test":
+        channel = DiscordChannel(settings)
+        if not channel.enabled:
+            raise ValueError("Nincs beallitva Discord webhook.")
+        if not _discord_test_message(channel):
+            raise ValueError("A probauzenet nem ment ki (lasd a naplot).")
+        return {"ok": True, "discord": discord_status()}
+    if action == "forget":
+        config.save_env({"DISCORD_WEBHOOK_URL": ""})
+        return {"ok": True, "discord": discord_status()}
+    raise ValueError(f"Ismeretlen muvelet: {action}")
 
 
 def _yaml_value(value) -> str:
@@ -1189,6 +1241,15 @@ def backtest_payload() -> dict:
             "limit_mb": bt_data.LIMIT_MB}
 
 
+def backtest_listing(symbol: str) -> dict:
+    """A kezdodatum-valaszto also hatara: a tozsdere lepes napja (de legkorabban 1980-01-01)."""
+    from .backtest_page import data as bt_data
+
+    first, listed = bt_data.earliest_start(symbol, load_settings())
+    return {"symbol": symbol, "listed": f"{listed:%Y-%m-%d}" if listed is not None else None,
+            "min": f"{first:%Y-%m-%d}"}
+
+
 def backtest_action(action: str, body: dict) -> dict:
     from .backtest_page import data as bt_data, runner as bt_runner, runs as bt_runs
 
@@ -1203,6 +1264,7 @@ def backtest_action(action: str, body: dict) -> dict:
         started = jobs.start("data", symbol, work)
     elif action == "run":
         symbol = bt_data.clean_symbol(body.get("symbol"))
+        start = bt_data.parse_start(body.get("start") or bt_data.MIN_START)
         strategy = str(body.get("strategy") or "")
         settings = load_settings()
         overrides = body.get("params") or {}
@@ -1211,15 +1273,23 @@ def backtest_action(action: str, body: dict) -> dict:
         cost = body.get("cost_bps")
         cost = float(cost) if cost not in (None, "") else None
         bt_runner.resolve_params(settings, strategy, overrides, cost)      # azonnali hibauzenet, ha rossz
-        if bt_data.load(symbol).empty:
-            raise ValueError(f"Nincs letoltott adat: {symbol} - elobb: Adatok osszegyujtese.")
-        kwargs = dict(start=body.get("start") or None, end=body.get("end") or None, overrides=overrides,
+        kwargs = dict(end=body.get("end") or None, overrides=overrides,
                       cost_bps=cost, include_holdout=bool(body.get("include_holdout")),
                       capital=float(body.get("capital") or bt_runner.DEFAULT_CAPITAL),
                       alloc_pct=float(body.get("alloc_pct") or 100))
 
         def work(progress):
-            result = bt_runner.run(symbol, strategy, load_settings(), progress=progress, **kwargs)
+            # a futtatas elott mindig frissul az adat; ha mar megvan, csak a hianyzo eleje / vege jon le
+            s = load_settings()
+            begin = max(start, bt_data.earliest_start(symbol, s)[0])
+            try:
+                bt_data.collect(symbol, begin, s, progress=progress)
+            except Exception as exc:
+                if bt_data.load(symbol).empty:
+                    raise ValueError(f"Nincs elerheto adat: {symbol} ({exc})") from exc
+                log.warning("Backteszt: %s adatfrissitese nem sikerult, a meglevo adattal fut: %s", symbol, exc)
+                progress("Az adat frissitese nem sikerult - a meglevo adattal fut.")
+            result = bt_runner.run(symbol, strategy, s, start=f"{begin:%Y-%m-%d}", progress=progress, **kwargs)
             return {"run_id": bt_runs.save(result), "message": bt_runner.summary_line(result)}
         started = jobs.start("run", symbol, work)
     elif action == "delete":
@@ -1492,7 +1562,7 @@ LOGIN_MESSAGES = {
     "origin": "A kérés nem erről az oldalról jött.",
     "unset": "Nincs beállítva jelszó. A szerveren futtasd: python cli.py web-password",
 }
-PUBLIC_PATHS = ("/login", "/style.css")       # bejelentkezes nelkul is elerheto
+PUBLIC_PATHS = ("/login", "/style.css", "/i18n.js")   # bejelentkezes nelkul is elerheto (+ /i18n/<nyelv>.json)
 
 
 def make_handler(app: AppState, auth: webauth.Auth | None = None):
@@ -1590,7 +1660,8 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
             path = url.path
             if path == "/login":
                 return self._login_page(url.query)
-            if path not in PUBLIC_PATHS and not self._authorized():
+            public = path in PUBLIC_PATHS or re.fullmatch(r"/i18n/[a-z]{2}\.json", path)
+            if not public and not self._authorized():
                 if path.startswith("/api/"):
                     return self._error(401, "Bejelentkezes szukseges")
                 return self._redirect("/login")
@@ -1645,6 +1716,11 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                     return self._json(backtest_payload())
                 if path == "/api/backtest/job":
                     return self._json(backtest_jobs().snapshot())
+                if path == "/api/backtest/listing":
+                    symbol = parse_qs(url.query).get("symbol", [""])[0].strip().upper()
+                    if not SYMBOL_RE.match(symbol):
+                        return self._error(400, "Ervenytelen ticker")
+                    return self._json(backtest_listing(symbol))
                 if path.startswith("/api/backtest/run/"):
                     from .backtest_page import runs as bt_runs
 
@@ -1655,6 +1731,13 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                     return self._json(result) if result else self._error(404, "Nincs ilyen futtatas")
                 if path == "/api/best":
                     return self._json({"result": app.best, "job": app.job})
+                m = re.fullmatch(r"/i18n/([a-z]{2})\.json", path)
+                if m:
+                    from . import i18n
+
+                    if m.group(1) not in config.LANGUAGES:
+                        return self._error(404, "Nem talalhato")
+                    return self._json(i18n.entries(m.group(1)))
                 return self._static(path)
             except Exception as exc:
                 log.exception("Hiba a keres kiszolgalasa kozben: %s", path)
@@ -1709,6 +1792,8 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                     return self._json(sandbox_action(body))
                 if path.startswith("/api/broker/"):
                     return self._json(broker_action(app, path.rsplit("/", 1)[-1], body))
+                if path.startswith("/api/discord/"):
+                    return self._json(discord_action(path.rsplit("/", 1)[-1], body))
                 if path.startswith("/api/holdings/"):
                     return self._json(holding_action(app, path.rsplit("/", 1)[-1], body))
                 if path.startswith("/api/lab/"):

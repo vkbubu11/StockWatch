@@ -60,6 +60,19 @@ class YahooProvider(PriceProvider):
 
         return result
 
+    def first_trade_date(self, symbol: str) -> pd.Timestamp | None:
+        try:
+            value = yf.Ticker(symbol.strip().upper()).get_history_metadata().get("firstTradeDate")
+        except Exception as exc:  # ismeretlen ticker, halozati hiba
+            log.warning("A tozsdere lepes datuma nem kerdezheto le (%s): %s", symbol, exc)
+            return None
+        if value is None:
+            return None
+        ts = pd.Timestamp(value, unit="s", tz="UTC") if isinstance(value, (int, float)) else pd.Timestamp(value)
+        if ts.tz is not None:
+            ts = ts.tz_convert("America/New_York").tz_localize(None)
+        return ts.normalize()
+
     # -- belso -------------------------------------------------------------
     def _download_with_retry(
         self,

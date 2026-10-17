@@ -30,6 +30,7 @@ BENCHES = ("^GSPC", "QQQ", "SPY")                # rezsim (S&P 500, Nasdaq-100) 
 MIN_START = pd.Timestamp("1980-01-01")
 SYMBOL_RE = re.compile(r"^[A-Z0-9.\-^]{1,12}$")
 JUMP_PCT = 30.0                                  # ennyi % feletti napi ugras gyanus (split nelkul)
+LISTING_CACHE_MAX = 2000                         # a tozsdere lepes datumainak gyorsitotara (papir)
 
 
 def clean_symbol(symbol: str) -> str:
@@ -158,6 +159,40 @@ def update(symbol: str, start: pd.Timestamp, settings: Settings, provider=None, 
          "user": bool(user or previous.get("user"))}            # a felhasznalo kerte (nem csak benchmark)
     write_atomic(_meta_path(symbol), json.dumps(m, ensure_ascii=False, indent=1))
     return m
+
+
+def _listing_path():
+    return BT_DIR / "listing.json"
+
+
+def listing_date(symbol: str, settings: Settings, provider=None) -> pd.Timestamp | None:
+    """A papir tozsdere lepesenek napja (None, ha a szolgaltato nem tudja). A talalat gyorsitotarba kerul
+    (data/backtest/listing.json, legfeljebb LISTING_CACHE_MAX papir), mert ez a datum nem valtozik."""
+    symbol = clean_symbol(symbol)
+    path = _listing_path()
+    try:
+        cache = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        cache = {}
+    if symbol in cache:
+        return pd.Timestamp(cache[symbol]["listed"])
+    provider = provider or feed.get_provider(settings)
+    getter = getattr(provider, "first_trade_date", None)
+    listed = getter(symbol) if getter else None
+    if listed is None:                                   # nem taroljuk: lehet atmeneti hiba is
+        return None
+    cache[symbol] = {"listed": f"{listed:%Y-%m-%d}", "checked": _now()}
+    if len(cache) > LISTING_CACHE_MAX:
+        cache = dict(sorted(cache.items(), key=lambda kv: kv[1].get("checked", ""))[-LISTING_CACHE_MAX:])
+    BT_DIR.mkdir(parents=True, exist_ok=True)
+    write_atomic(path, json.dumps(cache, ensure_ascii=False))
+    return listed
+
+
+def earliest_start(symbol: str, settings: Settings, provider=None) -> tuple[pd.Timestamp, pd.Timestamp | None]:
+    """(a legkorabbi valaszthato kezdodatum, a tozsdere lepes napja vagy None)."""
+    listed = listing_date(symbol, settings, provider)
+    return (max(MIN_START, listed) if listed is not None else MIN_START), listed
 
 
 def collect(symbol: str, start, settings: Settings, provider=None, progress=None) -> dict:

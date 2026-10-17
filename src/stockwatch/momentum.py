@@ -158,7 +158,7 @@ def simulate_trade(symbol: str, df: pd.DataFrame, i: int, params: MomentumParams
 
     def close(k: int, price: float, reason: str) -> Trade:
         trade.status, trade.exit_date, trade.exit_price, trade.reason = "closed", idx[k], float(price), reason
-        trade.gross_pct, trade.net_pct = net_return(entry, float(price), params.cost_bps)
+        trade.gross_pct, trade.net_pct = net_return(entry, float(price), params.total_cost_bps)
         return trade
 
     for k in range(j, len(idx)):

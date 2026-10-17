@@ -7,6 +7,7 @@ from collections import Counter
 from datetime import datetime
 
 from ..config import STRATEGY_LABELS, Settings
+from ..i18n import translate
 from .base import Alert, AlertChannel, format_body, format_title
 from .console import ConsoleChannel
 from .discord import DiscordChannel
@@ -41,8 +42,10 @@ class Dispatcher:
             channel = TelegramChannel(settings)
             if channel.enabled:
                 self.channels.append(channel)
+        # a Discord-csatorna webhook nelkul is bekerul: kuldeskor a titokfajlbol olvassa a cimet, igy a
+        # feluletrol beallitott / csereltt webhook a futo monitorban ujrainditas nelkul el
         discord = DiscordChannel(settings) if cfg.discord else None
-        if discord is not None and discord.enabled:
+        if discord is not None:
             self.channels.append(discord)
         if cfg.webhook:
             hook = WebhookChannel(settings)
@@ -66,6 +69,13 @@ class Dispatcher:
         prefix = f"[{STRATEGY_LABELS.get(alert.strategy, alert.strategy)}] "
         return alert if alert.title.startswith(prefix) else dataclasses.replace(alert, title=prefix + alert.title)
 
+    def _localized(self, alert: Alert) -> Alert:
+        """A cim es a szoveg az alerts.language nyelven (i18n.py); magyarul valtozatlan."""
+        lang = getattr(getattr(self.settings, "alerts", None), "language", "hu")
+        if lang == "hu":
+            return alert
+        return dataclasses.replace(alert, title=translate(alert.title, lang), body=translate(alert.body, lang))
+
     def _strategy_alerts(self, alert: Alert) -> bool:
         """Kuldhet-e a strategia Discordra / Telegramra (a homokozo alapbol nem). A naploba mindig kerul."""
         strategies = getattr(self.settings, "strategies", None)
@@ -83,9 +93,11 @@ class Dispatcher:
             return {}
 
         results = {}
+        localized = self._localized(alert)
         for channel in channels:
             try:
-                results[channel.name] = channel.send(alert)
+                # a jelzesnaplo magyar marad (a felulet a sajat nyelven jeleniti meg)
+                results[channel.name] = channel.send(alert if channel.name == "jsonl" else localized)
             except Exception:
                 log.exception("A(z) %s csatorna hibara futott", channel.name)
                 results[channel.name] = False

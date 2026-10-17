@@ -144,7 +144,7 @@ def log_signals(signals: list, settings: Settings) -> int:
                 **s.ml, "close": round(s.price, 4),
                 "plan": {"stop": plan.stop, "target": plan.target, "atr": plan.atr, "horizon": plan.horizon or 40},
                 "exit": {"mode": cfg.exit_mode, "partial_r": cfg.partial_r, "trail_atr": cfg.trail_atr,
-                         "gap_pct": cfg.entry_max_gap_pct, "slippage_bps": cfg.slippage_bps},
+                         "gap_pct": cfg.entry_max_gap_pct, "slippage_bps": cfg.total_cost_bps},
                 "logged": datetime.now(timezone.utc).isoformat(timespec="seconds"), "outcome": None,
             })
             _logged_ids.add(s.signal_id)

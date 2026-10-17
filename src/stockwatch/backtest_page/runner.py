@@ -130,7 +130,7 @@ def run(symbol: str, strategy: str, settings: Settings, start=None, end=None, ov
         raise ValueError("Ervenytelen kezdotoke.")
     df = data.load(symbol)
     if df.empty:
-        raise ValueError(f"Nincs letoltott adat: {symbol} - elobb: Adatok osszegyujtese.")
+        raise ValueError(f"Nincs letoltott adat: {symbol}.")
     data.touch(symbol)
     m = data.meta(symbol) or {}
 
@@ -179,7 +179,7 @@ def run(symbol: str, strategy: str, settings: Settings, start=None, end=None, ov
         periods["holdout"] = _period(orders, params, max(start, HOLDOUT_START), end)
 
     alloc = alloc_pct / 100
-    equity, inpos = _equity(df, orders, start, capital, alloc, params.cost_bps)
+    equity, inpos = _equity(df, orders, start, capital, alloc, params.total_cost_bps)
     bh = capital * df["close"][df.index >= start] / float(df["close"][df.index >= start].iloc[0])
     strat_m, bh_m = performance.metrics(equity, inpos), performance.metrics(bh)
     years_strat, years_bh = performance.yearly_returns(equity), performance.yearly_returns(bh)

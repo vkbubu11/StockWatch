@@ -223,3 +223,18 @@ def test_fill_times_are_recorded_and_shown(mr_env, monkeypatch):  # noqa: F811
     assert trade.filled_ts == "2024-03-04T15:00:00+00:00"
     _, body = broker.format_event(trade, "broker_filled")
     assert "2024-03-04 16:00 (New York 10:00)" in body and "Bekuldve:" in body
+
+
+def test_commission_deducted_from_paper_pnl():
+    """A beallitott kotesi dij a vetel es az eladas erteke utan is levonodik a paper trade eredmenyebol."""
+    def close(commission_pct):
+        trade = broker.BrokerTrade(
+            id="c", symbol="X", pattern="x", kind="pullback", signal_date="2026-01-02", entry_limit=100, stop=90,
+            target=110, partial_price=None, shares=10, horizon=10, exit_mode="indicator", status="open",
+            entry_price=100.0, commission_pct=commission_pct)
+        legs = [broker.Leg("target", 10, 110, filled_qty=10, entry_fill=100.0, exit_price=110.0, exit_reason="manual")]
+        broker._maybe_close(trade, legs, [])
+        return trade
+    assert close(0.0).realised_pnl == pytest.approx(100.0)
+    t = close(0.1)                                             # 0,1% x (1000 + 1100) $ = 2,10 $
+    assert t.status == "closed" and t.realised_pnl == pytest.approx(97.9) and "kotesi dij" in t.notes[-1]

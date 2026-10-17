@@ -42,9 +42,11 @@ A jelzések színes kártyaként érkeznek egy Discord-csatornába, alattuk a ch
 (zöld: belépés / cél, piros: stop / bukás, sárga: figyelendő, kék: paper trading esemény).
 
 1. Discordon: **Szerver beállítások → Integrációk → Webhookok → Új webhook**, válaszd ki a csatornát, majd **Webhook URL másolása**
-2. Futtasd: `python cli.py discord` (szerveren: `sudo stockwatch-cli discord`), és illeszd be az URL-t. A beírt szöveg nem látszik.
-3. A parancs ellenőrzi a webhookot, elmenti a titokfájlba, és küld egy próbaüzenetet chart-képpel.
-4. Szerveren indítsd újra a monitort: `sudo systemctl restart stockwatch-monitor`
+2. A webes felületen: **Beállítások → Discord értesítések – webhook** → illeszd be az URL-t → *Mentés és ellenőrzés*.
+   Vagy parancssorból: `python cli.py discord` (szerveren: `sudo stockwatch-cli discord`); a beírt szöveg nem látszik.
+3. Mentés előtt a rendszer ellenőrzi a webhookot a Discordnál, elmenti a titokfájlba, és kérésre próbaüzenetet küld.
+4. A webhook ugyanígy **cserélhető vagy törölhető**. A futó monitor minden küldés előtt a titokfájlból olvassa a címet,
+   ezért a csere a következő értesítéstől érvényes, újraindítás nélkül.
 
 A webhook URL maga a jelszó: aki ismeri, írhat a csatornába. Ezért csak a titokfájlba kerül, a naplóba soha.
 Ha kiszivárgott, töröld a webhookot a Discordban, és állíts be újat.
@@ -544,7 +546,7 @@ egyszerre 10 pozíciót tart.
 Egy kiválasztott papír vagy ETF **teljes története a megadott kezdődátumtól** (akár 1980-tól), a rendszer
 stratégiáival. Terv és ütemezés: [`docs/BACKTEST-PAGE-DESIGN.md`](docs/BACKTEST-PAGE-DESIGN.md) (ticket #21).
 
-1. **Adatok összegyűjtése:** a papír napi gyertyái (split- és osztalékkorrigált), mellette a rezsim-indexek (`^GSPC`, `QQQ`) és a benchmark (`SPY`). Külön tárba kerülnek (`data/backtest/`, 300 MB plafon, a legrégebben használt papír törlődik). Az élő cache 10 éves plafonja erre nem vonatkozik. Utána adatminőség-jelentés jön: hiányzó napok, nulla volumen, split nélküli ugrások, a kértnél későbbi első nap.
+1. **Adat** (a „Futtatás” gomb automatikusan letölti / frissíti, külön lépés nélkül; a naptár a cég tőzsdére lépésénél korábbi napot nem enged választani): a papír napi gyertyái (split- és osztalékkorrigált), mellette a rezsim-indexek (`^GSPC`, `QQQ`) és a benchmark (`SPY`). Külön tárba kerülnek (`data/backtest/`, 300 MB plafon, a legrégebben használt papír törlődik). Az élő cache 10 éves plafonja erre nem vonatkozik. Utána adatminőség-jelentés jön: hiányzó napok, nulla volumen, split nélküli ugrások, a kértnél későbbi első nap.
 2. **Stratégia:** Visszahúzás (RSI2), Mély visszahúzás, ETF visszahúzás, Homokozó (visszahúzás-motorral). A paraméterek erre a futtatásra módosíthatók, az éles beállítás nem változik. A Kitörés-motor és a saját szabályszerkesztő a következő fázisokban jön.
 3. **Eredmény:**
    - kötésszám, nyerési arány a 95%-os sávval, átlag, profit-faktor;
@@ -684,6 +686,11 @@ Az ajánlott swing belépéseket egy **Alpaca paper** (nem valódi pénzes) szá
 utána csak a kulcs utolsó 4 karakterét mutatja. **Csak a paper endpoint fogadható el** — valódi
 pénzes számlára a kód nem tud megbízást küldeni.
 
+**Kötési díj:** Beállítások → *Költségek* → *Kötési díj (% / kötés)* (`broker.commission_pct`, alapból 0, mert
+az Alpaca jutalékmentes). A kötés értékének ennyi %-a vételkor és eladáskor is. Minden motor a saját csúszás-költsége
+(`cost_bps` / `slippage_bps`) felett ezzel számol: élő virtuális követés, Backteszt oldal, kutatás és labor. A paper
+trade-ek dollár-eredményéből is levonódik, a beküldéskori díjjal. Kötésenkénti minimumdíjat nem modellez.
+
 **Hogyan kereskedik:** a jelzés tervét bracket megbízásokként küldi be (gtc, limit belépő):
 
 | Láb | Darab | Cél | Stop |
@@ -749,12 +756,31 @@ internet nélkül is fut (csak a Frissítés gomb tölt le adatot). Világos és
 | **Paper trading** | Alpaca paper számla: **eddigi eredmény** (a számla a nyitás óta + a rendszer trade-jei realizált / nyitott bontásban), equity-görbe táblázattal, mai beküldhető jelzések, a rendszer paper trade-jei lábanként, Alpaca pozíciók és megbízások |
 | **Jelzett trade-ek** | a követett trade-ek állapota (belépésre vár / nyitott / lezárt / kimaradt) és az élő eredménynapló R-ben |
 | **Értesítések** | minden, amit a monitor kiküldött, utólag kiértékelve: jelzéskori és mostani ár, irányhelyes változás, profit ($ / R), minősítés (jó / rossz / folyamatban); jelerősség (belépési pont vagy alakzat-minőség, gyenge / közepes / erős) és találati arány erősség szerint; szűrés irány, minősítés és erősség szerint; a típusokra és oszlopokra húzott egér magyarázatot mutat |
-| **Beállítások** | számlaméret, kockázat, belépési és kilépési szabályok, paper trading és Alpaca kulcsok, watchlist, a `settings.yaml` kommentjeit megtartva |
+| **Beállítások** | számlaméret, kockázat, belépési és kilépési szabályok, kötési díj, értesítések nyelve, paper trading és Alpaca kulcsok, Discord webhook, watchlist, a `settings.yaml` kommentjeit megtartva |
+| **Információ** (jobb felül) | hibabejelentés: a rendszer GitHub oldalának Issues füle (link: <https://github.com/vkbubu11/StockWatch/issues>) |
 
 A felület **nem küld riasztást**, és kereskedni csak az Alpaca paper számlán tud, kézi gombnyomásra; az értesítéseket továbbra is a
 `python cli.py monitor` küldi (a kettő futhat egyszerre). Csak a `127.0.0.1` címen érhető el,
 a módosító kérések egyedi fejlécet várnak (más weboldal nem tud a nevedben beállítást átírni),
 a `.env` titkait nem adja vissza (az Alpaca kulcsokat beírni lehet, kiolvasni nem). A régi Streamlit dashboard (`streamlit run app/dashboard.py`) továbbra is megvan.
+
+### Nyelvek: magyar, angol, német, spanyol
+
+- **Felület:** a fejléc nyelvválasztója (HU / EN / DE / ES). A böngésző megjegyzi; alapból a böngésző nyelve, ha a négy
+  közül való, különben magyar. A számok és dátumok formátuma is a választott nyelvet követi.
+- **Értesítések** (Discord, Telegram, webhook, konzol): Beállítások → *Értesítések nyelve* (`alerts.language`: `hu`,
+  `en`, `de`, `es`). A jelzésnapló (`data/signals.jsonl`) mindig magyar marad; a felület a saját nyelvén jeleníti meg.
+- A parancssor (`cli.py`), a naplófájlok és a kutatási jelentések magyarok maradnak.
+
+**Hogyan működik:** a rendszer magyarul fogalmaz, a fordítás a megjelenítés / kiküldés előtt történik. A felületen a
+`app/web/i18n.js` a kirajzolt szöveget és a `title` / `placeholder` / `aria-label` attribútumokat cseréli (adatot,
+`data-*` attribútumot, URL-t nem), az értesítéseknél a `src/stockwatch/i18n.py` soronként fordít. Mindkettő ugyanazt a
+katalógust használja: `src/stockwatch/locale/catalog.jsonl`, soronként egy `{"hu", "en", "de", "es"}` objektum
+(a felület a `/i18n/<nyelv>.json` címen kapja meg). A kulcs a magyar szöveg; a `{0}`, `{1}`… helyőrző bármit illeszt
+(a `{1:n}` csak számot), a befogott rész maga is fordul. Az összetett sorokat (`címke: érték`, `a · b`, `a, b`,
+`[stratégia] PAPÍR: …`) a fordító a zárójeleken kívüli elválasztóknál tagolja, és darabonként fordítja.
+**Ami nincs a katalógusban, magyarul jelenik meg** – új szövegnél egy sort kell felvenni a katalógusba;
+a `tests/test_i18n.py` ellenőrzi, hogy minden sorban mind a négy nyelv megvan, és a helyőrzők egyeznek.
 
 ---
 
@@ -900,7 +926,7 @@ mappát és a titokfájlt írhatja (systemd `ProtectSystem=strict`). A rendszern
 | Állapot | `systemctl status stockwatch-monitor stockwatch-web` |
 | Újraindítás | `sudo systemctl restart stockwatch-monitor stockwatch-web` |
 | Jelszócsere | `sudo stockwatch-password` |
-| Discord beállítása | `sudo stockwatch-cli discord && sudo systemctl restart stockwatch-monitor` |
+| Discord beállítása / cseréje | a felületen: Beállítások → Discord értesítések, vagy `sudo stockwatch-cli discord` |
 | Bármely CLI-parancs | `sudo stockwatch-cli <parancs>`, pl. `positions`, `broker`, `test-alert` |
 | Titkok szerkesztése | `sudo -u stockwatch nano /etc/stockwatch/stockwatch.env`, utána újraindítás |
 
@@ -1062,6 +1088,7 @@ src/stockwatch/
   sessions.py      lezárt gyertya (a mai, alakuló gyertya kihagyása)
   revalidate.py    nyitás előtti újraellenőrzés a véglegesített adaton
   webapp.py        a webes felület szervere (JSON API)
+  i18n.py          fordítás (angol / német / spanyol); katalógus: locale/catalog.jsonl
   webauth.py       bejelentkezés: scrypt jelszó, munkamenet, találgatás elleni zár
   lab.py           stratégia-labor: kísérletek, növekményes kitörés-cache, háttérfolyamat
   lab_ml.py        gépi tanulás walk-forward teszttel, végső modell mentése
@@ -1073,7 +1100,7 @@ src/stockwatch/
   monitor.py       figyelő ciklus + állapotgép
   charting.py      plotly chartok
   alerts/          konzol, JSONL, Discord, Telegram, webhook
-app/web/           webes felület (index.html, login.html, style.css, app.js)
+app/web/           webes felület (index.html, login.html, style.css, app.js, i18n.js)
 deploy/            szerveres telepítés (install.sh, systemd szolgáltatások, upload.ps1)
 app/dashboard.py   Streamlit felület (régi)
 tests/             257 teszt + szintetikus generátorok

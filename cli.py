@@ -999,7 +999,7 @@ def cmd_discord(args) -> int:
         return 1
     config.save_env({"DISCORD_WEBHOOK_URL": url})
     print(f"Mentve ({config.ENV_PATH}). Webhook: {name}")
-    print("A futo monitor ujrainditas utan kuld ide (szerveren: sudo systemctl restart stockwatch-monitor).")
+    print("A futo monitor a kovetkezo ertesitestol ide kuld (ujrainditas nem kell).")
     return _send_test_alert(args, settings, [channel])
 
 

@@ -160,7 +160,7 @@ def simulate_trade(symbol: str, feat: pd.DataFrame, exits: np.ndarray, i: int, p
 
     def close(k: int, price: float, reason: str) -> Trade:
         trade.status, trade.exit_date, trade.exit_price, trade.reason = "closed", idx[k], price, reason
-        trade.gross_pct, trade.net_pct = net_return(entry, price, params.cost_bps)
+        trade.gross_pct, trade.net_pct = net_return(entry, price, params.total_cost_bps)
         return trade
 
     # a belepes napja: nyito a stop alatt -> azonnal ki; kulonben napkozbeni stop (pesszimista)

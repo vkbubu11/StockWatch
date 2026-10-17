@@ -78,6 +78,7 @@ alerts:
   # jojjenek. Ha ezeket is kered: true
   pattern_events: false
   direction: both
+  language: hu              # az ertesitesek nyelve: hu, en, de, es (a felulet nyelvet a fejlec valasztoja allitja)
 
 # --- Swing LONG belepesi motor (entry.py) ---
 # Riasztas csak zaras utan (lezart napi gyertyan), csak long iranyba,
@@ -157,6 +158,7 @@ broker:
   auto_trade: true
   size_from_account: true
   max_open_trades: 5
+  commission_pct: 0.0       # kotesi dij a kotes ertekenek %-aban, oldalankent (Alpaca: 0) - minden motor ezzel is szamol
   entry_window_min: 5       # kitores: ha a nyitas utan ennyi perccel sem teljesult, visszavonja (0 = ki)
   live_gate_min_trades: 50  # elesitesi kapu: lezart paper trade-ek szama
   live_gate_win: 0.70       # elesitesi kapu: nyeresi arany

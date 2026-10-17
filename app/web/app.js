@@ -16,7 +16,7 @@ let chartRO = null;
 // Segedek
 // ---------------------------------------------------------------------------
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const fmt = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v) ? "–" : Number(v).toLocaleString("hu-HU", { minimumFractionDigits: d, maximumFractionDigits: d }));
+const fmt = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v) ? "–" : Number(v).toLocaleString(LOCALE, { minimumFractionDigits: d, maximumFractionDigits: d }));
 const money = (v) => (v === null || v === undefined ? "–" : `${fmt(v, 2)} $`);
 const pct = (v, d = 1) => (v === null || v === undefined ? "–" : `${v > 0 ? "+" : ""}${fmt(v, d)}%`);
 // pontos idopont (a bongeszo, azaz magyar ido szerint); a tooltipben a New York-i ido
@@ -25,8 +25,8 @@ const when = (iso) => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return esc(iso);
   const opts = { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" };
-  const ny = d.toLocaleString("hu-HU", { ...opts, timeZone: "America/New_York" });
-  return `<span title="New York: ${esc(ny)}">${esc(d.toLocaleString("hu-HU", opts))}</span>`;
+  const ny = d.toLocaleString(LOCALE, { ...opts, timeZone: "America/New_York" });
+  return `<span title="New York: ${esc(ny)}">${esc(d.toLocaleString(LOCALE, opts))}</span>`;
 };
 const signed = (v, d = 2, unit = "") => (v === null || v === undefined ? "–" : `${v > 0 ? "+" : ""}${fmt(v, d)}${unit}`);
 
@@ -172,7 +172,7 @@ async function startBest() {
 
 function showBest(r) {
   const dlg = $("#best-dialog");
-  const when = new Date(r.computed_at).toLocaleString("hu-HU", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const when = new Date(r.computed_at).toLocaleString(LOCALE, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   dlg.innerHTML = `<div class="best-head"><h2>Legjobb belépő most</h2><button class="btn icon" type="button" id="best-close" aria-label="Bezárás">✕</button></div>
     <p class="muted small">${esc(r.label)} · ${r.evaluated} / ${r.symbols} papír elemezve · utolsó gyertya: ${esc(r.last_bar || "–")} · ${esc(when)}
       · a lista a <a href="#/settings">Beállításokban</a> választható</p>
@@ -283,7 +283,7 @@ function renderCheck() {
   const [cls, status, statusSub] = checkStatus(v, live);
   const pb = v.pullback.find((p) => p.strategy === "pullback") || v.pullback[0];
   const f = v.forecast;
-  const when = new Date(d.computed_at).toLocaleString("hu-HU", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const when = new Date(d.computed_at).toLocaleString(LOCALE, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const toggle = d.views.live ? `<div class="segmented" role="group" aria-label="Nézet">
       <button type="button" class="seg ${live ? "on" : ""}" data-view="live" title="A mai, még alakuló gyertyával – mintha az ár most zárna">Élő (most)</button>
       <button type="button" class="seg ${live ? "" : "on"}" data-view="closed" title="Az utolsó lezárt nap – ezt értékeli a monitor">Utolsó lezárt nap (${esc(d.views.closed.as_of)})</button></div>` : "";
@@ -514,7 +514,7 @@ function indexCard(ix, all) {
   try { showAll = localStorage.getItem("sw-index-all") === "1"; } catch (_) { /* privat mod */ }
   const r = ix.result;
   const list = showAll ? all : all.filter((s) => s.qualifies);
-  const when = r ? new Date(r.computed_at).toLocaleString("hu-HU", { dateStyle: "short", timeStyle: "short" }) : null;
+  const when = r ? new Date(r.computed_at).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }) : null;
   return `<section class="card">
     <h2>Index-jelöltek <span class="muted">– ${active.map((m) => `${esc(m.label)} (${m.count || "?"})`).join(" + ")}${r ? ` · ${r.analysed} papír elemezve, ${esc(when)} · gyertya: ${esc(r.last_bar || "–")}` : " · még nem futott"}</span>
       <span style="margin-left:auto;display:inline-flex;gap:12px;align-items:center;font-weight:400">
@@ -554,10 +554,10 @@ function candidatesTable(list) {
 
 // A jelolt pontos idopontja: a gyertya (zaro) napja es a kiertekeles datuma, ideje (helyi ido, masodpercre).
 function candidateTime(s) {
-  const bar = s.bar_time ? new Date(s.bar_time).toLocaleString("hu-HU", { dateStyle: "short", timeStyle: "short" }) : s.as_of;
+  const bar = s.bar_time ? new Date(s.bar_time).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }) : s.as_of;
   if (!s.evaluated_at) return `<span class="small">gyertya: ${esc(bar || "–")}</span>`;
   const ev = new Date(s.evaluated_at);
-  const full = ev.toLocaleString("hu-HU", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const full = ev.toLocaleString(LOCALE, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   return `<span title="Kiértékelve: ${esc(full)} (UTC: ${esc(s.evaluated_at)})">${esc(full)}</span>
     <div class="muted small">gyertya: ${esc(bar || "–")}</div>`;
 }
@@ -1224,7 +1224,7 @@ const PB_EXTRA = [
   ["min_price", "Min. ár ($)", ""],
   ["min_dollar_volume", "Min. dollárforgalom ($/nap)", "20 napos átlag."],
   ["earnings_blackout_days", "Gyorsjelentés-tilalom (nap)", "Nincs jelzés, ha ennyi napon belül gyorsjelentés jön."],
-  ["cost_bps", "Költség (bps / oldal)", "Jutalék + csúszás oldalanként – a nettó eredményhez."],
+  ["cost_bps", "Csúszás + spread (bps / oldal)", "Oldalanként – a nettó eredményhez. A kötési díj a Beállításokban állítható, és ehhez adódik."],
 ];
 let sandboxTimer = null;
 
@@ -1575,6 +1575,38 @@ async function brokerAction(action, body, btn = null) {
   }
 }
 
+function bindDiscordForm(initial) {
+  const status = $("#discord-status");
+  const msg = $("#discord-msg");
+  const show = (d) => {
+    status.className = `msg ${d.configured && d.valid ? "ok" : d.configured ? "err" : ""}`;
+    status.textContent = !d.configured ? "Még nincs beállítva – Discordra nem megy értesítés."
+      : !d.valid ? "A beállított cím nem érvényes Discord webhook."
+      : `Beállítva – webhook ${d.hint}${d.enabled ? "" : " (a Discord csatorna a settings.yaml-ban ki van kapcsolva)"}`;
+  };
+  show(initial || {});
+  const run = async (action, body, busy, done) => {
+    msg.className = "msg"; msg.textContent = busy;
+    try {
+      const res = await api(`/api/discord/${action}`, { method: "POST", body: JSON.stringify(body) });
+      show(res.discord);
+      msg.className = "msg ok"; msg.textContent = done(res);
+      return res;
+    } catch (e) { msg.className = "msg err"; msg.textContent = e.message; return null; }
+  };
+  $("#discord-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const res = await run("save", { url: $("#d-url").value.trim(), test: $("#d-test").checked }, "Ellenőrzés a Discordnál…",
+      (r) => `Mentve – webhook: ${r.name}${r.sent === true ? " · próbaüzenet elküldve" : r.sent === false ? " · a próbaüzenet nem ment ki" : ""}`);
+    if (res) $("#d-url").value = "";
+  });
+  $("#discord-test").addEventListener("click", () => run("test", {}, "Küldés…", () => "Próbaüzenet elküldve."));
+  $("#discord-forget").addEventListener("click", () => {
+    if (!confirm("Törlöd a Discord webhookot? Utána Discordra nem megy értesítés.")) return;
+    run("forget", {}, "Törlés…", () => "Webhook törölve.");
+  });
+}
+
 async function bindAlpacaForm() {
   const status = $("#alpaca-status");
   const msg = $("#alpaca-msg");
@@ -1675,7 +1707,7 @@ async function pageLedger() {
     </section>
     <section class="card"><h2>Beállítás-változások <span class="muted">– ki, mikor, mit</span></h2>
       ${d.changes.length ? `<div class="table-wrap"><table><thead><tr><th>Időpont</th><th>Forrás</th><th>Változás</th><th>Beállítás-verzió</th></tr></thead><tbody>
-        ${d.changes.map((ch) => `<tr><td class="muted small">${esc(new Date(ch.at).toLocaleString("hu-HU", { dateStyle: "short", timeStyle: "short" }))}</td>
+        ${d.changes.map((ch) => `<tr><td class="muted small">${esc(new Date(ch.at).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }))}</td>
           <td>${esc(ch.source)}</td>
           <td class="small">${Object.entries(ch.changes).map(([key, v]) => Array.isArray(v)
             ? `<code>${esc(key)}</code>: ${esc(JSON.stringify(v[0]))} → <strong>${esc(JSON.stringify(v[1]))}</strong>`
@@ -1739,7 +1771,7 @@ async function pageSignal(signalId) {
     <div class="grid-2">
       <div>
         <section class="card"><h2>Életút</h2><div class="card-body"><ol class="timeline">
-          ${timeline.map(([at, html]) => `<li><span class="muted small">${esc(at ? new Date(at).toLocaleString("hu-HU", { dateStyle: "short", timeStyle: "short" }) : "–")}</span><div>${html}</div></li>`).join("")}
+          ${timeline.map(([at, html]) => `<li><span class="muted small">${esc(at ? new Date(at).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }) : "–")}</span><div>${html}</div></li>`).join("")}
         </ol></div></section>
         ${rec ? `<section class="card"><h2>Szűrők és pontszám a döntéskor <span class="muted">– ${fmt(rec.score, 1)}/100</span></h2><div class="card-body">
           <ul class="checks">${checks}</ul><div class="parts">${parts}</div>
@@ -1927,7 +1959,7 @@ function strengthCell(r) {
 
 function alertRow(r) {
   const [cls, label, help] = EVENT[r.event] || ["fail", r.event, ""];
-  const ts = r.timestamp ? new Date(r.timestamp).toLocaleString("hu-HU", { dateStyle: "short", timeStyle: "short" }) : "–";
+  const ts = r.timestamp ? new Date(r.timestamp).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }) : "–";
   const side = r.side === "long" ? `<span class="up">▲ Long</span>` : r.side === "short" ? `<span class="down">▼ Short</span>` : `<span class="muted">–</span>`;
   const [gcls, glabel, ghelp] = GRADE[r.grade] || GRADE.na;
   const tone = (v) => (v > 0 ? "up" : v < 0 ? "down" : "");
@@ -1983,12 +2015,17 @@ const FIELDS = [
     ["size_from_account", "Méret a paper számla tőkéjéből", "check", "A darabszámot a paper számla equity-jéből és a kockázat/trade %-ból számolja (különben a fenti számlaméretből)."],
     ["max_open_trades", "Max. nyitott paper trade", "number", "Egyszerre legfeljebb ennyi nyitott vagy függő trade (a belépésre váró limit is helyet foglal).", { min: 1, max: 50, step: 1 }],
   ]],
+  ["Költségek", [
+    ["commission_pct", "Kötési díj (% / kötés)", "number", "A kötés értékének ennyi %-a, vételkor és eladáskor is (pl. 0,1 = 0,1%). Minden stratégia a saját csúszás-költsége felett ezzel számol: élő követés, backteszt, kutatás – és a paper trade-ek eredményéből is levonódik. Az Alpaca jutalékmentes: 0.", { min: 0, max: 2, step: 0.01 }],
+  ]],
   ["Piaci környezet és értesítések", [
     ["regime_filter", "Piaci rezsim-szűrő (index > SMA200)", "check", "Gyenge piacon nincs belépési jelzés. Az index a fenti „Átnézett papírok” szerint: ha az S&P 500 be van kapcsolva, az SPY, különben a QQQ (Nasdaq-100) 200 napos átlagát nézi."],
     ["earnings_blackout_days", "Earnings-tilalom (nap)", "number", "Gyorsjelentés előtt ennyi napig nincs belépés.", { min: 0, max: 30, step: 1 }],
     ["direction", "Értesítések iránya", "select", "Short: a medvés alakzatok (fej-váll, dupla tető, bear zászló…) friss, zárón megerősített lefelé törése – nincs mögötte belépési motor és paper trading, és a backtest szerint gyengébbek (pl. bear zászló: 28% találat). A pozíciókövetés, a saját pozíciók és a paper trading értesítései mindig mennek.",
       { options: [["long", "Csak long (vételi) jelzések"], ["short", "Csak short (eladási) jelzések"], ["both", "Long és short is"]] }],
     ["pattern_events", "Régi alakzat-értesítések is", "check", "Minden alakzat-állapotváltásról, a fent választott irány(ok)ban – alapból ki."],
+    ["language", "Értesítések nyelve", "select", "A Discord / Telegram / webhook üzenetek nyelve. A felület nyelvét a fejléc választója állítja (böngészőnként).",
+      { options: [["hu", "Magyar"], ["en", "English"], ["de", "Deutsch"], ["es", "Español"]] }],
   ]],
 ];
 
@@ -2038,10 +2075,33 @@ async function pageSettings() {
         </div>
       </form>
     </div></section>
+    <section class="card" id="discord"><h2>Discord értesítések – webhook</h2><div class="card-body">
+      <div class="callout">A webhook címe maga a jelszó: a titokfájlba kerül (verziókezelésen kívül), a felület a mentés után
+        nem mutatja vissza. Mentés előtt a rendszer ellenőrzi a Discordnál. A futó monitor a következő értesítéstől már az új
+        címre küld, újraindítás nélkül.
+        A Discordban: <em>Szerver beállítások → Integrációk → Webhookok → Új webhook → Webhook URL másolása</em>.</div>
+      <div id="discord-status" class="msg" style="margin-bottom:12px"></div>
+      <form id="discord-form" autocomplete="off">
+        <div class="form-grid">
+          <div class="field"><label for="d-url">Új webhook URL</label>
+            <input type="password" id="d-url" name="url" autocomplete="off" spellcheck="false" placeholder="https://discord.com/api/webhooks/…">
+            <div class="hint">A régi webhook a mentéskor lecserélődik.</div></div>
+          <div class="field check"><input type="checkbox" id="d-test" checked>
+            <div><label for="d-test">Mentés után próbaüzenet</label></div></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn primary" type="submit">Mentés és ellenőrzés</button>
+          <button class="btn" type="button" id="discord-test">Próbaüzenet</button>
+          <button class="btn danger" type="button" id="discord-forget">Webhook törlése</button>
+          <span id="discord-msg" class="msg"></span>
+        </div>
+      </form>
+    </div></section>
     <section class="card"><h2>Nem itt állítható</h2><div class="card-body muted">
-      Discord webhook, Telegram token és webhook URL: a titokfájlban (<code>python cli.py discord</code>) (biztonsági okból a felület nem olvassa). Minden további szűrő: <code>config/settings.yaml</code>.
+      Telegram token és általános webhook URL: a titokfájlban (biztonsági okból a felület nem olvassa). Minden további szűrő: <code>config/settings.yaml</code>.
     </div></section>`;
   bindAlpacaForm();
+  bindDiscordForm(data.discord);
 
   $("#settings-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -2078,8 +2138,8 @@ async function pageSettings() {
 // ---------------------------------------------------------------------------
 async function route() {
   const hash = location.hash || "#/";
-  const tab = hash.startsWith("#/ledger") || hash.startsWith("#/signal/") ? "ledger" : hash.startsWith("#/broker") ? "broker" : hash.startsWith("#/holdings") ? "holdings" : hash.startsWith("#/positions") ? "positions" : hash.startsWith("#/alerts") ? "alerts" : hash.startsWith("#/settings") ? "settings" : hash.startsWith("#/lab") ? "lab" : hash.startsWith("#/strategies") ? "strategies" : hash.startsWith("#/sandbox") ? "sandbox" : hash.startsWith("#/backtest") ? "backtest" : "overview";
-  document.querySelectorAll(".tabs a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
+  const tab = hash.startsWith("#/ledger") || hash.startsWith("#/signal/") ? "ledger" : hash.startsWith("#/broker") ? "broker" : hash.startsWith("#/holdings") ? "holdings" : hash.startsWith("#/positions") ? "positions" : hash.startsWith("#/alerts") ? "alerts" : hash.startsWith("#/settings") ? "settings" : hash.startsWith("#/lab") ? "lab" : hash.startsWith("#/strategies") ? "strategies" : hash.startsWith("#/sandbox") ? "sandbox" : hash.startsWith("#/backtest") ? "backtest" : hash.startsWith("#/info") ? "info" : "overview";
+  document.querySelectorAll(".tabs a, #info-link").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
   tooltip.hidden = true;
   try {
     const m = hash.match(/^#\/p\/([A-Za-z0-9.\-^]+)$/);
@@ -2095,6 +2155,7 @@ async function route() {
     else if (tab === "lab") await pageLab();
     else if (tab === "strategies") await pageStrategies();
     else if (tab === "sandbox") await pageSandbox();
+    else if (tab === "info") pageInfo();
     else if (tab === "backtest") {
       const rm = hash.match(/^#\/backtest\/run\/([0-9a-f]{12})$/);
       await pageBacktest(rm ? rm[1] : null);
@@ -2103,6 +2164,27 @@ async function route() {
   } catch (e) {
     view.innerHTML = `<div class="empty">Hiba: ${esc(e.message)}</div>`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Informacio: hibabejelentes a GitHub Issues oldalon
+// ---------------------------------------------------------------------------
+const ISSUES_URL = "https://github.com/vkbubu11/StockWatch/issues";
+
+function pageInfo() {
+  view.innerHTML = `
+    <div class="page-head"><h1>Információ</h1></div>
+    <section class="card"><h2>Hibabejelentés</h2><div class="card-body">
+      <p>Hibát bejelenteni a rendszer GitHub oldalán, az <strong>Issues</strong> fülön lehet.</p>
+      <p><a class="btn primary" href="${ISSUES_URL}" target="_blank" rel="noopener noreferrer">Hiba bejelentése a GitHubon (Issues) ↗</a></p>
+      <p class="muted small">Írd le, mit csináltál, mire számítottál, és mi történt helyette – ha lehet, képernyőképpel és az érintett
+        papír tickerével. Jelszót, API kulcsot vagy webhook címet soha ne másolj be.</p>
+      <p class="muted small">Cím: <a href="${ISSUES_URL}" target="_blank" rel="noopener noreferrer">${ISSUES_URL}</a></p>
+    </div></section>
+    <section class="card"><h2>A rendszerről</h2><div class="card-body muted">
+      StockWatch – technikai elemzés és jelzések amerikai részvényekre és ETF-ekre, Alpaca paper (nem valódi pénzes) kereskedéssel.
+      Nem befektetési tanács.
+    </div></section>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -2418,7 +2500,8 @@ var BT_PARAM_LABELS = {
   limit_pct: "Vételi limit a záró alatt (%)", stop_atr: "Stop (ATR-szeres)", atr_period: "ATR periódus",
   exit_crsi: "Kilépés: ConnorsRSI felett", exit_sma: "Kilépés: záró az SMA felett (0 = ki)", time_stop: "Időkorlát (nap)",
   min_price: "Min. ár ($)", min_dollar_volume: "Min. dollárforgalom ($/nap)", earnings_blackout_days: "Gyorsjelentés-tilalom (nap)",
-  max_signals_per_day: "Napi max. jelzés (0 = nincs)", max_open: "Max. nyitott (0 = nincs)", cost_bps: "Költség (bps / oldal)",
+  max_signals_per_day: "Napi max. jelzés (0 = nincs)", max_open: "Max. nyitott (0 = nincs)", cost_bps: "Csúszás + spread (bps / oldal)",
+  commission_bps: "Kötési díj (bps / oldal; a Beállításokból)",
 };
 var BT_REASON = { signal: "kilépési jel", time: "időkorlát", stop: "stop", gap_stop: "rés a stop alatt" };
 
@@ -2451,7 +2534,7 @@ async function pageBacktest(runId) {
             <label>Ticker <input name="symbol" list="bt-symbols" value="${esc(sym)}" required maxlength="12" style="width:8em;text-transform:uppercase"></label>
             <datalist id="bt-symbols">${d.symbols.map((m) => `<option value="${esc(m.symbol)}">${esc(m.first)} → ${esc(m.last)}</option>`).join("")}</datalist>
             <label>Kezdődátum <input type="date" name="start" value="${esc(saved.start || "2000-01-01")}" min="1980-01-01" required></label>
-            <button class="btn" type="button" id="bt-fetch">Adatok összegyűjtése</button>
+            <span id="bt-listed" class="small muted"></span>
             <div id="bt-data" class="small muted" style="margin-top:6px"></div>
           </fieldset>
           <fieldset><legend>2. Stratégia</legend>
@@ -2478,11 +2561,29 @@ async function pageBacktest(runId) {
     const s = form.symbol.value.trim().toUpperCase();
     const m = d.symbols.find((x) => x.symbol === s);
     $("#bt-data").innerHTML = m
-      ? `Letöltve: <b>${esc(m.first)} → ${esc(m.last)}</b> (${fmt(m.bars, 0)} gyertya, ${esc(new Date(m.fetched_at).toLocaleString("hu-HU", { dateStyle: "short", timeStyle: "short" }))})`
+      ? `Letöltve: <b>${esc(m.first)} → ${esc(m.last)}</b> (${fmt(m.bars, 0)} gyertya, ${esc(new Date(m.fetched_at).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }))})`
         + (m.quality && m.quality.issues.length ? ` · <span style="color:var(--warn)">${esc(m.quality.issues.join("; "))}</span>` : " · adatminőség: rendben")
-        + (m.stale ? ` · <span style="color:var(--warn)">elavult – gyűjtsd újra</span>` : "")
-      : `Erről a papírról még nincs adat – nyomd meg az „Adatok összegyűjtése” gombot. <span class="muted">(Tár: ${fmt(d.usage_mb, 1)} / ${d.limit_mb} MB)</span>`;
+        + (m.stale ? ` · <span style="color:var(--warn)">elavult – a futtatás frissíti</span>` : "")
+      : `Erről a papírról még nincs adat – a futtatás először letölti. <span class="muted">(Tár: ${fmt(d.usage_mb, 1)} / ${d.limit_mb} MB)</span>`;
   };
+  // a naptar also hatara a tozsdere lepes napja: a korabbi napok nem valaszthatok (a bongeszo kiszurkiti)
+  let listingSeq = 0, listingTimer = null;
+  const showListing = async () => {
+    const s = form.symbol.value.trim().toUpperCase(), seq = ++listingSeq, el = $("#bt-listed");
+    if (!/^[A-Z0-9.\-^]{1,12}$/.test(s)) { el.textContent = ""; form.start.min = "1980-01-01"; return; }
+    el.textContent = "tőzsdére lépés: keresem...";
+    const r = await api(`/api/backtest/listing?symbol=${encodeURIComponent(s)}`).catch(() => null);
+    if (seq !== listingSeq || !el.isConnected) return;
+    form.start.min = (r && r.min) || "1980-01-01";
+    let note = r && r.listed ? `tőzsdére lépés: <b>${esc(r.listed)}</b>` : "a tőzsdére lépés napja nem ismert";
+    if (r && r.listed && r.min !== r.listed) note += ` <span class="muted">(az adat legkorábban ${esc(r.min)}-tól)</span>`;
+    if (form.start.value && form.start.value < form.start.min) {
+      form.start.value = form.start.min;
+      note += ` · a kezdődátumot erre igazítottam`;
+    }
+    el.innerHTML = note;
+  };
+  const queueListing = () => { clearTimeout(listingTimer); listingTimer = setTimeout(showListing, 400); };
   const showParams = () => {
     const s = strategies.find((x) => x.id === form.strategy.value);
     const over = (saved.strategy === s.id && saved.params) || {};
@@ -2506,8 +2607,8 @@ async function pageBacktest(runId) {
       strategy: form.strategy.value, params, capital: Number(form.capital.value), alloc_pct: Number(form.alloc_pct.value),
       include_holdout: form.include_holdout.checked };
   };
-  showData(); showParams();
-  form.symbol.addEventListener("input", showData);
+  showData(); showParams(); showListing();
+  form.symbol.addEventListener("input", () => { showData(); queueListing(); });
   form.strategy.addEventListener("change", showParams);
 
   const poll = () => {
@@ -2527,12 +2628,6 @@ async function pageBacktest(runId) {
   btJob(d.job);
   if (d.job.state === "running") poll();
 
-  $("#bt-fetch").addEventListener("click", async () => {
-    const v = values();
-    btSaveForm({ ...btLoadForm(), symbol: v.symbol, start: v.start });
-    try { const r = await api("/api/backtest/data", { method: "POST", body: JSON.stringify({ symbol: v.symbol, start: v.start }) }); btJob(r.job); poll(); }
-    catch (e) { btJob({ state: "error", message: e.message }); }
-  });
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const v = values();
@@ -2581,7 +2676,7 @@ function btResult(r) {
   const params = Object.entries(r.overrides || {});
   return `
   <section class="card">
-    <h2>${esc(r.symbol)} · ${esc(STRAT[r.strategy] ? STRAT[r.strategy][1] : r.strategy_label)} <span class="muted">– ${esc(r.start)} → ${esc(r.end)} · költség ${fmt(r.params.cost_bps, 0)} bps / oldal · pozíció ${fmt(r.alloc_pct, 0)}%</span>
+    <h2>${esc(r.symbol)} · ${esc(STRAT[r.strategy] ? STRAT[r.strategy][1] : r.strategy_label)} <span class="muted">– ${esc(r.start)} → ${esc(r.end)} · költség ${fmt(r.params.cost_bps + (r.params.commission_bps || 0), 1)} bps / oldal${r.params.commission_bps ? ` (ebből kötési díj ${fmt(r.params.commission_bps, 1)})` : ""} · pozíció ${fmt(r.alloc_pct, 0)}%</span>
       <span style="margin-left:auto;font-weight:400"><button class="btn" type="button" id="bt-csv">Kötések CSV</button></span></h2>
     <div class="card-body">
       ${params.length ? `<div class="small" style="margin-bottom:6px">Módosított paraméterek: ${params.map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join(" ")}</div>` : ""}
@@ -2629,7 +2724,7 @@ function btRunsCard(d) {
   return `<section class="card"><h2>Mentett futtatások <span class="muted">– legfeljebb 50, a legújabb elöl</span></h2><div class="table-wrap"><table>
     <thead><tr><th>Mikor</th><th>Papír</th><th>Stratégia</th><th>Időszak</th><th class="num">Kötés</th><th class="num">Nyerési arány</th><th class="num">Átlag</th><th class="num">CAGR</th><th class="num">Vettem és tartottam</th><th class="num">Max DD</th><th></th></tr></thead>
     <tbody>${d.runs.map((x) => `<tr class="clickable" data-href="#/backtest/run/${esc(x.id)}">
-      <td>${esc(new Date(x.created_at).toLocaleString("hu-HU", { dateStyle: "short", timeStyle: "short" }))}</td>
+      <td>${esc(new Date(x.created_at).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }))}</td>
       <td class="ticker">${esc(x.symbol)}</td>
       <td>${esc(STRAT[x.strategy] ? STRAT[x.strategy][1] : x.strategy_label)}${Object.keys(x.overrides || {}).length ? ` <span class="muted small">(${Object.entries(x.overrides).map(([k, v]) => `${esc(k)}=${esc(v)}`).join(", ")})</span>` : ""}</td>
       <td>${esc(x.start)} → ${esc(x.end)}${x.holdout ? ` <span class="badge warn">holdout</span>` : ""}</td>
@@ -2762,7 +2857,7 @@ async function loadNews(symbol, refresh = false) {
 
 function newsCard(d) {
   const f = d.features || {};
-  const when = (iso) => new Date(iso).toLocaleString("hu-HU", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const when = (iso) => new Date(iso).toLocaleString(LOCALE, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   const last = Object.values(d.fetched || {}).sort().pop();
   const rows = d.articles.slice(0, 25).map((a) => {
     const sc = a.score || {};

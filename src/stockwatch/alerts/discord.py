@@ -7,8 +7,9 @@ jogosultsag es allando kapcsolat nelkul. A chart kepet MEMORIABOL kuldjuk
 Beallitas:
   1. Discord: Szerver beallitasok -> Integraciok -> Webhookok -> Uj webhook
      -> csatorna kivalasztasa -> "Webhook URL masolasa"
-  2. python cli.py discord      (rejtett bevitel, ellenorzes, probauzenet)
-     szerveren:  sudo stockwatch-cli discord
+  2. a feluleten: Beallitasok -> Discord ertesitesek (ellenorzes, probauzenet, csere, torles), vagy
+     python cli.py discord      (rejtett bevitel; szerveren: sudo stockwatch-cli discord)
+  A csatorna minden kuldes elott a titokfajlbol olvassa a cimet: a csere ujrainditas nelkul el.
 
 Az URL maga a jelszo: csak a titokfajlba kerul (DISCORD_WEBHOOK_URL), soha
 nem a settings.yaml-ba es nem a naploba.
@@ -24,6 +25,7 @@ from datetime import datetime, timezone
 import requests
 
 from ..config import Settings, discord_webhook_url
+from ..i18n import translate
 from .base import Alert, AlertChannel
 
 log = logging.getLogger(__name__)
@@ -64,22 +66,34 @@ class DiscordChannel(AlertChannel):
 
     def __init__(self, settings: Settings, url: str | None = None) -> None:
         self.settings = settings
-        self.url = (url if url is not None else discord_webhook_url()) or ""
-        self.enabled = is_discord_url(self.url)
+        # URL nelkul a titokfajlt koveti: a feluletrol csereltt webhook a futo monitorban ujrainditas nelkul el
+        self._follow = url is None
         self._last_sent = 0.0
+        self._set_url(url if url is not None else discord_webhook_url())
+
+    def _set_url(self, url: str | None) -> None:
+        self.url = (url or "").strip()
+        self.enabled = is_discord_url(self.url)
         if self.url and not self.enabled:
             log.error("A DISCORD_WEBHOOK_URL nem ervenyes Discord webhook cim - a csatorna kikapcsolva.")
+
+    def refresh(self) -> None:
+        """A titokfajl aktualis webhookja (csak koveto modban)."""
+        if self._follow:
+            url = (discord_webhook_url() or "").strip()
+            if url != self.url:
+                self._set_url(url)
 
     def payload(self, alert: Alert, with_image: bool) -> dict:
         body = alert.body.replace("```", "'''")
         description = f"```\n{body}\n```"
         if len(description) > DESCRIPTION_LIMIT:
-            description = f"```\n{body[: DESCRIPTION_LIMIT - 40]}\n...(rovidítve)\n```"
+            description = f"```\n{body[: DESCRIPTION_LIMIT - 40]}\n...({translate('rovidítve', self.settings.alerts.language)})\n```"
         embed = {
             "title": _cut(f"{alert.emoji} {alert.title}", TITLE_LIMIT),
             "description": description,
             "color": color_of(alert),
-            "footer": {"text": "StockWatch · Nem befektetési tanács"},
+            "footer": {"text": "StockWatch · " + translate("Nem befektetési tanács", self.settings.alerts.language)},
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if with_image:
@@ -88,6 +102,7 @@ class DiscordChannel(AlertChannel):
         return {"username": "StockWatch", "embeds": [embed], "allowed_mentions": {"parse": []}}
 
     def send(self, alert: Alert) -> bool:
+        self.refresh()
         if not self.enabled:
             return False
         self._respect_rate_limit()
