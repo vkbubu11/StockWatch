@@ -8,6 +8,7 @@ Ugyanazokkal a fuggvenyekkel szamol, mint az ertesitesek (entry.py, meanrev.py),
                    szurokeszlettel es pontozassal ertekeljuk, "ha most neznenk" alapon - NEM jelzes.
   * visszahuzas  - a Visszahuzas-csalad strategiai (RSI2): melyik szabaly teljesul most, es mennyi
                    hianyzik a jelzeshez.
+  * momentum     - a Momentum (12-1) rotacio: a papir 12-1 havi hozama, es hanyadik lenne a rangsorban.
 
 Nyitvatartas alatt ket nezet keszul: "elo" (a mai, meg alakulo gyertyaval - mintha most zarna) es a
 legutobbi LEZART nap (amit a monitor tenylegesen ertekel). Az elo nezet volumene reszleges.
@@ -16,12 +17,13 @@ Semmit nem kuld ki, nem kereskedik es nem naploz - csak megmutatja.
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date, datetime, timezone
 
 import pandas as pd
 
-from . import best, config, entry, indicators, market, meanrev, monitor, sessions, shadow
+from . import best, config, entry, indicators, market, meanrev, momentum, monitor, sessions, shadow
 from .config import Settings, load_watchlist
 from .forecast import Calibration, analyse
 
@@ -113,6 +115,33 @@ def _pullback(symbol: str, frame: pd.DataFrame, settings: Settings, ctx: market.
     return out
 
 
+def _momentum(symbol: str, frame: pd.DataFrame, settings: Settings, universes: dict[str, set[str]]) -> dict:
+    """Momentum (12-1): a papir pontszama most, es hanyadik lenne a legutobbi napi rangsorban
+    (monitor.momentum_cycle -> data/momentum_state.json; a tobbi papir pontszama onnan)."""
+    switch = settings.strategies.momentum
+    params = switch.params
+    out = {"enabled": switch.enabled, "in_universe": symbol in universes.get("momentum", set()),
+           "top_n": params.top_n, "buffer": params.buffer, "lookback": params.lookback, "skip": params.skip}
+    score = momentum.score_one(frame, params)
+    if score is None:
+        return {**out, "error": f"nem jogosult (min. {params.lookback + 1} nap historia, ar >= {params.min_price:g} $, "
+                                f"forgalom >= {params.min_dollar_volume / 1e6:.0f} M$/nap)"}
+    out["score_pct"] = round(score * 100, 2)
+    state = None
+    try:
+        if settings.momentum_state_path.exists():
+            state = json.loads(settings.momentum_state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        state = None
+    if not state or not state.get("scores"):
+        return {**out, "note": "meg nincs napi rangsor (a monitor zaras utan kesziti)"}
+    others = {s: v for s, v in state["scores"].items() if s != symbol}
+    rank = 1 + sum(1 for v in others.values() if v > score * 100)
+    held = symbol in (state.get("held") or [])
+    return {**out, "rank": rank, "universe": len(others) + 1, "ranking_as_of": state.get("as_of"), "held": held,
+            "would_buy": rank <= params.top_n, "would_keep": rank <= params.buffer}
+
+
 def _view(symbol: str, frame: pd.DataFrame, settings: Settings, calibration: Calibration,
           ctx: market.MarketContext, earnings_date: date | None, universes: dict[str, set[str]],
           complete: bool) -> dict:
@@ -131,6 +160,7 @@ def _view(symbol: str, frame: pd.DataFrame, settings: Settings, calibration: Cal
                                     for c in forecast.components]},
         "signals": [], "forming": [], "patterns": _patterns(forecast.matches, frame),
         "pullback": _pullback(symbol, frame, settings, ctx, earnings_date, universes),
+        "momentum": _momentum(symbol, frame, settings, universes),
     }
     if len(frame) < MIN_BARS:
         return view
@@ -183,7 +213,7 @@ def evaluate_symbol(symbol: str, settings: Settings | None = None, refresh: bool
     earnings_date = earnings.next_date(symbol)
     calibration = Calibration.load(settings.calibration_path)
     universes = {sid: set(monitor.pullback_symbols(settings, allow_network=False, strategy=sid))
-                 for sid in PULLBACK_IDS}
+                 for sid in PULLBACK_IDS + ("momentum",)}
 
     views = {"closed": _view(symbol, closed, settings, calibration, ctx, earnings_date, universes, True)}
     if len(closed) < len(enriched):

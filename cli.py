@@ -14,6 +14,7 @@
     python cli.py replay <jel-id>                naplozott dontes visszajatszasa
     python cli.py index-scan [--nasdaq100] [--sp500] [--alerts]   indexek atnezese
     python cli.py web [--port 8765]              helyi webes felulet a bongeszoben
+    python cli.py momentum-research [--survivorship-check]   a Momentum (12-1) rotacio validalasa
     python cli.py fetch-universe                 a bovitett kutatasi minta letoltese
     python cli.py entry-research [--universe]    belepesi szabalyvaltozatok osszehasonlitasa
     python cli.py levels --symbol AAPL
@@ -744,6 +745,30 @@ def cmd_meanrev_research(args) -> int:
     return 0
 
 
+def cmd_momentum_research(args) -> int:
+    """A Momentum (12-1) rotacio validalasa: tanito / validacio / (holdout), az egyenlo sulyu univerzumhoz kepest."""
+    import json
+
+    from stockwatch import indexes as indexes_mod
+    from stockwatch import momentum_research as mo
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings)
+    if args.symbols:
+        symbols = _symbols(args)
+    else:
+        members = indexes_mod.IndexMembers(settings)
+        symbols = list(dict.fromkeys(members.members("nasdaq100") + members.members("sp500")))
+    print(f"Momentum (12-1) validalas {len(symbols)} papiron"
+          f"{' (HOLDOUT megnyitva - naplozva!)' if args.holdout else ''}...")
+    report = mo.run(symbols, settings, holdout=args.holdout,
+                    survivorship_symbols=_universe_symbols() if args.survivorship_check else None)
+    print()
+    print(mo.report_markdown(json.loads(json.dumps(report, default=mo._default))))
+    print(f"Mentve: {mo.OUT_DIR}")
+    return 0
+
+
 def cmd_entry_research(args) -> int:
     import os
     from stockwatch import entry_research as er
@@ -1203,6 +1228,13 @@ def main() -> int:
                    help="osszevetes a config/universe.yaml listaval (kiesett / csodbe ment papirokkal)")
     p.add_argument("--holdout", action="store_true", help="a ZAROLT vegso teszt-idoszak megnyitasa (naplozva)")
     p.set_defaults(func=cmd_meanrev_research)
+
+    p = subparsers.add_parser("momentum-research", help="a Momentum (12-1) rotacio validalasa")
+    p.add_argument("--symbols", **common)
+    p.add_argument("--survivorship-check", action="store_true",
+                   help="osszevetes a config/universe.yaml listaval (kiesett / csodbe ment papirokkal)")
+    p.add_argument("--holdout", action="store_true", help="a ZAROLT vegso teszt-idoszak megnyitasa (naplozva)")
+    p.set_defaults(func=cmd_momentum_research)
 
     p = subparsers.add_parser("backtest-symbol", help="egy papir / ETF teljes tortenete, egy strategiaval")
     p.add_argument("symbol")

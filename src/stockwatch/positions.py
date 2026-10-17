@@ -52,6 +52,8 @@ EVENT_LABELS = {
 }
 PULLBACK_EXIT_EVENTS = {"signal": "pos_exit", "time": "pos_timeout", "stop": "pos_stop", "gap_stop": "pos_stop"}
 PULLBACK_REASONS = {"signal": "signal", "time": "timeout", "stop": "stop", "gap_stop": "stop"}
+MOMENTUM_EXIT_EVENTS = {"rotation": "pos_exit", "stop": "pos_stop", "gap_stop": "pos_stop"}
+MOMENTUM_REASONS = {"rotation": "rotation", "stop": "stop", "gap_stop": "stop"}
 
 
 @dataclass
@@ -91,6 +93,7 @@ class TrackedPosition:
     signal_at: str = ""            # mikor kuldte ki a rendszer a jelzest (ISO UTC)
     submitted_at: str = ""         # a paper megbizas bekuldese (ISO UTC)
     entry_at: str = ""             # a paper belepes teljesulese (ISO UTC, az Alpaca szerint)
+    exit_signal_date: str = ""     # Momentum: a kilepest kijelolo havi rebalansz napja (masnap nyitaskor zar)
 
     @property
     def is_active(self) -> bool:
@@ -172,7 +175,9 @@ class PositionTracker:
         for position in self.active(symbol):
             if position.source == "alpaca" or strategy not in (None, position.strategy):
                 continue                     # a paper trade allapota az iranyado (reconcile)
-            if position.exit_mode == "indicator":
+            if position.strategy == "momentum":
+                events += self._advance_momentum(position, df)
+            elif position.exit_mode == "indicator":
                 events += self._advance_pullback(position, df)
             else:
                 events += self._advance(position, df)
@@ -218,6 +223,48 @@ class PositionTracker:
         position.result_r = round((t.exit_price - t.entry_price) / risk, 3) if risk > 0 else None
         position.notes = (position.notes + [f"kilepes {t.exit_date:%Y-%m-%d} @ {t.exit_price:.2f} ({t.reason})"])[-20:]
         out.append((position, PULLBACK_EXIT_EVENTS.get(t.reason, "pos_exit")))
+        return out
+
+    def _advance_momentum(self, position: TrackedPosition, df: pd.DataFrame) -> list[tuple[TrackedPosition, str]]:
+        """Momentum: a kotes ujrajatszasa a rebalansz napjatol UGYANAZZAL a fuggvennyel, mint a kutatasban
+        (momentum.simulate_trade). A kilepest a havi rebalansz jeloli ki (`mark_momentum_exit`)."""
+        from . import momentum
+        from .config import MomentumParams
+
+        day = pd.Timestamp(position.signal_date)
+        if day not in df.index:
+            return []
+        params = MomentumParams(**position.params) if position.params else MomentumParams()
+        exit_day = pd.Timestamp(position.exit_signal_date) if position.exit_signal_date else None
+        t = momentum.simulate_trade(position.symbol, df, int(df.index.get_loc(day)), params, exit_day)
+        out: list[tuple[TrackedPosition, str]] = []
+        position.last_date = f"{df.index[-1]:%Y-%m-%d}"
+        if t.status == "pending":
+            return out
+        if position.status == "pending":
+            position.status, position.entry_date, position.entry_price = "open", f"{t.entry_date:%Y-%m-%d}", t.entry_price
+            out.append((position, "pos_entered"))
+        position.held = t.held
+        if t.status == "open":
+            return out
+        position.status, position.closed_at = "closed", f"{t.exit_date:%Y-%m-%d}"
+        position.reason = MOMENTUM_REASONS.get(t.reason, t.reason)
+        position.result_pct = round(t.net_pct, 3)
+        risk = t.entry_price - position.stop
+        position.result_r = round((t.exit_price - t.entry_price) / risk, 3) if risk > 0 else None
+        position.notes = (position.notes + [f"kilepes {t.exit_date:%Y-%m-%d} @ {t.exit_price:.2f} ({t.reason})"])[-20:]
+        out.append((position, MOMENTUM_EXIT_EVENTS.get(t.reason, "pos_exit")))
+        return out
+
+    def mark_momentum_exit(self, symbol: str, day: pd.Timestamp) -> list[tuple[TrackedPosition, str]]:
+        """A havi rebalansz kilepesi dontese (a papir kiesett a pufferbol): holnap nyitaskor zar."""
+        out = []
+        for position in self.active(symbol):
+            if position.strategy != "momentum" or position.exit_signal_date or position.source == "alpaca":
+                continue
+            position.exit_signal_date = f"{day:%Y-%m-%d}"
+            position.exit_pending = "rotation"
+            out.append((position, "pos_exit_signal"))
         return out
 
     def reconcile(self, trades: dict) -> list[TrackedPosition]:
@@ -436,6 +483,8 @@ def mirror_trade(position: TrackedPosition, trade) -> None:
 def format_event(position: TrackedPosition, event: str) -> tuple[str, str]:
     """(cim, szoveg) egy kovetesi esemenyhez."""
     title = f"{position.symbol}: {position.pattern} - {EVENT_LABELS.get(event, event)}"
+    if position.strategy == "momentum":
+        return title, _format_momentum(position, event)
     if position.exit_mode == "indicator":
         return title, _format_pullback(position, event)
     state = position.position_state()
@@ -470,6 +519,25 @@ def format_event(position: TrackedPosition, event: str) -> tuple[str, str]:
     lines.append("")
     lines.append("A kovetes a jelzes szerinti belepest feltetelezi. Nem befektetesi tanacs.")
     return title, "\n".join(lines)
+
+
+def _format_momentum(position: TrackedPosition, event: str) -> str:
+    params = position.params or {}
+    lines = [f"Rebalansz napja: {position.signal_date}  |  {position.shares} db"]
+    if event == "pos_entered":
+        lines += [f"Belepo (nyito): {position.entry_price:.2f} $ ({position.entry_date})",
+                  f"Tartas: amig a rangja a legjobb {params.get('buffer', 20)}-on belul marad (havi ellenorzes)."]
+    elif event == "pos_exit_signal":
+        lines += [f"Belepo: {position.entry_price:.2f} $ ({position.entry_date}), tartas: {position.held} nap",
+                  f"KILEPESI JEL a havi rebalanszon ({position.exit_signal_date}): kiesett a legjobb "
+                  f"{params.get('buffer', 20)} kozul.",
+                  "TEENDO: holnap NYITASKOR add el (piaci / nyitoaras megbizassal)."]
+    else:
+        lines += [f"Belepo: {position.entry_price:.2f} $ ({position.entry_date})  |  zarva: {position.closed_at}",
+                  f"Eredmeny: {position.result_pct:+.2f}% netto" if position.result_pct is not None else "Eredmeny: -",
+                  f"Tartas: {position.held} kereskedesi nap"]
+    lines += ["", "A kovetes a jelzes szerinti belepest feltetelezi. Nem befektetesi tanacs."]
+    return "\n".join(lines)
 
 
 def _format_pullback(position: TrackedPosition, event: str) -> str:

@@ -125,6 +125,8 @@ def review(record: dict, bars: pd.DataFrame | None, settings: Settings) -> dict:
     out["days"] = len(after)
     if record.get("event") == "entry_pullback":
         return _review_pullback(record, bars, signal_date, settings, out)
+    if record.get("event") == "entry_momentum":
+        return _review_momentum(record, after, out)
     if record.get("event") in ENTRY_TRADES:
         return _review_entry(record, after, settings, out)
     return _review_pattern(record, after, side, out)
@@ -229,6 +231,21 @@ def _review_pullback(record: dict, bars: pd.DataFrame, signal_date: pd.Timestamp
         out["pnl_usd"] = (out["now_price"] - t.entry_price) * shares if shares else None
     out["r"], out["entry_fill"] = r, t.entry_price
     _excursions(after, t.entry_price, "long", out)
+    return out
+
+
+def _review_momentum(record: dict, after: pd.DataFrame, out: dict) -> dict:
+    """Momentum: belepes a rebalansz utani nyitason; a kilepest a havi rebalansz donti el (a kovetes
+    / paper trade mutatja) - itt a valtozas a mostani arig."""
+    if after.empty:
+        out["grade"], out["outcome"] = "open", "a vetel holnap nyitaskor"
+        return out
+    fill = float(after["open"].iloc[0])
+    shares = int(((record.get("entry") or {}).get("plan") or {}).get("shares") or 0)
+    out["entry_fill"], out["change_pct"] = fill, (out["now_price"] / fill - 1) * 100
+    out["grade"], out["outcome"] = "open", f"tartva (havi rebalansz donti el), {len(after)} nap"
+    out["pnl_usd"] = (out["now_price"] - fill) * shares if shares else None
+    _excursions(after, fill, "long", out)
     return out
 
 

@@ -1233,13 +1233,14 @@ def backtest_action(action: str, body: dict) -> dict:
 
 def strategies_payload() -> dict:
     from . import meanrev_research as mr
+    from . import momentum_research
 
     settings = load_settings()
     cfg = settings.strategies
     tracker = positions.PositionTracker(settings, read_only=True)
     book = broker.BrokerBook(settings, read_only=True)
     summaries = {"pullback": mr.load_summary(), "deep": mr.load_summary(mr.DEEP_DIR),
-                 "etf": mr.load_summary(mr.ETF_DIR),
+                 "etf": mr.load_summary(mr.ETF_DIR), "momentum": momentum_research.load_summary(),
                  "sandbox": mr.load_summary(mr.SANDBOX_DIR)}
     out = []
     for sid in config.STRATEGY_IDS:
@@ -1258,6 +1259,7 @@ def strategies_payload() -> dict:
             "open": sum(1 for p in tracked if p.is_active),
             "paper_open": sum(1 for t in book.trades.values() if t.strategy == sid and t.is_active),
             "research": _research_brief(summaries.get(sid)),
+            "momentum": _momentum_state(settings) if sid == "momentum" else None,
         })
     return {"strategies": out, "paper": cfg.paper, "auto_trade": settings.broker.auto_trade}
 
@@ -1267,9 +1269,24 @@ def _research_brief(summary: dict | None) -> dict | None:
     if not summary:
         return None
     visible = (summary.get("main") or {}).get("visible") or {}
+    if "cagr" in visible:                  # portfolio-strategia (momentum_research.py)
+        return {"n": visible.get("trades"), "win": visible.get("trade_win"), "ev": visible.get("trade_avg"),
+                "per_week": (visible.get("trades_per_year") or 0) / 52, "cagr": visible.get("cagr"),
+                "sharpe": visible.get("sharpe"), "max_dd": visible.get("max_dd"), "excess": visible.get("excess"),
+                "baseline_cagr": visible.get("baseline_cagr"),
+                "passed": (summary.get("gate") or {}).get("passed"), "computed_at": summary.get("computed_at")}
     return {"n": visible.get("n"), "win": visible.get("win"), "ev": visible.get("ev"),
             "per_week": visible.get("fills_per_week"), "passed": (summary.get("gate") or {}).get("passed"),
             "computed_at": summary.get("computed_at")}
+
+
+def _momentum_state(settings) -> dict | None:
+    """A legutobbi napi momentum-rangsor (monitor.momentum_cycle irja)."""
+    path = settings.momentum_state_path
+    try:
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def strategies_action(body: dict) -> dict:

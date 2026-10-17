@@ -146,6 +146,9 @@ def replay(signal_id: str, settings: Settings | None = None, use_snapshot: bool 
     earnings = pd.Timestamp(rec["earnings_date"]).date() if rec.get("earnings_date") else None
     ctx = _replay_context(rec["symbol"], rec.get("regime"), bench)
     regime = ctx.regime(rec["symbol"], enriched, enriched.index[-1]) if ctx else None
+    if rec.get("kind") == "momentum":
+        raise ValueError("A momentum-jelzes keresztmetszeti rangsorbol szuletik (az osszes indextag) - "
+                         "egy papirbol nem jatszhato vissza. A dontes a jelzesnaploban es a momentum_state-ben latszik.")
     pullback = rec.get("kind") == "pullback"
     if pullback:
         # Visszahuzas: a naplozott beallitas-verzio strategia-parameterevel (meanrev.py)

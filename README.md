@@ -517,6 +517,28 @@ python cli.py meanrev-research --deep --holdout        # a zárolt 2025.04 után
 Alapból **fut és virtuálisan követ, de értesítést nem küld** (a jelzései egyeznek a Visszahúzáséval); a paper fiókhoz
 a Stratégiák fülön köthető.
 
+### Momentum (12-1) – havi rotáció
+
+Kakushadze–Serur: *151 Trading Strategies* (2018), 3.1 ár-momentum. A hónap utolsó kereskedési napján a Nasdaq-100 +
+S&P 500 tagjait (és a watchlistet) a 12 havi hozamuk szerint rangsorolja, a legutóbbi hónap nélkül. A legjobb **10**
+papírt tartja egyenlő súllyal; egy papír addig marad, amíg a legjobb **20** között van. Vétel és eladás a rebalanszt
+követő nyitáson. Stop nincs, mert a validáció szerint rontott.
+
+A 2026-10-i validáció (518 indextag, 5 bps költség) szerint az évi hozam a tanítón **+30%**, a validáción **+52%**.
+Ugyanannak a listának az egyenlő súlyú tartása ugyanekkor +17% és +9%. A max. visszaesés ~38%. A kiesett papírokat
+is tartalmazó vegyes listán a többlet évi **+8–10%**, ez a reálisabb várakozás. A könyv többi
+illeszkedő stratégiája (ETF-rotáció, dual momentum, több eszközös trend, alacsony volatilitás) a mi adatunkon nem érte
+meg. Részletek, kockázatok: [`docs/MOMENTUM-STRATEGY-2026-10.md`](docs/MOMENTUM-STRATEGY-2026-10.md).
+
+```bash
+python cli.py momentum-research --survivorship-check   # tanító / validáció, elfogadási feltétellel
+python cli.py momentum-research --holdout              # a zárolt 2025.04 utáni időszak – EGYSZER
+```
+
+Alapból **fut, értesít és virtuálisan követ**. A rangsort minden zárás után frissíti (Stratégiák fül → „Mostani
+rangsor”; a „Papír kiértékelése” ablak is mutatja a papír helyét). A paper fiókhoz a Stratégiák fülön köthető, ilyenkor
+egyszerre 10 pozíciót tart.
+
 ## Backteszt oldal (Backteszt fül)
 
 Egy kiválasztott papír vagy ETF **teljes története a megadott kezdődátumtól** (akár 1980-tól), a rendszer

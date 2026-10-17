@@ -47,6 +47,7 @@ const KIND = {
   retest: { text: "Visszateszt", cls: "go" },
   setup: { text: "Előkészület", cls: "watch" },
   pullback: { text: "Visszahúzás", cls: "go" },
+  momentum: { text: "Momentum-vétel", cls: "go" },
 };
 // Strategiak: melyik kuldte a jelzest / kotest
 const STRAT = {
@@ -54,6 +55,7 @@ const STRAT = {
   pullback: ["s-pullback", "Visszahúzás (RSI2)", "Mély, rövid visszahúzódás emelkedő trendben: vételi limit a záró alatt, kilépés a ConnorsRSI 50 fölé emelkedésekor."],
   deep: ["s-deep", "Mély visszahúzás", "A Visszahúzás (RSI2) bemenete (RSI(2) < 2, vételi limit 5%-kal a záró alatt, kilépés ConnorsRSI > 50), de tág, 5 ATR-es stoppal: a validáción a szoros stop a mélyponton zárta ki a később visszapattanó kötéseket. Alapból csak virtuálisan követ, értesítést nem küld (a jelzései a Visszahúzáséval egyeznek)."],
   etf: ["s-etf", "ETF visszahúzás", "Likvid részvény-ETF-ek (SPY, QQQ, szektorok…) rövid túladottsága emelkedő trendben: vételi limit 1%-kal a záró alatt, kilépés az első visszapattanáskor (záró > SMA5 vagy ConnorsRSI > 50). Nincs gyorsjelentés, nincs egyedi csődkockázat; naponta max. 2, egyszerre max. 4 kötés."],
+  momentum: ["s-momentum", "Momentum (12-1)", "Havi rotáció a legerősebb papírokba (151 Trading Strategies, 3.1): a hónap utolsó napján a Nasdaq-100 + S&P 500 tagjait a 12 havi hozamuk (a legutóbbi hónap nélkül) szerint rangsorolja, és a legjobb 10-et tartja egyenlő súllyal. Egy papír addig marad, amíg a legjobb 20-on belül van. Nagy hozam, de nagy visszaesések (a múltbeli tesztben ~38–48%)."],
   sandbox: ["s-sandbox", "Homokozó", "Szabad kutatói stratégia – soha nincs a paper fiókhoz kötve."],
 };
 const strategyBadge = (id, paper) => {
@@ -316,6 +318,9 @@ function renderCheck() {
     <h3 class="check-h">Visszahúzás-stratégiák <span class="muted small">– a jelzés a záron dől el${live ? "; most: ha így zárna" : ""}</span></h3>
     ${pullbackTable(v.pullback, live)}
 
+    <h3 class="check-h">Momentum (12-1) <span class="muted small">– havi rotáció: a legjobb ${v.momentum.top_n} papír, megtartás a legjobb ${v.momentum.buffer} között</span></h3>
+    ${momentumRow(v.momentum)}
+
     ${v.patterns.length ? `<h3 class="check-h">Minden aktív alakzat</h3>${checkPatterns(v.patterns)}` : ""}
     <details class="check-more"><summary>Irányjelzés összetevői</summary><div class="parts">${f.components.map((c) => `
       <div class="part"><span>${esc(c.name)}</span><span class="num ${c.score > 0 ? "up" : c.score < 0 ? "down" : ""}">${signed(c.score, 2)}</span><span class="muted">${esc(c.reason)}</span></div>`).join("")}</div></details>
@@ -372,6 +377,19 @@ function checkCard(s) {
     <details ${s.passed ? "" : "open"}><summary>Szűrők</summary><ul class="checks">${checks}</ul></details>
     <details><summary>Pontszám összetevői</summary><div class="parts">${parts}</div></details>
   </div>`;
+}
+
+function momentumRow(m) {
+  if (!m) return "";
+  const why = !m.enabled ? " (a stratégia ki van kapcsolva)" : !m.in_universe ? " (ezt a papírt nem figyeli – nincs a Nasdaq-100 / S&P 500 / watchlist listán)" : "";
+  if (m.error) return `<div class="callout">Nem rangsorolható: ${esc(m.error)}${esc(why)}</div>`;
+  const state = m.rank == null ? `<span class="muted">${esc(m.note || "")}</span>`
+    : m.would_buy ? `<span class="badge go">A legjobb ${m.top_n} között – a rebalanszon bekerülne</span>`
+    : m.would_keep ? `<span class="badge watch">A legjobb ${m.buffer} között – ha tartaná, megtartaná</span>`
+    : `<span class="badge fail">Nincs a legjobbak között</span>`;
+  return `<div class="callout">12-1 havi hozam most: <strong class="${m.score_pct > 0 ? "up" : "down"}">${signed(m.score_pct, 1, "%")}</strong>
+    ${m.rank != null ? ` · rang: <strong>${m.rank}.</strong> / ${m.universe} <span class="muted small">(a többi papír a ${esc(m.ranking_as_of)}-i rangsorból)</span>` : ""}
+    ${m.held ? ` · <strong>a stratégia most tartja</strong>` : ""}<div style="margin-top:6px">${state}${esc(why)}</div></div>`;
 }
 
 function pullbackTable(list, live) {
@@ -1095,6 +1113,14 @@ const PB_PARAMS = [
   ["max_signals_per_day", "Napi jelzés-limit (0 = nincs)", "Naponta legfeljebb ennyi jelzés (a legalacsonyabb RSI(2) előrébb). A validálás szerint a limit rontja az eredményt."],
   ["max_open", "Max. nyitott kötés (0 = nincs)", "Ebben a stratégiában egyszerre legfeljebb ennyi nyitott / függő kötés."],
 ];
+const MO_PARAMS = [
+  ["top_n", "Papírok száma", "Ennyi papír van a portfólióban, egyenlő súllyal (tőke / ennyi)."],
+  ["buffer", "Megtartás a legjobb … között", "A tartott papír addig marad, amíg a rangja ezen belül van (forgás-takarékos puffer)."],
+  ["lookback", "Momentum-ablak (nap)", "A hozamot ennyi kereskedési napra visszamenőleg nézi (~12 hónap)."],
+  ["skip", "Kihagyott utolsó napok", "A legutóbbi ~1 hónap kimarad: rövid távon a hozam inkább visszafordul."],
+  ["stop_pct", "Stop (%; 0 = nincs)", "Katasztrófa-stop a belépő alatt. A validáció szerint a 15–25%-os stop rontott, ezért alapból nincs."],
+  ["min_dollar_volume", "Min. dollárforgalom ($/nap)", "20 napos átlagos forgalom – az illikvid papírok kimaradnak."],
+];
 const BO_PARAMS = { min_score: "Min. pontszám", confirm_breakout: "Megerősített kitörés", exit_mode: "Kilépési mód",
   partial_r: "½ eladás (R)", min_stop_atr: "Stop min. távolság (ATR)", regime_filter: "Piaci rezsim-szűrő", earnings_blackout_days: "Earnings-tilalom (nap)" };
 
@@ -1126,13 +1152,23 @@ function bindPaperSwitch(after) {
   });
 }
 
+// A legutobbi napi momentum-rangsor (a monitor zaras utan irja): ki lenne bent, ha ma lenne a rebalansz
+function momentumTop(m) {
+  const held = new Set(m.held || []);
+  const n = (m.params && m.params.top_n) || 10;
+  return `<details style="margin-top:8px"><summary class="small">Mostani rangsor (${esc(m.as_of)}, ${m.universe} papír)${m.rebalance_day ? " · ma rebalansz" : ""}</summary>
+    <div class="muted small" style="margin-top:4px">A legjobb ${n}${held.size ? ` · félkövér: a stratégia most tartja (${held.size})` : ""}. Rebalansz: a hónap utolsó kereskedési napján.</div>
+    <ul class="mo-top">${(m.top || []).slice(0, n).map((t) => `<li class="${held.has(t.symbol) ? "held" : ""}"><a href="#/p/${esc(t.symbol)}">${t.rank}. ${esc(t.symbol)}</a><span class="${t.score > 0 ? "up" : "down"}">${signed(t.score, 0, "%")}</span></li>`).join("")}</ul></details>`;
+}
+
 async function pageStrategies() {
   await loadOverview();
   const d = await api("/api/strategies");
   const card = (x) => {
     const [cls, label, help] = STRAT[x.id];
     const st = x.stats || { n: 0 };
-    const params = x.params ? PB_PARAMS.map(([k, name, h]) => `<dt title="${esc(h)}">${esc(name)}</dt><dd>${esc(x.params[k])}</dd>`).join("")
+    const params = x.id === "momentum" && x.params ? MO_PARAMS.map(([k, name, h]) => `<dt title="${esc(h)}">${esc(name)}</dt><dd>${esc(x.params[k])}</dd>`).join("")
+      : x.params ? PB_PARAMS.map(([k, name, h]) => `<dt title="${esc(h)}">${esc(name)}</dt><dd>${esc(x.params[k])}</dd>`).join("")
       : x.entry ? Object.entries(x.entry).map(([k, v]) => `<dt>${esc(BO_PARAMS[k] || k)}</dt><dd>${esc(typeof v === "boolean" ? (v ? "igen" : "nem") : v)}</dd>`).join("") : "";
     return `<section class="card strat-card ${cls}"><div class="card-body" style="padding-top:14px">
       <div class="row"><h2 style="margin:0">${esc(label)}</h2>${x.paper ? `<span class="pill ok">paper fiókhoz kötve</span>` : x.can_paper ? `<span class="pill">kutatási</span>` : `<span class="pill warn">sosem paper</span>`}</div>
@@ -1145,9 +1181,12 @@ async function pageStrategies() {
         <dt>Nyerési arány</dt><dd>${st.n ? fmt(st.win * 100, 0) + "%" : "–"}</dd>
         <dt>Átlag eredmény</dt><dd class="${st.ev > 0 ? "up" : st.ev < 0 ? "down" : ""}">${st.n ? signed(st.ev, 2, "R") : "–"}</dd>
         <dt>Nyitott / függő</dt><dd>${x.open}${x.paper_open ? ` (paper: ${x.paper_open})` : ""}</dd>
-        ${x.research ? `<dt title="Múltbeli validálás (2017–2025.03, költség után, csak a mostani indextagokon – felfelé torzít)">Validálás (múlt)</dt>
+        ${x.research && x.research.cagr != null ? `<dt title="Múltbeli validálás (2017–2025.03, költség után, csak a mostani indextagokon – felfelé torzít; a vegyes, kiesett papírokat is tartalmazó listán jóval kisebb a többlet)">Validálás (múlt)</dt>
+          <dd>évi ${signed(x.research.cagr, 1, "%")} (univerzum: ${signed(x.research.baseline_cagr, 1, "%")}) · Sharpe ${fmt(x.research.sharpe, 2)} · max. visszaesés ${fmt(x.research.max_dd, 0)}%</dd>`
+        : x.research ? `<dt title="Múltbeli validálás (2017–2025.03, költség után, csak a mostani indextagokon – felfelé torzít)">Validálás (múlt)</dt>
           <dd>${x.research.win != null ? fmt(x.research.win * 100, 0) + "%" : "–"} nyerő · ${x.research.n} kötés · heti ${x.research.per_week != null ? fmt(x.research.per_week, 2) : "–"}${x.research.ev != null ? ` · átlag ${signed(x.research.ev, 2, "%")}` : ""}</dd>` : ""}</dl>
       ${params ? `<details style="margin-top:8px"><summary class="small">Szabályok</summary><dl>${params}</dl></details>` : ""}
+      ${x.momentum ? momentumTop(x.momentum) : ""}
       ${x.symbols ? `<details style="margin-top:8px"><summary class="small">ETF-lista (${x.symbols.length})</summary>
         <div class="row" style="margin-top:6px"><input type="text" data-etf-symbols value="${esc(x.symbols.join(", "))}" style="flex:1;min-width:0">
         <button class="btn" type="button" data-etf-save>Mentés</button></div></details>` : ""}
@@ -1785,6 +1824,7 @@ const EVENT = {
   broker_closed: ["fail", "Paper: lezárva", "A paper trade lezárult."],
   broker_skipped: ["fail", "Paper: nincs hely", "A jelzés érvényes, de a portfólióban nem volt hely (max. trade-szám vagy nincs elég szabad készpénz) – nem vásárolt."],
   broker_error: ["bad", "Paper: hiba", "A jelzést nem sikerült beküldeni a paper számlára (az ok az üzenetben)."],
+  entry_momentum: ["go", "Belépés (momentum)", "Havi rebalansz: a papír bekerült a legjobb 10 közé a 12-1 havi hozam szerint – vétel holnap nyitáskor, tartás amíg a legjobb 20-on belül marad."],
   entry_pullback: ["go", "Belépés (visszahúzás)", "Mély, rövid visszahúzódás emelkedő trendben: vételi limit holnapra a záró alatt, stoppal. Kilépés, ha a záró ConnorsRSI 50 fölé megy (másnap nyitáskor)."],
   pos_exit_signal: ["warn", "Kilépési jel", "A kilépési feltétel a zárón teljesült – holnap nyitáskor add el."],
   pos_exit: ["fail", "Kilépett", "A követett trade a kilépési jel után nyitáskor zárult."],

@@ -404,10 +404,45 @@ class SandboxStrategy(StrategySwitch):
         return value
 
 
-STRATEGY_IDS = ("breakout", "pullback", "deep", "etf", "sandbox")
-PAPER_STRATEGIES = ("breakout", "pullback", "deep", "etf")   # a homokozo soha nem kotheto a paper fiokhoz
+class MomentumParams(BaseModel):
+    """A "Momentum (12-1)" rotacio szabalyai (momentum.py) - a kutatas es az eles futas is ezt hasznalja.
+
+    Forras: Kakushadze-Serur: 151 Trading Strategies (2018), 3.1 ar-momentum (12 honapos hozam a
+    legutobbi honap nelkul, havi rebalansz, a legjobb papirok long). A 2026-10-i validacio
+    (docs/MOMENTUM-STRATEGY-2026-10.md) a TANITO idoszakon valasztotta a 10 papirt, a 20-as puffert
+    es a stop nelkuli valtozatot; a rezsimszuros "dual momentum" (4.1.2) es a stopok rontottak."""
+
+    lookback: int = 252                     # a momentum ablaka (kereskedesi nap, ~12 honap)
+    skip: int = 21                          # a legutobbi ~1 honap kimarad (rovid tavu visszafordulas)
+    top_n: int = 10                         # ennyi papir a portfolioban, egyenlo sullyal
+    buffer: int = 20                        # a tartott papir addig marad, amig a rangja ezen belul van
+    stop_pct: float = 0.0                   # katasztrofa-stop a belepo alatt %-ban (0 = nincs; a validacio szerint ront)
+    r_unit_pct: float = 20.0                # stop nelkul az R-statisztika egysege: 1R = ennyi % (csak kimutatas)
+    min_price: float = 5.0
+    min_dollar_volume: float = 20_000_000   # 20 napos atlagos dollarforgalom
+    cost_bps: float = 5.0                   # oldalankent (jutalek + csuszas)
+
+    @model_validator(mode="after")
+    def _check(self) -> "MomentumParams":
+        if not 60 <= self.lookback <= 504 or not 0 <= self.skip < self.lookback - 20:
+            raise ValueError("momentum.lookback: 60-504 nap, skip: 0 es lookback-20 kozott")
+        if not 1 <= self.top_n <= 50 or not self.top_n <= self.buffer <= 200:
+            raise ValueError("momentum.top_n: 1-50, buffer: top_n es 200 kozott")
+        if not 0 <= self.stop_pct < 90 or not 1 <= self.r_unit_pct <= 90:
+            raise ValueError("momentum.stop_pct: 0-90 (0 = ki), r_unit_pct: 1-90")
+        return self
+
+
+class MomentumStrategy(StrategySwitch):
+    """Momentum (12-1): havi rotacio a Nasdaq-100 + S&P 500 tagjai (es a watchlist) kozott."""
+
+    params: MomentumParams = Field(default_factory=MomentumParams)
+
+
+STRATEGY_IDS = ("breakout", "pullback", "deep", "etf", "momentum", "sandbox")
+PAPER_STRATEGIES = ("breakout", "pullback", "deep", "etf", "momentum")   # a homokozo soha nem kotheto a paper fiokhoz
 STRATEGY_LABELS = {"breakout": "Kitores", "pullback": "Visszahuzas (RSI2)", "deep": "Mely visszahuzas",
-                   "etf": "ETF visszahuzas", "sandbox": "Homokozo"}
+                   "etf": "ETF visszahuzas", "momentum": "Momentum (12-1)", "sandbox": "Homokozo"}
 
 
 class StrategiesSettings(BaseModel):
@@ -418,6 +453,7 @@ class StrategiesSettings(BaseModel):
     pullback: PullbackStrategy = Field(default_factory=PullbackStrategy)
     deep: DeepPullbackStrategy = Field(default_factory=DeepPullbackStrategy)
     etf: EtfStrategy = Field(default_factory=EtfStrategy)
+    momentum: MomentumStrategy = Field(default_factory=MomentumStrategy)
     sandbox: SandboxStrategy = Field(default_factory=SandboxStrategy)
 
     @field_validator("paper")
@@ -513,6 +549,10 @@ class Settings(BaseModel):
     @property
     def broker_path(self) -> Path:
         return DATA_DIR / "broker.json"
+
+    @property
+    def momentum_state_path(self) -> Path:
+        return DATA_DIR / "momentum_state.json"
 
     @property
     def holdings_path(self) -> Path:

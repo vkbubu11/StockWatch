@@ -51,6 +51,7 @@ class Alert:
             "entry_setup": "👀",
             "entry_revoked": "↩️",
             "entry_pullback": "🔵",
+            "entry_momentum": "🟣",
             "pos_exit_signal": "🔔",
             "pos_exit": "🏁",
             "broker_exit_signal": "🔔",

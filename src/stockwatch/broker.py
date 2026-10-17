@@ -475,13 +475,78 @@ def submit_pullback(signal, settings: Settings, client: AlpacaClient, book: Brok
     return trade
 
 
+def submit_momentum(signal, settings: Settings, client: AlpacaClient, book: BrokerBook, params) -> BrokerTrade:
+    """Momentum (12-1): piaci vetel a rebalanszt koveto NYITASKOR (a zaras utan bekuldott napi piaci
+    megbizast az Alpaca a nyitasra allitja sorba). Darabszam: a paper toke / top_n, legfeljebb a szabad
+    keszpenz. Stop csak `stop_pct` > 0 eseten (OTO). A kilepest a havi rebalansz jeloli ki (exit_pending),
+    es a nyitoaukcion megy (preopen)."""
+    if signal.kind != "momentum":
+        raise BrokerError("Nem momentum-jelzes.")
+    tid = trade_id(signal)
+    if tid in book.trades:
+        raise BrokerError("Ezt a jelzest mar bekuldtuk.")
+    if book.active(signal.symbol):
+        raise BrokerError(f"{signal.symbol}: mar van aktiv paper trade ezen a papiron.")
+    held = [t for t in book.active() if t.strategy == "momentum"]
+    if len(held) >= params.top_n:
+        raise NoRoom(f"A momentum-portfolio tele van ({params.top_n} papir).")
+    account = client.account()
+    if account.get("status") != "ACTIVE" or account.get("trading_blocked"):
+        raise BrokerError(f"A paper szamla nem kereskedheto (status: {account.get('status')}).")
+    if any(p.get("symbol") == signal.symbol for p in client.positions()):
+        raise BrokerError(f"{signal.symbol}: a paper szamlan mar van pozicio ebben a papirban.")
+    open_orders = client.orders("open")
+    if any(o.get("symbol") == signal.symbol for o in open_orders):
+        raise BrokerError(f"{signal.symbol}: a paper szamlan mar van nyitott megbizas erre a papirra.")
+
+    close = float(signal.price)
+    equity = float(account.get("equity") or 0) if settings.broker.size_from_account else settings.entry.account_size
+    budget = min(equity / params.top_n, free_cash(account, open_orders) / 1.02)   # 2% tartalek a nyitoresre
+    shares = int(budget // close) if close > 0 else 0
+    if shares < 1:
+        raise NoRoom(f"Nincs eleg szabad keret egy darabra sem ({budget:,.0f} $, ar {close:.2f} $).")
+    payload = {"symbol": signal.symbol, "qty": str(shares), "side": "buy", "type": "market", "time_in_force": "day",
+               "client_order_id": "sw-" + hashlib.sha1(tid.encode()).hexdigest()[:16] + "-mo"}
+    stop = price(signal.plan.stop) if params.stop_pct > 0 else 0.0
+    if stop:
+        payload.update(order_class="oto", stop_loss={"stop_price": str(stop)})
+    order = client.submit_order(payload)
+    leg = Leg("target", shares, 0.0)
+    leg.order_id, leg.entry_status = order["id"], order.get("status", "new")
+    _read_children(leg, order)
+    trade = BrokerTrade(
+        id=tid, symbol=signal.symbol, pattern=signal.pattern.name, kind=signal.kind,
+        signal_date=f"{signal.as_of:%Y-%m-%d}", entry_limit=price(close), stop=price(signal.plan.stop),
+        target=price(close), partial_price=None, shares=shares, horizon=0, exit_mode="indicator",
+        submitted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        signal_id=signal.signal_id, strategy="momentum", params=params.model_dump(),
+    )
+    trade.set_legs([leg])
+    trade.note(f"bekuldve: {shares} db piaci vetel nyitaskor (~{100 / params.top_n:.0f}% toke)"
+               + (f", stop {stop}" if stop else ", stop nelkul") + "; kilepes: ha kiesik a legjobb "
+               f"{params.buffer} kozul a havi rebalanszon")
+    book.trades[tid] = trade
+    return trade
+
+
+def mark_momentum_exits(book: BrokerBook, symbols: list[str], day: str) -> list[BrokerTrade]:
+    """A havi rebalansz kilepesi dontese a paper trade-ekre: holnap a nyitoaukcion (preopen) eladjuk."""
+    out = []
+    for trade in book.active():
+        if trade.strategy == "momentum" and trade.symbol in symbols and trade.status == "open" and not trade.exit_pending:
+            trade.exit_pending = "rotation"
+            trade.note(f"havi rebalansz ({day}): kiesett a legjobbak kozul - eladas a kovetkezo nyitaskor")
+            out.append(trade)
+    return out
+
+
 def pullback_exit_due(trade: BrokerTrade, bars: pd.DataFrame) -> str:
     """Visszahuzas: a LEZART napi gyertyan teljesult-e a kilepesi feltetel ("signal" | "time" | "")."""
     from . import meanrev
     from .config import PullbackParams
 
-    if bars.empty or not trade.filled_at:
-        return ""
+    if bars.empty or not trade.filled_at or trade.strategy == "momentum":
+        return ""                               # a momentum kilepeset a havi rebalansz jeloli ki
     params = PullbackParams(**trade.params) if trade.params else PullbackParams()
     feat = meanrev.features(bars, params)
     if bool(meanrev.exit_flags(feat, params).iloc[-1]):
@@ -925,8 +990,12 @@ def format_event(trade: BrokerTrade, event: str, extra: str = "") -> tuple[str, 
                      + (f"  |  {format_stamp(trade.filled_ts)}" if trade.filled_ts else ""))
     else:
         lines.append(f"Belepo-limit: {trade.entry_limit:.2f} $")
-    lines.append(f"Stop: {trade.stop:.2f} $ | Cel: {trade.target:.2f} $"
-                 + (f" | Fele: {trade.partial_price:.2f} $" if trade.partial_price else ""))
+    if trade.strategy == "momentum":
+        lines.append("Kilepes: a havi rebalanszon, ha kiesik a legjobbak kozul (nyitoaukcion)"
+                     + (f" | stop: {trade.stop:.2f} $" if (trade.params or {}).get("stop_pct") else " | stop nincs"))
+    else:
+        lines.append(f"Stop: {trade.stop:.2f} $ | Cel: {trade.target:.2f} $"
+                     + (f" | Fele: {trade.partial_price:.2f} $" if trade.partial_price else ""))
     if trade.realised_pnl is not None:
         lines.append(f"Eredmeny: {trade.realised_pnl:+,.2f} $")
     if extra:

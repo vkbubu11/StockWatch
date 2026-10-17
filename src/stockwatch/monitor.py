@@ -436,6 +436,8 @@ def submit_to_broker(signals: list, dispatcher: Dispatcher) -> None:
                 if signal.kind == "pullback":
                     trade = broker.submit_pullback(signal, settings, client, book,
                                                    settings.strategies.get(signal.strategy).params)
+                elif signal.kind == "momentum":
+                    trade = broker.submit_momentum(signal, settings, client, book, settings.strategies.momentum.params)
                 else:
                     trade = broker.submit(signal, settings, client, book)
                 title, body = broker.format_event(trade, "broker_submitted")
@@ -786,6 +788,20 @@ def pullback_symbols(settings: Settings, allow_network: bool = True, strategy: s
     return list(dict.fromkeys(out))
 
 
+def _refresh_unscanned(settings: Settings, symbols: list[str]) -> None:
+    """Az indexszkenneles csak a bekapcsolt indexeket frissiti - a tobbi tag adata itt (100-as kotegekben).
+    Ugyanazon a napon masodszor mar nem tolt le (a feed.update inkrementalis)."""
+    scanned = set(default_symbols(settings))
+    if settings.scan.nasdaq100 or settings.scan.sp500:
+        scanned |= set(index_symbols(settings, allow_network=False))
+    missing = [s for s in symbols if s not in scanned]
+    for start in range(0, len(missing), 100):
+        try:
+            feed.update(missing[start:start + 100], settings, universe=True)
+        except Exception:
+            log.exception("Adatfrissites sikertelen (%d papir)", len(missing[start:start + 100]))
+
+
 def pullback_cycle(settings: Settings, strategy: str, params, dispatcher: Dispatcher | None,
                    tracker: positions.PositionTracker | None, entry_state: entry.EntryState | None,
                    read_only: bool = False, refresh: bool = True) -> dict:
@@ -798,16 +814,7 @@ def pullback_cycle(settings: Settings, strategy: str, params, dispatcher: Dispat
 
     symbols = pullback_symbols(settings, allow_network=refresh, strategy=strategy)
     if refresh:
-        # az indexszkenneles csak a bekapcsolt indexeket frissiti - a tobbi tag adata itt
-        scanned = set(default_symbols(settings))
-        if settings.scan.nasdaq100 or settings.scan.sp500:
-            scanned |= set(index_symbols(settings, allow_network=False))
-        missing = [s for s in symbols if s not in scanned]
-        for start in range(0, len(missing), 100):
-            try:
-                feed.update(missing[start:start + 100], settings, universe=True)
-            except Exception:
-                log.exception("Visszahuzas: adatfrissites sikertelen (%d papir)", len(missing[start:start + 100]))
+        _refresh_unscanned(settings, symbols)
     ctx = market.load_context(settings, refresh=refresh)
     reference = ctx.benches.get(market.NASDAQ_INDEX)
     ref_day = reference.index[-1] if reference is not None and not reference.empty else None
@@ -901,6 +908,155 @@ def pullback_cycle(settings: Settings, strategy: str, params, dispatcher: Dispat
     log.info("%s: %d jelolt, %d kikuldve", strategy, len(found), len(alerted))
     return {"strategy": strategy, "candidates": len(found), "passed": sum(s.passed for s in found),
             "alerted": [s.symbol for s in alerted]}
+
+
+def momentum_cycle(settings: Settings, dispatcher: Dispatcher | None, tracker: positions.PositionTracker | None,
+                   entry_state: entry.EntryState | None, read_only: bool = False, refresh: bool = True,
+                   force_rebalance: bool = False) -> dict:
+    """Momentum (12-1) a zaron: minden nap rangsor + a nyitott kotesek kovetese; a honap UTOLSO
+    kereskedesi napjan rebalansz (momentum.decide - ugyanaz, mint a kutatasban). A rangsor allapota a
+    data/momentum_state.json-ba kerul (felulet, gyors kiertekeles)."""
+    from . import momentum, store
+
+    params = settings.strategies.momentum.params
+    symbols = pullback_symbols(settings, allow_network=refresh, strategy="momentum")
+    if refresh:
+        _refresh_unscanned(settings, symbols)
+    ctx = market.load_context(settings, refresh=refresh)
+    reference = ctx.benches.get(market.NASDAQ_INDEX)
+    ref_day = reference.index[-1] if reference is not None and not reference.empty else None
+    watch = set(load_watchlist().symbols)
+
+    frames, scores = {}, {}
+    for symbol in symbols:
+        df = sessions.completed_bars(store.load(symbol, settings))
+        if df is None or df.empty:
+            df = sessions.completed_bars(store.load(symbol, settings, universe=True))
+        if df is None or len(df) <= params.lookback:
+            continue
+        if ref_day is not None and df.index[-1] < ref_day:
+            continue                                     # elavult adat - nem a mai rangsor
+        frames[symbol] = df
+        scores[symbol] = momentum.score_one(df, params)
+    if not frames:
+        log.warning("Momentum: nincs friss adat")
+        return {"strategy": "momentum", "ranked": 0}
+    day = max(df.index[-1] for df in frames.values())
+
+    # a nyitott (virtualis) kotesek kovetese - idempotens, csak allapotvaltaskor ad esemenyt
+    if tracker is not None:
+        for symbol in {p.symbol for p in tracker.active() if p.strategy == "momentum"}:
+            df = frames.get(symbol)
+            if df is None:
+                df = sessions.completed_bars(store.load(symbol, settings, universe=symbol not in watch))
+            for position, event in tracker.update(symbol, df, strategy="momentum") if df is not None and not df.empty else []:
+                _dispatch_position(dispatcher, position, event)
+
+    ranked = momentum.ranking(scores)
+    active = [p for p in (tracker.active() if tracker is not None else []) if p.strategy == "momentum"]
+    holding = [p.symbol for p in active if not p.exit_pending]
+    rebalance = force_rebalance or momentum.is_rebalance_day(day)
+    decision = momentum.decide(ranked, holding, params)
+    state = {"as_of": f"{day:%Y-%m-%d}", "universe": len(ranked), "rebalance_day": rebalance,
+             "params": params.model_dump(), "held": holding,
+             "held_ranks": {s: decision.ranks.get(s) for s in holding},
+             "top": [{"symbol": s, "rank": i + 1, "score": round(scores[s] * 100, 2)} for i, s in enumerate(ranked[:60])],
+             "scores": {s: round(scores[s] * 100, 2) for s in ranked},          # a gyors kiertekeleshez
+             "plan": decision.to_dict() | {"ranks": {}},
+             "computed_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    alerted: list = []
+    if rebalance and settings.strategies.momentum.enabled:
+        alerted = _momentum_rebalance(settings, params, decision, frames, scores, ranked, day, ctx, watch,
+                                      dispatcher, tracker, entry_state, read_only)
+        state["rebalanced"] = {"day": f"{day:%Y-%m-%d}", "sell": decision.sell, "buy": [s.symbol for s in alerted]}
+    if not read_only:
+        _write_json(settings.momentum_state_path, state)
+    if entry_state is not None:
+        entry_state.save()
+    if tracker is not None:
+        tracker.save()
+    log.info("momentum: %d papir rangsorolva, rebalansz: %s, eladas %s, vetel %s", len(ranked), rebalance,
+             decision.sell if rebalance else "-", [s.symbol for s in alerted] if rebalance else "-")
+    return {"strategy": "momentum", "ranked": len(ranked), "rebalance": rebalance,
+            "sell": decision.sell if rebalance else [], "alerted": [s.symbol for s in alerted]}
+
+
+def _momentum_rebalance(settings, params, decision, frames, scores, ranked, day, ctx, watch, dispatcher,
+                        tracker, entry_state, read_only) -> list:
+    from . import momentum
+
+    # 1. kilepesek: a pufferbol kiesett papirok holnap nyitaskor (virtualis + paper)
+    for symbol in decision.sell:
+        for position, event in (tracker.mark_momentum_exit(symbol, day) if tracker is not None else []):
+            _dispatch_position(dispatcher, position, event)
+    if decision.sell and not read_only and settings.strategies.paper == "momentum":
+        try:
+            with broker.book_lock(settings):
+                book = broker.BrokerBook(settings)
+                marked = broker.mark_momentum_exits(book, decision.sell, f"{day:%Y-%m-%d}")
+                book.save()
+            for trade in marked:
+                if dispatcher is not None:
+                    title, body = broker.format_event(trade, "broker_exit_signal")
+                    dispatcher.dispatch(Alert(symbol=trade.symbol, title=title, body=body, forecast=None,
+                                              event="broker_exit_signal", strategy="momentum",
+                                              extra={"broker_trade": trade.id, "signal_id": trade.signal_id}))
+        except Exception:
+            log.exception("Momentum: a paper kilepesek kijelolese nem sikerult")
+
+    # 2. belepesek: az ures helyekre a legjobb rangu, meg nem tartott papirok
+    own = holdings.HoldingStore(settings, read_only=True)
+    journal = None if read_only else ledger.Ledger(settings, None, source="monitor")
+    alerted = []
+    for symbol in decision.buy:
+        rank = decision.ranks[symbol]
+        signal = momentum.make_signal(symbol, frames[symbol], settings, params, rank, scores[symbol], len(ranked))
+        if own.open(symbol):
+            decision_, reason = "skipped", "sajat pozicio van a papirban"
+        elif entry_state is not None and not entry_state.should_alert(signal):
+            decision_, reason = "skipped", "ismetlesvedelem"
+        else:
+            decision_, reason = "alerted", f"havi rebalansz: {rank}. hely"
+        if journal is not None:
+            try:
+                journal.record(signal, decision_, reason, raw=frames[symbol], benchmark=ctx.bench_for(symbol),
+                               mode="watchlist" if symbol in watch else "index", snapshot=decision_ == "alerted",
+                               regime_source=ctx.regime_source(symbol))
+            except Exception:
+                log.exception("A jelzesnaplo irasa nem sikerult: %s", symbol)
+        if decision_ != "alerted":
+            continue
+        alerted.append(signal)
+        if dispatcher is not None:
+            dispatcher.dispatch(Alert(symbol=symbol, title=momentum.format_title(signal),
+                                      body=momentum.format_body(signal, params), forecast=None,
+                                      event="entry_momentum", extra=signal.to_dict(), strategy="momentum"))
+        if entry_state is not None:
+            entry_state.mark(signal)
+        if tracker is not None:
+            tracker.register(signal, params)
+    if alerted and not read_only and dispatcher is not None:
+        submit_to_broker([(s, None) for s in alerted], dispatcher)      # csak ha ez a paper fiokhoz kotott
+        if tracker is not None:
+            reconcile_tracker(tracker, settings)
+    return alerted
+
+
+def _dispatch_position(dispatcher: Dispatcher | None, position, event: str) -> None:
+    if dispatcher is None:
+        return
+    title, body = positions.format_event(position, event)
+    dispatcher.dispatch(Alert(symbol=position.symbol, title=title, body=body, forecast=None, event=event,
+                              extra={"position": position.id, "status": position.status,
+                                     "result_r": position.result_r, "result_pct": position.result_pct,
+                                     "signal_id": position.signal_id}, strategy=position.strategy))
+
+
+def _write_json(path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    tmp.replace(path)
 
 
 def _pullback_chart(signal, df: pd.DataFrame, settings: Settings) -> bytes | None:
@@ -1049,6 +1205,14 @@ def run_forever(settings: Settings | None = None, dry_run: bool = False) -> None
             except Exception:
                 log.exception("A(z) %s strategia hibara futott", sid)
                 report.failures.append(f"{config.STRATEGY_LABELS[sid]} jelzesek")
+        # Momentum (12-1): a rangsor minden nap, a rebalansz a honap utolso kereskedesi napjan
+        if fresh.strategies.momentum.enabled:
+            try:
+                dispatcher.settings = fresh
+                momentum_cycle(fresh, dispatcher, tracker, entry_state, read_only=dry_run)
+            except Exception:
+                log.exception("A momentum strategia hibara futott")
+                report.failures.append(f"{config.STRATEGY_LABELS['momentum']} jelzesek")
         try:
             report.broker_events = broker_cycle(dispatcher, final_bar=True, read_only=dry_run,
                                                  tracker=tracker)
