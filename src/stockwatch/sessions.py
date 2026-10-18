@@ -36,3 +36,15 @@ def completed_bars(df: pd.DataFrame, now: pd.Timestamp | None = None) -> pd.Data
     if session_closed(df.index[-1], now):
         return df
     return df.iloc[:-1]
+
+
+def trading_day(day: pd.Timestamp) -> bool | None:
+    """Kereskedesi nap volt-e (unnepnap!). None, ha a naptar nem elerheto."""
+    if day.weekday() >= 5:
+        return False
+    try:
+        import pandas_market_calendars as mcal
+
+        return not mcal.get_calendar("NASDAQ").schedule(start_date=day.date(), end_date=day.date()).empty
+    except Exception:
+        return None

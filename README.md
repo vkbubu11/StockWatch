@@ -132,6 +132,10 @@ python cli.py monitor
 | `discord [--disable]` | Discord értesítés beállítása (webhook) |
 | `lab [status] [--once] [--workers N]` | Stratégia-labor: folyamatos stratégiateszt múltbeli adatokon (lásd lent) |
 | `heartbeat [--print]` | Életjel / állapotjelentés most a Discordra (`--print`: csak kiírja) |
+| `event-study --type earnings --universe sp500 [--window -10 60] [--csv out.csv]` · `event-sources --index-changes --form4-since 2017` | Eseménytanulmányok és a forrásadatuk (lásd lent) |
+| `agent run --brief briefs/x.yaml` · `agent queue --brief … [--night]` · `agent list` · `agent report --run-id …` | Kutatóügynök: stratégiaváltozatok keresése egy kutatási cél szerint (lásd lent) |
+| `digest [--print] [--no-refresh] [--date YYYY-MM-DD]` | Reggeli összefoglaló most: a watchlist és a Saját pozíciók változásai (lásd lent) |
+| `practice-pool [--queue] [--force]` | A Gyakorló mód feladatkészletének felépítése (lásd lent) |
 
 ---
 
@@ -433,6 +437,219 @@ A webes felületen a **Saját pozíciók** fülön ugyanez űrlappal megy, a pap
 a belépőt és a stopot is mutatja. A saját pozíciók **nem kerülnek** a jelzések élő eredménynaplójába
 (`data/holdings.json`, max. 50 nyitott + 200 lezárt). A rendszer nem lát bele a számládba:
 ha a brókernél eladtál, zárd le itt is.
+
+---
+
+## Reggeli összefoglaló (Összefoglaló fül)
+
+Minden kereskedési napon **06:30-kor (budapesti idő)** a monitor összefoglalót készít a watchlistről és a Saját
+pozíciókról: mi változott az előző összefoglaló óta. **Tényeket közöl, nem ajánl:** nincs benne „vedd meg” vagy
+vételi limit, csak az, ami az adatban történt. Terv: [`docs/FEATURES-2026-10-DESIGN.md`](docs/FEATURES-2026-10-DESIGN.md) (A).
+
+| Változás | Mikor szól |
+|---|---|
+| Formáció | új vagy megszűnt minta, a trigger átlépése |
+| Trigger-közelség | a formálódó minta triggerétől `near_trigger_atr` ATR-en belül (alap 1), vagy közben legalább 0,5 ATR-t közeledett |
+| Szint | a záró a tegnapi rezisztencia fölé vagy a tegnapi support alá került |
+| Gyorsjelentés | 7, 3 és 1 napnál (`earnings_days`), egyszer-egyszer |
+| 8-K | új SEC-bejelentés a tételkódokkal; a lényeges tételek (pl. 4.02, 1.03, 3.01) nagyobb súllyal |
+| Hírhangulat | a 3 napos hangulat-átlag előjelet vált, vagy új lényeges negatív hír jelenik meg |
+| Stratégiai jelölt | a papír bekerül egy stratégia jelöltjei közé vagy kikerül onnan – a **jelzésnaplóból**, nem újraszámolva |
+| Rezsim | a QQQ / S&P 500 vagy a papír saját záróárja átlépi a 200 napos átlagot |
+
+- **Fontosság:** szabályalapú pontszám, eseménytípusonként állítható súllyal (`settings.yaml` → `digest.weights`).
+  A Saját pozíciók eseményei 1,5-szeres súlyt kapnak. Papíronként legfeljebb 3 sor, összesen legfeljebb 15; a
+  változás nélküli papírok egy sorban.
+- **Csak tárolt, lezárt adat:** a még alakuló gyertya kimarad, a hírek a döntési nap 16:00-s (NY) határával
+  számítanak. Minden szám a számításból jön (teszt ellenőrzi), a mondatok a fordítási katalógus sablonjai, így
+  angolul, németül és spanyolul is megjelennek.
+- **Hol látszik:** az Áttekintés tetején egy rövid kártya, az **Összefoglaló** fülön a teljes szöveg archívummal
+  (90 nap) és „Készítés most” gombbal. Discordra a fülön lévő kapcsolóval küldhető (`digest.send_discord`, alapból
+  ki); csendes időszakban (`alerts.quiet_hours`) nem megy ki.
+- **Ha a monitor 06:30-kor nem futott,** induláskor pótolja, de csak a nyitás előtt.
+- **Tárolás:** `data/users/admin/digest/<nap>.json` (20–60 KB / nap, 90 napig). Ez az első funkció, amely már a
+  felhasználónkénti munkaterület-könyvtárba ír (SaaS-előkészítés); a futások CPU-ideje a `data/users/admin/usage.json`-ba kerül.
+
+```bash
+python cli.py digest --print                 # elkészíti, menti és kiírja (Discordra nem küldi)
+python cli.py digest --print --no-refresh    # a 8-K frissítése nélkül, csak tárolt adatból
+python cli.py digest --print --date 2026-10-16   # egy korábbi reggel újragenerálása (csak az akkor lezárt gyertyák)
+```
+
+---
+
+## Eseménytanulmányok (Események fül)
+
+**Mi történt az árral egy adott eseménytípus után?** Választható univerzum (egy papír, watchlist, Nasdaq-100,
+S&P 500, a kettő együtt, opcionálisan GICS-szektorra szűrve), időszak és ablak (alap: −10 … +60. nap).
+Terv: [`docs/FEATURES-2026-10-DESIGN.md`](docs/FEATURES-2026-10-DESIGN.md) (C).
+
+| Esemény | Forrás | 0. nap (mikor vált ismertté) |
+|---|---|---|
+| Gyorsjelentés (irány: a 0. napi nyitó gap) | a gyorsjelentés-naptár | nyitás előtti jelentésnél aznap, különben és ismeretlen időpontnál a következő kereskedési nap |
+| 8-K bejelentés (tételkódra szűrhető, pl. 2.02) | SEC EDGAR (a hírtár) | az első nyitás az elfogadás után |
+| Új 52 hetes csúcs / mélypont | árfolyam | a nap zárója (csendes szakasz után az első) |
+| Nagy nyitó gap | árfolyam | a gap napja |
+| Saját stratégia jelzése (Visszahúzás-család, Kitörés) | ugyanaz a motor, mint élesben | a jelzés napjának zárója |
+| Bennfentes vétel / eladás, csoportos vétel (Form 4) | SEC negyedéves csomagok + élő XML | pontos időpontnál az első nyitás utána; csak dátumnál a **következő** nap |
+| S&P 500 bekerülés / kikerülés | Wikipedia „Historical components of the S&P 500” | a hatályos nap (előre ismert; a bejelentési hatás nincs benne) |
+
+**Módszertan:**
+- abnormális hozam a benchmarkhoz képest, piaci modellel (OLS a becslési ablakon, alap −260 … −21. nap; legalább 120 nap kell, különben piac-korrigált hozam);
+- a becslési ablak az eseményablak előtt véget ér, így a 0. nap utáni ár nem hat rá;
+- kumulált abnormális hozam (CAR): átlag és medián;
+- 95%-os sáv **dátum szerint csoportosított** bootstrappal (az egy napra eső események együtt mozognak);
+- találati arány (CAR > 0) Wilson-intervallummal;
+- bontás irányra, szektorra, piaci rezsimre és évre.
+
+Két CAR jelenik meg: a teljes ablakra, és az esemény napjának **zárója utánra** (+1. naptól). Ez utóbbiba a 0. napi reakció és a 0. napi adatból
+képzett besorolás (pl. a gap iránya) nem keveredik bele. Ugyanannak a papírnak az ablakon belüli későbbi eseménye kimarad;
+a felhasznált, az átfedés miatt kimaradt és a nem teljes ablakú események száma mindig látszik.
+
+**A zárolt holdout alapból kimarad** (az adat 2025-03-31-nél véget ér). Kapcsolóval megnyitható, ilyenkor naplózódik
+(`study=event-study`). A felület kiírja a túlélési torzítást (csak a mai indextagok) és a csak dátummal ismert események
+számát. Az S&P 500 változásoknál azt is, hogy a bejelentési hatás nincs benne.
+
+**Hol fut:**
+- egy papír és a watchlist azonnal, a webes folyamatban;
+- nagyobb univerzum a labor-munkasoron.
+
+**Az eredmény:** átlagos pálya sávval, eloszlás-hisztogram, bontások, eseménylista. Egy sorra kattintva a papír és a benchmark
+látszik az esemény körül. CSV-export is van.
+
+**Forrásadat:**
+
+```bash
+python cli.py event-sources --index-changes      # S&P 500 változások (1976-tól) + GICS-szektorok -> data/events/
+python cli.py event-sources --form4-since 2017   # SEC negyedéves Form 4 csomagok -> data/events/form4/ (max. 50 MB)
+python cli.py event-sources --form4-live         # a watchlist és a Saját pozíciók új Form 4 beadásai (XML, pontos idővel)
+```
+
+A SEC azonosító User-Agentet kér (név + e-mail): a `.env`-be írd be: `SEC_USER_AGENT="Neved email@cimed"`. Enélkül a
+SEC elutasítja a letöltést. A kérések folyamatok között is közösen legfeljebb 8 / mp-et tesznek ki.
+
+```bash
+python cli.py event-study --type earnings --universe symbol --symbol NVDA --window -5 20
+python cli.py event-study --type sp500_add --universe sp500 --window -5 40
+python cli.py event-study --type filing_8k --params '{"item": "4.02"}' --universe indexes --refresh --csv 402.csv
+python cli.py event-study --type strategy --params '{"strategy": "deep"}' --universe indexes
+```
+
+Tárolás:
+- a tanulmányok: `data/users/admin/events/studies/` (legfeljebb 30 db, 30 MB);
+- a közös forrásadat: `data/events/`.
+
+---
+
+## Gyakorló mód (Gyakorlás fül)
+
+**Rejtett, múltbeli chart-helyzetek.** Egy körben (alap: 20 helyzet) mindegyiknél 120 napnyi chartot látsz, papír és
+dátum nélkül. Eldöntöd, hogy kihagyod, vagy belépsz:
+- belépés a következő nyitáson, vagy egynapos limittel;
+- kötelező stop, opcionális cél;
+- 1–30 napos időkorlát.
+
+A döntés után nem módosítható. Utána lepörög, mi történt, és kiderül a papír és a dátum.
+Terv: [`docs/FEATURES-2026-10-DESIGN.md`](docs/FEATURES-2026-10-DESIGN.md) (D).
+
+**Rejtés:** a felfedés előtt az API csak véletlen, betűs azonosítót és normalizált adatot ad ki:
+- index-tengely (−119 … 0);
+- az utolsó látható záró = 100;
+- volumen a 20 napos átlagához viszonyítva;
+- EMA20/50/200 és ATR a normalizált árból.
+
+Ticker, dátum, nyers ár és nyers volumen nincs benne; ezt teszt ellenőrzi minden végpontra.
+
+**Szimuláció:** ugyanaz a pesszimista motor, mint a stratégiáké (`meanrev.simulate_trade`). A cél napközben teljesül
+(csak itt van bekapcsolva):
+- ha ugyanazon a gyertyán a stop és a cél is elérhető, a stop számít;
+- ha a nyitó a cél fölött van, a nyitóáron teljesül;
+- a belépés napján a cél csak nyitóáras belépésnél számít.
+
+Az eredmény R-ben: (kilépő − belépő) / (belépő − stop), oldalanként a stratégia költségével csökkentve.
+
+**Összevetés ugyanazon a ponton:**
+- Visszahúzás és Mély visszahúzás: ha a döntés napján jelzett, a saját paramétereivel szimulálva;
+- Kitörés: a labor élő kísérletének mentett kötése, ha a kitörés-cache-ben aznap kitörés van;
+- referencia-kötés: következő nyitás, 2 ATR stop, 10 nap;
+- véletlen alapvonal: ugyanazon a papíron 20 seedelt véletlen napon, a te stop-távolságoddal (ATR-ben), céloddal és
+  időkorlátoddal, az átlagos R.
+
+**A kör összegzése:**
+- nyerési arány, átlagos és összes R;
+- az alapvonal és a stratégiák átlaga;
+- a kihagyott jó helyzetek (ahol a szabály vagy a referencia-kötés legalább +1 R lett volna);
+- a stop-távolság eloszlása ATR-ben, és az 1 ATR-nél szorosabb stopok aránya.
+
+**Feladatkészlet:** a Backteszt oldal tárából (elsőbbséggel) és az univerzum-cache-ből készül, egyszer adat-ujjlenyomatonként.
+Egy pont akkor kerül bele, ha legalább 250 bemelegítő gyertya van előtte, és a 31. napja is a zárolt holdout előtt van.
+Gyanús (split nélküli) ugrás vagy nulla volumen sem lehet az ablakban. Három kategória van, alapból 40 / 20 / 40%:
+- stratégia-jelzés: a Visszahúzás setup-ja, vagy a labor kitörés-cache-ének kitörése;
+- formálódó bikás alakzat: pont-időben, csak az addigi adatból;
+- semmi különös.
+
+Ugyanaz a seed ugyanazt a helyzetsort adja. A **megosztási kód** (csak betűk) a seedet, a készlet ujjlenyomatát és a
+helyzetek számát tartalmazza; más készletnél a felület figyelmeztet.
+
+```bash
+python cli.py practice-pool              # a feladatkészlet felépítése (~1–2 perc, 500 papíron)
+python cli.py practice-pool --queue      # ugyanez a labor-munkasoron (a felület gombja is ezt teszi)
+```
+
+Tárolás:
+- a körök: `data/users/admin/practice/sessions/` (legfeljebb 100);
+- a feladatkészlet: `data/practice/pool.json.gz` (legfeljebb 5 MB, jellemzően ~40 KB).
+
+Gyakorlás múltbeli adaton, szimulált kötésekkel – nem befektetési tanács.
+
+---
+
+## Kutatóügynök (Ügynök fül)
+
+Megadsz egy **kutatási célt (brief)**, például: „swing long, Nasdaq-100 + S&P 500, heti 0,5–2 kötés, max. 10%
+visszaesés, legfeljebb 15 nap tartás, 15 bps / oldal költség”. Az ügynök a labor-szolgáltatásban stratégiaváltozatokat
+generál és tesztel, és jelentést ad a legjobb 3 jelöltről: tőkegörbe, mutatók, szabályalapú indoklás, és hogy „hogyan
+jutott ide”. **Nincs LLM:** a keresés determinisztikus (rögzített seed), az indoklás sablonos szöveg mért számokkal.
+Terv: [`docs/FEATURES-2026-10-DESIGN.md`](docs/FEATURES-2026-10-DESIGN.md) (B).
+
+| Lépés | Mit csinál |
+|---|---|
+| Tér | A Visszahúzás-családnál (`pullback`, `deep`, `etf`) a `PullbackParams` mezői (RSI(2) küszöb, limit, stop, kilépés, időkorlát, trend-SMA, rezsimszűrő…), a Kitörésnél a Labor szerkeszthető mezői. A kiinduló beállítás a motor mostani paramétere a brief költségével; a `search.fixed` mezői rögzítve. |
+| Keresés | Successive halving (alap): sok változat a papírok negyedén, a legjobb harmad tovább a felére, majd az összesre; utána mezőnkénti finomítás a legjobb körül. Választható: rács, véletlen. |
+| Célmutató | Az átlagos nettó hozam (Kitörésnél R) **bootstrap alsó határa** a tanító időszakban. A nyerési arány alsó határa csak opcionális **feltétel** (`min_win_lo`), mert önmagában tág stoppal felfelé tornázható, miközben a várható érték romlik. |
+| Feltételek | kötés / hét sáv, max. visszaesés, profit-faktor, tartás, min. kötésszám. A rangsor: kevesebb nem teljesült feltétel elöl, azon belül a nagyobb alsó határ. |
+| Döntősök (3) | A validációs időszakot **csak ők** látják, egyszer. Utána: szomszédos beállítások stabilitása, kétszeres költség, évenkénti bontás, az előre rögzített elfogadási feltétel, és mezőnként, hogy a változtatás mennyit adott (a döntős az adott mező alapértékével összevetve). |
+
+**Becsületesség:**
+- az adat a **holdout előtt véget ér** (2025-03-31), és ezt minden értékelés előtt ellenőrzi (`HoldoutGuard`);
+- a keresés adata a 2022 előtti napon vágódik;
+- a holdout-napló nem változik;
+- a kipróbált változatok száma, és hogy a motorcsalád hányszor nézte meg a validációs időszakot, a jelentésben látszik.
+
+Ugyanazok a függvények számolnak, mint a `meanrev-research`-ben (`evaluate_variant`), illetve a Laborban (`lab.evaluate`): egy teszt ellenőrzi,
+hogy a kiválasztott változatot a `meanrev_research.run` újrafuttatva ugyanazok a mutatók jönnek ki.
+
+**Költségkeret briefenként:** max. változatszám és max. CPU-perc. A CPU-keret 80%-a jut a keresésre, a maradék a döntősök ellenőrzésére.
+Ha a keret elfogy (vagy éjjel elérkezik a 06:00-s budapesti határidő), a keresés leáll, és az addigi legjobbakból
+készül jelentés; a kimaradt lépéseket a jelentés felsorolja.
+
+**Futtatás:**
+- a **Ügynök** fülön: „Futtatás most” (amint a labor sorra veszi) vagy „Ma éjjel” (20:00 New York után indul, 06:00-ra kész, a reggeli összefoglaló hivatkozik rá);
+- a futás oldalán: tőkegörbék, döntősök összevetése, idővonal;
+- **„Átvétel a Homokozóba”** megerősítéssel. A Homokozó értesítés nélkül (`alerts: false`) és paper-kötés nélkül fut, élő virtuális követéssel; a régi homokozó-beállítás egy 10 elemes előzménylistába kerül.
+
+A labor egy fájlalapú munkasort dolgoz fel (`data/queue/`, munkaterületenként legfeljebb 10 várakozó feladat). A futások
+CPU-ideje a `data/users/admin/usage.json`-ba kerül. Memória: a teljes indexlistán a csúcs kb. 370 MB (a labor plafonja 450 MB).
+
+```bash
+python cli.py agent run --brief briefs/pelda-swing-long.yaml                    # azonnal, ebben a folyamatban
+python cli.py agent run --brief briefs/pelda-swing-long.yaml --max-variants 40 --max-cpu 10   # kisebb kerettel
+python cli.py agent queue --brief briefs/pelda-swing-long.yaml --night          # a labor ma éjjel futtatja
+python cli.py agent list                                                       # briefek és futások
+python cli.py agent report --run-id 20261017-5005fba6                         # egy jelentés Markdownban
+```
+
+Tárolás: `data/users/admin/agent/` (briefek, legfeljebb 30 futás és 50 MB; futásonként `report.json`, `report.md`, `log.jsonl`).
 
 ---
 
@@ -756,6 +973,7 @@ internet nélkül is fut (csak a Frissítés gomb tölt le adatot). Világos és
 | **Paper trading** | Alpaca paper számla: **eddigi eredmény** (a számla a nyitás óta + a rendszer trade-jei realizált / nyitott bontásban), equity-görbe táblázattal, mai beküldhető jelzések, a rendszer paper trade-jei lábanként, Alpaca pozíciók és megbízások |
 | **Jelzett trade-ek** | a követett trade-ek állapota (belépésre vár / nyitott / lezárt / kimaradt) és az élő eredménynapló R-ben |
 | **Értesítések** | minden, amit a monitor kiküldött, utólag kiértékelve: jelzéskori és mostani ár, irányhelyes változás, profit ($ / R), minősítés (jó / rossz / folyamatban); jelerősség (belépési pont vagy alakzat-minőség, gyenge / közepes / erős) és találati arány erősség szerint; szűrés irány, minősítés és erősség szerint; a típusokra és oszlopokra húzott egér magyarázatot mutat |
+| **Gyakorlás** | rejtett, múltbeli chart-helyzetek: döntés (kihagyás / belépés stoppal), felfedés, összevetés a stratégiákkal és egy véletlen alapvonallal, kör-statisztika (lásd: Gyakorló mód) |
 | **Beállítások** | számlaméret, kockázat, belépési és kilépési szabályok, kötési díj, értesítések nyelve, paper trading és Alpaca kulcsok, Discord webhook, watchlist, a `settings.yaml` kommentjeit megtartva |
 | **Információ** (jobb felül) | hibabejelentés: a rendszer GitHub oldalának Issues füle (link: <https://github.com/vkbubu11/StockWatch/issues>) |
 
@@ -948,6 +1166,15 @@ A monitor hónapokig futhat felügyelet nélkül, ezért **minden írt fájlnak 
 | `data/universe/*.csv.gz` | csak a bekapcsolt indexek + kutatási minta; a többi 30 nap után törlődik | ~30 MB (két index) |
 | `data/index_members.json`, `data/index_scan.json` | minden futás felülírja | < 200 KB |
 | `data/ledger/` | havi fájlok, tömörítve, 36 hónap; pillanatképek max. 50 MB | ~5–10 MB / év + pillanatképek |
+| `data/users/<munkaterület>/digest/` | reggeli összefoglalók, 90 nap (`digest.keep_days`) | ~5 MB |
+| `data/users/<munkaterület>/agent/` | kutatóügynök: legfeljebb 20 brief, 30 futás, 50 MB; lépésnapló futásonként max. 5000 sor | ≤ 50 MB |
+| `data/users/<munkaterület>/events/` | eseménytanulmányok: legfeljebb 30 db, 30 MB | ≤ 30 MB |
+| `data/events/form4/` | Form 4 kivonat évenként; a legrégebbi év törlődik | ≤ 50 MB |
+| `data/events/index_changes.json`, `sectors.json` | minden letöltés felülírja | < 1 MB |
+| `data/users/<munkaterület>/practice/` | gyakorló körök: legfeljebb 100 | ≤ 5 MB |
+| `data/practice/pool.json.gz` | a gyakorló mód feladatkészlete, adat-ujjlenyomatonként felülíródik | ≤ 5 MB (jellemzően ~40 KB) |
+| `data/queue/` | labor-munkasor: munkaterületenként max. 10 várakozó feladat, a befejezett 7 nap után törlődik | < 100 KB |
+| `data/users/<munkaterület>/usage.json` | felhasználónkénti CPU-idő és futásszám, 24 hónap | < 50 KB |
 
 **Állandósult lábnyom: ~35 MB**, és nem nő tovább. A Telegramra küldött chart memóriából
 megy ki — ideiglenes PNG nem keletkezik a lemezen.
@@ -1021,7 +1248,7 @@ megelőző trend kell** (amit megfordít), a **folytatólagoshoz** szintén (ami
 python -m pytest tests/ -q
 ```
 
-257 teszt fut, köztük:
+521 teszt fut, köztük:
 
 - **Pozitív**: matematikailag tökéletes formációkon a detektornak találnia kell, és a
   kulcsszinteknek a generált geometriára kell esniük
@@ -1038,6 +1265,20 @@ python -m pytest tests/ -q
   vételierő-védelem, nullszaldós stop, lejárt belépő visszavonása, időkorlát dupla eladás nélkül
 - **Lemezhasználat**: 50 000 jelzés beírása után a `data/` a plafon alatt marad, és a
   legfrissebb jelzés megmarad
+- **Őr-tesztek az új funkciókhoz** (`tests/test_guards.py`): az új modulok, és amit tranzitívan (függvényen belül is)
+  importálnak, nem érik el a broker modult; tiltólista az ajánlás jellegű szóhasználatra négy nyelven
+- **Eseménytanulmányok** (`tests/test_events.py`): ismert CAR visszamérése szintetikus adaton, point-in-time (a 0. nap
+  utáni ár nem hat a becslésre; a detektorok a későbbi gyertyák nélkül ugyanazt adják), 0. nap-szabályok, Form 4 parser
+  fixtúrákon (XML és negyedéves csomag), SEC-kéréskorlát folyamatok között és User-Agent, indexváltozás-parser,
+  átfedés, a holdout csak kapcsolóval és naplózva
+- **Kutatóügynök** (`tests/test_research_agent.py`): az ügynök adata a holdout előtt véget ér, és a holdout-napló nem
+  változik; a keresés csak a tanító időszakon fut, a validációt csak a döntősök látják, egyszer; rögzített seeddel a
+  jelentés bitre azonos; paritás a `meanrev_research.run`-nal; az érvénytelen paramétert a validátor elutasítja, és a
+  keresés folytatódik; a CPU-keret és a határidő leállítja, de a részjelentés elkészül; a Homokozó-átvétel nem köt
+  paper fiókot, és `alerts=false`; a munkasor; a Kitörés-motor a laboron át, vágott adattal
+- **Reggeli összefoglaló** (`tests/test_digest.py`): változásérzékelés szintetikus állapotpárokon, sorrend és plafon,
+  a szöveg minden száma a forrásadatból jön, nincs ajánló szóhasználat, a 06:30-as budapesti ütemezés nyári és
+  téli időben, teljes futás szintetikus adaton a jövőbeli gyertyák nélkül
 
 ---
 
@@ -1100,10 +1341,18 @@ src/stockwatch/
   monitor.py       figyelő ciklus + állapotgép
   charting.py      plotly chartok
   alerts/          konzol, JSONL, Discord, Telegram, webhook
+  digest/          reggeli összefoglaló: pillanatkép, változásérzékelés, pontozás, sablonos szöveg, archívum
+  events/          eseménytanulmányok: Form 4, S&P 500 változások, eseménykatalógus, CAR, bootstrap
+  research_agent/  kutatóügynök: brief, keresési tér, determinisztikus keresés, döntősök, jelentés
+  practice/        gyakorló mód: feladatkészlet, rejtett normalizált chart, szimuláció, összevetés, kör-statisztika
+  labqueue.py      a labor fájlalapú munkasora (kutatóügynök, később eseménytanulmány, publikálás)
+  sandbox_adopt.py paraméterek átvétele a Homokozóba (alerts=false, paper-kötés nélkül)
+  workspace.py     a felhasználóhoz tartozó új adatok helye (data/users/<munkaterület>/)
+  usage.py         felhasználónkénti CPU-idő és futásszám (a későbbi kvótákhoz)
 app/web/           webes felület (index.html, login.html, style.css, app.js, i18n.js)
 deploy/            szerveres telepítés (install.sh, systemd szolgáltatások, upload.ps1)
 app/dashboard.py   Streamlit felület (régi)
-tests/             257 teszt + szintetikus generátorok
+tests/             521 teszt + szintetikus generátorok
 cli.py             parancssori felület
 ```
 

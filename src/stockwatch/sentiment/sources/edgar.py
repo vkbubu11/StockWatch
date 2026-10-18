@@ -4,7 +4,9 @@ Point-in-time: az `acceptanceDateTime` mezot a SEC "Z" (UTC) jelolessel adja, de
 keleti parti ido is lehet. Konzervativan a KESOBBI ertelmezest hasznaljuk (UTC vagy New York-i
 falido), igy egy bejelentes soha nem latszik korabban, mint ahogy valoban megjelent.
 
-A SEC kerese: azonosito User-Agent (nev + e-mail) es legfeljebb 10 keres / masodperc.
+A SEC kerese: azonosito User-Agent (nev + e-mail) es legfeljebb 10 keres / masodperc. A korlat FOLYAMATOK
+KOZOTT is ervenyes (a monitor, a labor es a felulet egyszerre is kerhet): egy kozos, zarolt idobelyeg-fajl
+tartja a kereseket legalabb MIN_INTERVAL tavolsagra (osszesen <= 8 / mp).
 Beallitas: SEC_USER_AGENT a .env-ben (pl. "StockWatch kutatas te@pelda.hu").
 """
 from __future__ import annotations
@@ -30,21 +32,40 @@ CACHE = DATA_DIR / "news" / "_sec_tickers.json"
 FORMS = ("8-K", "424B4", "424B5")
 ROUTINE_424B = 12                 # evente ennyinel tobb 424B5 -> rutinszeru (pl. bankok kotvenyei), kimarad
 TIMEOUT = 20
-_last_call = [0.0]
+MIN_INTERVAL = 0.125                  # mp: osszesen legfeljebb 8 keres / mp, minden folyamatbol egyutt
+RATE_FILE = DATA_DIR / "news" / "_sec_rate"
 
 
 def user_agent() -> str:
     return os.environ.get("SEC_USER_AGENT") or env_value("SEC_USER_AGENT") or "StockWatch research (set SEC_USER_AGENT)"
 
 
-def _get(url: str, session=None) -> dict:
-    wait = 0.12 - (time.monotonic() - _last_call[0])            # <= ~8 keres / mp
-    if wait > 0:
-        time.sleep(wait)
-    _last_call[0] = time.monotonic()
-    r = (session or requests).get(url, headers={"User-Agent": user_agent(), "Accept-Encoding": "gzip"}, timeout=TIMEOUT)
+def throttle() -> None:
+    """Varakozas a kovetkezo SEC-keres elott - a zar alatt alszik, igy a folyamatok sorban kernek."""
+    from ...locks import file_lock
+
+    RATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with file_lock(RATE_FILE.with_name(RATE_FILE.name + ".lock"), timeout=60):
+        try:
+            last = float(RATE_FILE.read_text(encoding="utf-8") or 0)
+        except (OSError, ValueError):
+            last = 0.0
+        wait = last + MIN_INTERVAL - time.time()
+        if wait > 0:
+            time.sleep(wait)
+        RATE_FILE.write_text(repr(time.time()), encoding="utf-8")
+
+
+def get_bytes(url: str, session=None, timeout: float = TIMEOUT) -> bytes:
+    """Nyers letoltes (XML, ZIP) a SEC-tol, a kozos korlattal es azonosito User-Agenttel."""
+    throttle()
+    r = (session or requests).get(url, headers={"User-Agent": user_agent(), "Accept-Encoding": "gzip"}, timeout=timeout)
     r.raise_for_status()
-    return r.json()
+    return r.content
+
+
+def _get(url: str, session=None) -> dict:
+    return json.loads(get_bytes(url, session))
 
 
 def ticker_map(session=None, max_age_days: int = 30) -> dict[str, dict]:

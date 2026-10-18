@@ -1046,6 +1046,159 @@ def cmd_lab(args) -> int:
     return 0
 
 
+def cmd_digest(args) -> int:
+    """Reggeli osszefoglalo most: a watchlist es a Sajat poziciok valtozasai az elozo osszefoglalo ota."""
+    import pandas as pd
+
+    from stockwatch.digest import service as digest
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings, verbose=args.verbose)
+    now = None
+    if args.date:
+        # a megadott nap reggele, budapesti ido szerint (ujrageneralas / probafutas)
+        now = pd.Timestamp(f"{args.date} {settings.digest.time}").tz_localize(digest.BUDAPEST_TZ)
+    record = digest.build(settings, now=now, refresh=not args.no_refresh, send=not (args.print or args.no_send))
+    print(record["text"])
+    if record.get("delivered") and not args.print:
+        print(f"\nKikuldve: {record['delivered']}")
+    return 0
+
+
+def cmd_agent(args) -> int:
+    """Kutatougynok: strategiavaltozatok keresese egy kutatasi cel (brief) szerint, determinisztikusan."""
+    from pathlib import Path
+
+    from stockwatch.research_agent import service as agent
+    from stockwatch.research_agent import store as agent_store
+    from stockwatch.research_agent.brief import Brief
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings, verbose=args.verbose)
+    if args.action in ("run", "queue"):
+        if not args.brief:
+            print("Add meg a briefet: --brief briefs/x.yaml")
+            return 2
+        brief = Brief.from_yaml(Path(args.brief).read_text(encoding="utf-8"))
+        search = {k: v for k, v in (("seed", args.seed), ("max_variants", args.max_variants),
+                                    ("max_cpu_minutes", args.max_cpu)) if v is not None}
+        if search:
+            brief = Brief(**(brief.model_dump() | {"search": brief.search.model_dump() | search}))
+        agent_store.save_brief(brief)
+        if args.action == "queue":
+            out = agent.submit(brief.id, when="night" if args.night else "now")
+            print(f"Sorba allitva: {out['run_id']} ({'ma ejjel' if args.night else 'amint a labor sorra veszi'})")
+            return 0
+        report = agent.run(brief, settings, progress=lambda msg: print(f"  {msg}", flush=True))
+        run_id = report["runtime"]["run_id"]
+        print()
+        print((agent_store.run_dir(run_id) / "report.md").read_text(encoding="utf-8"))
+        print(f"Jelentes: {agent_store.run_dir(run_id) / 'report.md'}")
+        if args.json:
+            import json
+
+            Path(args.json).write_text(json.dumps(report, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+        return 0
+    if args.action == "report":
+        if not args.run_id:
+            print("Add meg: --run-id")
+            return 2
+        path = agent_store.run_dir(args.run_id) / "report.md"
+        if not path.exists():
+            print("Nincs ilyen jelentes.")
+            return 1
+        print(path.read_text(encoding="utf-8"))
+        return 0
+    print("Briefek:")
+    for b in agent_store.list_briefs():
+        print(f"  {b['id']:42s} {b['brief']['name']} ({b['brief']['engine']}, {b['brief']['universe']})")
+    print("Futasok:")
+    for s in agent_store.runs()[:20]:
+        print(f"  {s['run_id']}  {s.get('state', '?'):8s} {s.get('brief_name', '')} - {s.get('message', '')}")
+    return 0
+
+
+def cmd_event_study(args) -> int:
+    """Esemenytanulmany: mi tortent az arral egy esemenytipus utan (abnormalis hozam, CAR, bontasok)."""
+    import json
+    from pathlib import Path
+
+    from stockwatch.events import service as events
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings, verbose=args.verbose)
+    params = json.loads(args.params) if args.params else {}
+    spec = events.StudySpec(type=args.type, params=params, universe=args.universe, symbol=args.symbol,
+                            sector=args.sector, start=args.start, end=args.end, window=tuple(args.window),
+                            estimation=tuple(args.estimation), benchmark=args.benchmark,
+                            include_holdout=args.include_holdout)
+    record = events.run(spec, settings, progress=lambda msg: print(f"  {msg}", flush=True), refresh=args.refresh)
+    print()
+    for line in record["lines"]:
+        print(line["text"])
+    groups = record["result"].get("groups") or {}
+    for key, values in groups.items():
+        print(f"\n{key}:")
+        for value, v in values.items():
+            car, post = v["car"], v["post"]
+            print(f"  {value:24s} n={car['n']:5d}  CAR {car['mean'] or 0:+7.2f}%  utana {post['mean'] or 0:+7.2f}%  "
+                  f"pozitiv {100 * (car['hit'] or 0):5.1f}%")
+    print(f"\nMentve: {record['id']}")
+    if args.csv:
+        Path(args.csv).write_text(events.to_csv(record), encoding="utf-8")
+        print(f"CSV: {args.csv}")
+    return 0
+
+
+def cmd_event_sources(args) -> int:
+    """Az esemenytanulmanyok forrasadata: Form 4 (SEC negyedeves csomagok / elo XML), S&P 500 valtozasok."""
+    from datetime import date
+
+    import pandas as pd
+
+    from stockwatch.events.sources import form4, index_changes
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings, verbose=args.verbose)
+    if args.index_changes:
+        print(f"S&P 500 valtozasok: {index_changes.refresh()}")
+    if args.form4_since:
+        for year, quarter in form4.quarters(date(args.form4_since, 1, 1)):
+            try:
+                rows = form4.fetch_quarter(year, quarter)
+                print(f"Form 4 {year}Q{quarter}: {len(rows)} sor, tarolva {form4.save(rows)}")
+            except Exception as exc:
+                print(f"Form 4 {year}Q{quarter}: nem toltheto le ({exc})")
+    if args.form4_live:
+        from stockwatch import workspace
+
+        symbols = workspace.watchlist() + workspace.holding_symbols(settings)
+        since = pd.Timestamp.now() - pd.Timedelta(days=120)
+        print(f"Form 4 (elo): {form4.refresh_live(sorted(set(symbols)), since)} uj sor")
+    print(f"Form 4 tar: {form4.coverage()}")
+    return 0
+
+
+def cmd_practice_pool(args) -> int:
+    """Gyakorlo mod: a feladatkeszlet (rejtett multbeli helyzetek) felepitese az univerzum-cache-bol."""
+    from stockwatch.practice import sampler
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings, verbose=args.verbose)
+    if args.queue:
+        job = sampler.submit(force=args.force)
+        print(f"Sorba allitva: {job['id']} (a labor-szolgaltatas epiti fel)")
+        return 0
+    pool = sampler.build(settings, progress=lambda msg: print(f"  {msg}", flush=True), force=args.force,
+                         max_seconds=args.max_minutes * 60 if args.max_minutes else None)
+    if pool.get("unchanged"):
+        print("Valtozatlan: a keszlet mar erre az adatra keszult (--force: ujraepites).")
+    counts = pool["counts"]
+    print(f"Feladatkeszlet: {pool['symbols']} papir, strategia-jelzes {counts['strategy']}, formalodo alakzat "
+          f"{counts['pattern']}, semmi {counts['nothing']}" + (" (RESZLEGES: elfogyott az idokeret)" if pool.get("partial") else ""))
+    return 0
+
+
 def cmd_heartbeat(args) -> int:
     """Eletjel most, kezzel: a tarolt adatbol (letoltes es elemzes nelkul)."""
     import pandas as pd
@@ -1289,6 +1442,59 @@ def main() -> int:
     p.add_argument("--workers", type=int, help="parhuzamos szalak a kitoresek gyujtesehez (alap: 1)")
     p.add_argument("--verbose", action="store_true")
     p.set_defaults(func=cmd_lab)
+
+    p = subparsers.add_parser("event-study", help="esemenytanulmany: mi tortent az arral egy esemenytipus utan")
+    p.add_argument("--type", required=True, choices=["earnings", "filing_8k", "high52", "low52", "gap", "strategy",
+                                                     "insider_buy", "insider_sell", "insider_cluster_buy",
+                                                     "sp500_add", "sp500_remove"])
+    p.add_argument("--params", help='tipusfuggo parameterek JSON-ban, pl. {"gap_pct": 6} vagy {"item": "2.02"}')
+    p.add_argument("--universe", default="indexes", choices=["symbol", "watchlist", "nasdaq100", "sp500", "indexes"])
+    p.add_argument("--symbol", help="--universe symbol eseten a papir")
+    p.add_argument("--sector", help="csak ez a GICS-szektor (pl. 'Information Technology')")
+    p.add_argument("--start", default="2017-01-01")
+    p.add_argument("--end", help="alap: a zarolt holdout elotti nap")
+    p.add_argument("--window", type=int, nargs=2, default=[-10, 60], metavar=("KEZDET", "VEG"))
+    p.add_argument("--estimation", type=int, nargs=2, default=[-260, -21], metavar=("KEZDET", "VEG"))
+    p.add_argument("--benchmark", default="index", choices=["index", "SPY"])
+    p.add_argument("--include-holdout", action="store_true", help="a zarolt holdout is (naplozva!)")
+    p.add_argument("--refresh", action="store_true", help="8-K: a bejelentesek frissitese az EDGAR-rol")
+    p.add_argument("--csv", help="az esemenylista CSV-ben ide")
+    p.add_argument("--verbose", action="store_true")
+    p.set_defaults(func=cmd_event_study)
+
+    p = subparsers.add_parser("event-sources", help="esemenytanulmany-forrasok: Form 4, S&P 500 valtozasok")
+    p.add_argument("--form4-since", type=int, metavar="EV", help="a SEC negyedeves Form 4 csomagjai ettol az evtol")
+    p.add_argument("--form4-live", action="store_true", help="a watchlist es a Sajat poziciok uj Form 4 beadasai (XML)")
+    p.add_argument("--index-changes", action="store_true", help="S&P 500 bekerulesek / kikerulesek + GICS-szektorok")
+    p.add_argument("--verbose", action="store_true")
+    p.set_defaults(func=cmd_event_sources)
+
+    p = subparsers.add_parser("agent", help="kutatougynok: strategiavaltozatok keresese egy kutatasi cel (brief) szerint")
+    p.add_argument("action", nargs="?", choices=["run", "queue", "list", "report"], default="list")
+    p.add_argument("--brief", help="a brief YAML-fajlja (run / queue)")
+    p.add_argument("--run-id", help="a futas azonositoja (report)")
+    p.add_argument("--seed", type=int, help="a brief seedje helyett")
+    p.add_argument("--max-variants", type=int, help="a brief valtozat-kerete helyett")
+    p.add_argument("--max-cpu", type=float, help="a brief CPU-kerete helyett (perc)")
+    p.add_argument("--night", action="store_true", help="queue: ma ejjel fusson (alap: amint a labor sorra veszi)")
+    p.add_argument("--json", help="run: a jelentes JSON-ja ide is")
+    p.add_argument("--verbose", action="store_true")
+    p.set_defaults(func=cmd_agent)
+
+    p = subparsers.add_parser("digest", help="reggeli osszefoglalo: a watchlist es a Sajat poziciok valtozasai")
+    p.add_argument("--print", action="store_true", help="csak kiirja (es menti), Discordra nem kuldi")
+    p.add_argument("--no-send", action="store_true", help="Discordra nem kuldi (akkor sem, ha be van kapcsolva)")
+    p.add_argument("--no-refresh", action="store_true", help="a 8-K bejelentesek frissitese nelkul (csak tarolt adat)")
+    p.add_argument("--date", help="a megadott nap reggelere (YYYY-MM-DD) - ujrageneralas")
+    p.add_argument("--verbose", action="store_true")
+    p.set_defaults(func=cmd_digest)
+
+    p = subparsers.add_parser("practice-pool", help="gyakorlo mod: a feladatkeszlet felepitese")
+    p.add_argument("--queue", action="store_true", help="a labor-szolgaltatas epitse fel (munkasor)")
+    p.add_argument("--force", action="store_true", help="akkor is ujraepiti, ha az adat nem valtozott")
+    p.add_argument("--max-minutes", type=float, help="idokeret; utana reszleges keszlet")
+    p.add_argument("--verbose", action="store_true")
+    p.set_defaults(func=cmd_practice_pool)
 
     p = subparsers.add_parser("heartbeat", help="eletjel / allapotjelentes most (Discord)")
     p.add_argument("--print", action="store_true", help="csak kiirja, nem kuldi el")

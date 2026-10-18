@@ -118,7 +118,7 @@ class Trade:
     entry_price: float | None = None
     exit_date: pd.Timestamp | None = None
     exit_price: float | None = None
-    reason: str = ""                     # signal | time | stop | gap_stop
+    reason: str = ""                     # signal | time | stop | gap_stop | target (csak gyakorlo mod)
     held: int = 0                        # kereskedesi napok a belepestol (a belepes napja is)
     gross_pct: float | None = None
     net_pct: float | None = None
@@ -141,11 +141,18 @@ def net_return(entry: float, exit_: float, cost_bps: float) -> tuple[float, floa
 
 
 def simulate_trade(symbol: str, feat: pd.DataFrame, exits: np.ndarray, i: int, params: PullbackParams,
-                   levels: tuple[float, float] | None = None) -> Trade:
+                   levels: tuple[float, float] | None = None, target: float | None = None,
+                   target_intraday: bool = False) -> Trade:
     """A t=i napi jelzes kimenetele. `exits`: a kilepesi jel naponta (zaron). `levels`: a kikuldott
-    (limit, stop) - elesben a jelzesben szereplo szintekkel kovetunk (osztalek-korrekcio utan is)."""
+    (limit, stop) - elesben a jelzesben szereplo szintekkel kovetunk (osztalek-korrekcio utan is).
+
+    `target` + `target_intraday=True` (csak a gyakorlo mod): napkozbeni cel. Ha ugyanazon a gyertyan a stop
+    es a cel is elerheto, a stop teljesul; ha a nyito a cel felett van, a nyitoaron. A belepes napjan a cel
+    csak nyitoari belepesnel szamit (napkozbeni limit-teljesulesnel nem tudjuk, a csucs elotte volt-e).
+    Alapbol (a strategiak es a kutatas) a viselkedes valtozatlan."""
     idx = feat.index
     o, h, l = (feat[c].to_numpy() for c in ("open", "high", "low"))
+    use_target = target_intraday and target is not None
     close_i, atr_i = float(feat["close"].iloc[i]), float(feat["atr"].iloc[i])
     limit, stop = levels or order_levels(close_i, atr_i, params)
     trade = Trade(symbol, idx[i], limit, stop, float(feat["rsi2"].iloc[i]), float(feat["natr"].iloc[i]))
@@ -163,11 +170,20 @@ def simulate_trade(symbol: str, feat: pd.DataFrame, exits: np.ndarray, i: int, p
         trade.gross_pct, trade.net_pct = net_return(entry, price, params.total_cost_bps)
         return trade
 
+    def hit_target(k: int) -> Trade | None:
+        if o[k] >= target:
+            return close(k, o[k], "target")
+        if h[k] >= target:
+            return close(k, target, "target")
+        return None
+
     # a belepes napja: nyito a stop alatt -> azonnal ki; kulonben napkozbeni stop (pesszimista)
     if o[j] <= stop:
         return close(j, o[j], "gap_stop")
     if l[j] <= stop:
         return close(j, stop, "stop")
+    if use_target and o[j] <= limit and (done := hit_target(j)) is not None:
+        return done
     pending = "signal" if exits[j] else ("time" if trade.held >= params.time_stop else "")
     for k in range(j + 1, len(idx)):
         if pending:
@@ -177,6 +193,8 @@ def simulate_trade(symbol: str, feat: pd.DataFrame, exits: np.ndarray, i: int, p
             return close(k, o[k], "gap_stop")
         if l[k] <= stop:
             return close(k, stop, "stop")
+        if use_target and (done := hit_target(k)) is not None:
+            return done
         pending = "signal" if exits[k] else ("time" if trade.held >= params.time_stop else "")
     trade.reason = pending                               # nyitott; ha van jel, holnap nyitaskor zar
     return trade

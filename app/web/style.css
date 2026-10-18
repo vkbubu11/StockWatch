@@ -505,3 +505,35 @@ tr.lab-detail h3, #lab-ml h3 { font-size: 13px; margin: 6px 0; }
 .mo-top { list-style: none; padding: 0; margin: 6px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 2px 12px; font-size: 12.5px; }
 .mo-top li { display: flex; justify-content: space-between; gap: 6px; font-variant-numeric: tabular-nums; }
 .mo-top .held { font-weight: 700; }
+
+/* Reggeli osszefoglalo */
+.digest-list { list-style: none; margin: 0; padding: 0; }
+.digest-list li { padding: 5px 0; border-bottom: 1px solid var(--grid); line-height: 1.45; }
+.digest-list li:last-child { border-bottom: 0; }
+.digest-list li.dg-market { font-weight: 600; }
+.digest-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
+/* Kutatougynok */
+.ag-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 14px; }
+.ag-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.ag-form .wide { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.ag-form label.wide { flex-direction: column; align-items: stretch; }
+
+/* Gyakorlo mod: rejtett chart (index-tengely) es felfedes */
+#pr-chart { width: 100%; display: block; user-select: none; }
+#pr-chart .grid line { stroke: var(--grid); }
+#pr-chart .axis text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+#pr-chart .candle.up { stroke: var(--up); fill: var(--up); }
+#pr-chart .candle.down { stroke: var(--down); fill: var(--down); }
+#pr-chart .candle.future { opacity: .75; }
+#pr-chart .vol.up { fill: var(--up); opacity: .28; }
+#pr-chart .vol.down { fill: var(--down); opacity: .28; }
+#pr-chart .ema { fill: none; stroke-width: 1.5; }
+#pr-chart .ema20 { stroke: var(--ema20); }
+#pr-chart .ema50 { stroke: var(--ema50); }
+#pr-chart .ema200 { stroke: var(--ema200); }
+#pr-chart .hline { stroke-width: 1.3; }
+#pr-chart .hline.dash { stroke-dasharray: 5 4; }
+#pr-chart .hlabel { font-size: 11px; font-weight: 650; }
+#pr-chart .hlabel-bg { opacity: .92; }
+.pr-name { font-size: 15px; margin: 12px 0 10px; }

@@ -1,5 +1,5 @@
 /* StockWatch helyi felulet - vanilla JS, keretrendszer nelkul.
- * Utvonalak (hash): #/  #/p/TICKER  #/holdings  #/positions  #/broker  #/ledger  #/signal/ID  #/alerts  #/settings
+ * Utvonalak (hash): #/  #/digest  #/digest/YYYY-MM-DD  #/agent  #/agent/run/ID  #/events  #/events/ID  #/practice  #/practice/ID  #/p/TICKER  #/holdings  #/positions  #/broker  #/ledger  #/signal/ID  #/alerts  #/settings
  */
 "use strict";
 
@@ -456,6 +456,7 @@ async function pageOverview() {
         és a pontszám, amit most kapna.</span>
       <datalist id="quick-symbols">${o.rows.map((r) => `<option value="${esc(r.symbol)}">`).join("")}</datalist>
     </section>
+    <section class="card" id="digest-card" hidden></section>
     <div class="kpis">
       <div class="kpi"><div class="label">Piaci rezsim (${esc(regimeName(o.regime))})</div>
         <div class="value ${o.regime.ok === true ? "up" : o.regime.ok === false ? "down" : ""}" style="font-size:17px">${regimeText}</div>
@@ -486,6 +487,7 @@ async function pageOverview() {
       </table></div>
     </section>`;
   bindRowLinks();
+  digestCard();
   bindQuickForms(view);
   const ixBtn = $("#index-scan");
   if (ixBtn) ixBtn.addEventListener("click", async () => {
@@ -2138,7 +2140,7 @@ async function pageSettings() {
 // ---------------------------------------------------------------------------
 async function route() {
   const hash = location.hash || "#/";
-  const tab = hash.startsWith("#/ledger") || hash.startsWith("#/signal/") ? "ledger" : hash.startsWith("#/broker") ? "broker" : hash.startsWith("#/holdings") ? "holdings" : hash.startsWith("#/positions") ? "positions" : hash.startsWith("#/alerts") ? "alerts" : hash.startsWith("#/settings") ? "settings" : hash.startsWith("#/lab") ? "lab" : hash.startsWith("#/strategies") ? "strategies" : hash.startsWith("#/sandbox") ? "sandbox" : hash.startsWith("#/backtest") ? "backtest" : hash.startsWith("#/info") ? "info" : "overview";
+  const tab = hash.startsWith("#/ledger") || hash.startsWith("#/signal/") ? "ledger" : hash.startsWith("#/broker") ? "broker" : hash.startsWith("#/holdings") ? "holdings" : hash.startsWith("#/positions") ? "positions" : hash.startsWith("#/alerts") ? "alerts" : hash.startsWith("#/settings") ? "settings" : hash.startsWith("#/lab") ? "lab" : hash.startsWith("#/strategies") ? "strategies" : hash.startsWith("#/sandbox") ? "sandbox" : hash.startsWith("#/backtest") ? "backtest" : hash.startsWith("#/info") ? "info" : hash.startsWith("#/digest") ? "digest" : hash.startsWith("#/agent") ? "agent" : hash.startsWith("#/events") ? "events" : hash.startsWith("#/practice") ? "practice" : "overview";
   document.querySelectorAll(".tabs a, #info-link").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
   tooltip.hidden = true;
   try {
@@ -2156,6 +2158,22 @@ async function route() {
     else if (tab === "strategies") await pageStrategies();
     else if (tab === "sandbox") await pageSandbox();
     else if (tab === "info") pageInfo();
+    else if (tab === "events") {
+      const em = hash.match(/^#\/events\/(\d{8}-[0-9a-f]{8})$/);
+      if (em) await pageEventStudy(em[1]); else await pageEvents();
+    }
+    else if (tab === "practice") {
+      const pm = hash.match(/^#\/practice\/([a-z]{12})$/);
+      if (pm) await pagePracticeSession(pm[1]); else await pagePractice();
+    }
+    else if (tab === "agent") {
+      const am = hash.match(/^#\/agent\/run\/(\d{8}-[0-9a-f]{8})$/);
+      if (am) await pageAgentRun(am[1]); else await pageAgent();
+    }
+    else if (tab === "digest") {
+      const dm = hash.match(/^#\/digest\/(\d{4}-\d{2}-\d{2})$/);
+      await pageDigest(dm ? dm[1] : null);
+    }
     else if (tab === "backtest") {
       const rm = hash.match(/^#\/backtest\/run\/([0-9a-f]{12})$/);
       await pageBacktest(rm ? rm[1] : null);
@@ -2164,6 +2182,410 @@ async function route() {
   } catch (e) {
     view.innerHTML = `<div class="empty">Hiba: ${esc(e.message)}</div>`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Reggeli osszefoglalo: a watchlist es a Sajat poziciok valtozasai (digest/) - tenyek, nem ajanlas
+// ---------------------------------------------------------------------------
+let digestTimer = null;
+
+// egy sor = egy szovegcsomopont (a forditas soronkent illeszt a katalogusra); a papir oldalara kulon link
+function digestLines(lines, limit = null) {
+  const body = lines.filter((l) => l.type !== "header" && l.type !== "disclaimer");
+  const shown = limit ? body.slice(0, limit) : body;
+  const cls = (l) => (l.type === "regime_change" ? "dg-market" : l.type === "unchanged" || l.type === "info" ? "muted" : "");
+  const link = (l) => (l.symbol ? ` <a class="small" href="#/p/${esc(l.symbol)}" title="A papír oldala">→</a>`
+    : l.type === "agent" ? ` <a class="small" href="#/agent" title="A kutatóügynök jelentései">→</a>` : "");
+  return `<ul class="digest-list">${shown.map((l) => `<li class="${cls(l)}"><span>${esc(l.text)}</span>${link(l)}</li>`).join("")}</ul>`;
+}
+
+async function digestCard() {
+  const el = $("#digest-card");
+  const d = await api("/api/digest").catch(() => null);
+  if (!el || !d || !d.record) return;
+  const r = d.record;
+  el.hidden = false;
+  el.innerHTML = `<h2>Reggeli összefoglaló <span class="muted">${esc(r.for_day)}</span></h2>
+    <div class="card-body">${digestLines(r.lines || [], 6)}
+      <p class="small"><a href="#/digest">Teljes összefoglaló és archívum →</a></p></div>`;
+}
+
+async function pageDigest(day) {
+  clearInterval(digestTimer);
+  const d = await api(day ? `/api/digest/${day}` : "/api/digest");
+  const r = d.record;
+  const s = d.settings;
+  const lines = (r && r.lines) || [];
+  const header = lines.find((l) => l.type === "header");
+  const disclaimer = lines.find((l) => l.type === "disclaimer");
+  view.innerHTML = `
+    <div class="page-head"><h1>Reggeli összefoglaló</h1>
+      <span class="muted">Minden kereskedési napon ${esc(s.time)}-kor (budapesti idő) készül a watchlistről és a Saját pozíciókról.</span></div>
+    <section class="card"><div class="card-body digest-controls">
+      <button id="dg-run" class="btn primary" type="button">Készítés most</button>
+      <label class="small"><input id="dg-discord" type="checkbox" ${s.send_discord ? "checked" : ""}> Discordra is</label>
+      ${s.discord ? "" : `<span class="muted small">(nincs Discord webhook – <a href="#/settings">Beállítások</a>)</span>`}
+      <label class="small">Archívum <select id="dg-day">${d.days.map((x) => `<option value="${esc(x)}" ${r && x === r.for_day ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label>
+      <span id="dg-job" class="small"></span>
+    </div></section>
+    ${r ? `<section class="card"><h2>${esc(header ? header.text : r.for_day)}</h2>
+      <div class="card-body">${digestLines(lines)}
+        <p class="muted small">Készült: ${when(r.created_at) || "–"}${r.delivered && r.delivered.channels ? " · Discordra kiküldve" : ""}
+          · ${esc(disclaimer ? disclaimer.text : "")}</p></div></section>`
+      : `<div class="empty">Még nincs összefoglaló. A „Készítés most” gombbal azonnal elkészül.</div>`}`;
+  const job = (j) => {
+    const el = $("#dg-job");
+    if (!el || !j || j.state === "idle") return;
+    el.innerHTML = `<span class="badge ${j.state === "error" ? "bad" : j.state === "done" ? "go" : "watch"}">${j.state === "running" ? "Fut" : j.state === "done" ? "Kész" : "Hiba"}</span> ${esc(j.message)}`;
+  };
+  const poll = () => {
+    clearInterval(digestTimer);
+    digestTimer = setInterval(async () => {
+      if (!location.hash.startsWith("#/digest")) { clearInterval(digestTimer); return; }
+      const p = await api("/api/digest").catch(() => null);
+      if (!p) return;
+      job(p.job);
+      if (p.job.state !== "running") { clearInterval(digestTimer); if (p.job.state === "done") { location.hash = "#/digest"; pageDigest(null); } }
+    }, 1500);
+  };
+  job(d.job);
+  if (d.job.state === "running") poll();
+  $("#dg-run").addEventListener("click", async () => {
+    try { const p = await api("/api/digest/run", { method: "POST", body: "{}" }); job(p.job); poll(); }
+    catch (e) { job({ state: "error", message: e.message }); }
+  });
+  $("#dg-day").addEventListener("change", (ev) => { location.hash = `#/digest/${ev.target.value}`; });
+  $("#dg-discord").addEventListener("change", async (ev) => {
+    try { await api("/api/settings", { method: "POST", body: JSON.stringify({ values: { send_discord: ev.target.checked } }) }); }
+    catch (e) { ev.target.checked = !ev.target.checked; job({ state: "error", message: e.message }); }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Kutatougynok: strategiavaltozatok keresese egy kutatasi cel (brief) szerint - a labor futtatja
+// ---------------------------------------------------------------------------
+let agentTimer = null;
+let agentEdit = null;                       // a szerkesztett brief azonositoja (null: uj)
+const AGENT_STATE = { queued: ["watch", "Sorban áll"], running: ["watch", "Fut"], done: ["go", "Kész"], error: ["bad", "Hiba"],
+  canceled: ["fail", "Visszavonva"] };
+
+function agentBriefForm(d, b) {
+  const o = b.objective, s = b.search;
+  const opt = (map, cur) => Object.entries(map).map(([k, v]) => `<option value="${esc(k)}" ${k === cur ? "selected" : ""}>${esc(v)}</option>`).join("");
+  const num = (name, label, v, step = "any") => `<label>${label}<input name="${name}" type="number" step="${step}" value="${v ?? ""}"></label>`;
+  return `<form id="ag-form" class="ag-form">
+    <label>Név<input name="name" required maxlength="60" value="${esc(b.name)}"></label>
+    <label>Leírás<input name="description" maxlength="500" value="${esc(b.description || "")}"></label>
+    <label>Motor<select name="engine">${opt(d.engines, b.engine)}</select></label>
+    <label>Univerzum<select name="universe">${opt(d.universes, b.universe)}</select></label>
+    ${num("tpw_lo", "Kötés / hét (min.)", o.trades_per_week[0])}${num("tpw_hi", "Kötés / hét (max.)", o.trades_per_week[1])}
+    ${num("max_drawdown_pct", "Max. visszaesés (%)", o.max_drawdown_pct)}${num("max_hold_days", "Max. tartás (nap)", o.max_hold_days, 1)}
+    ${num("cost_bps", "Költség (bps / oldal)", o.cost_bps)}${num("min_pf", "Min. profit-faktor", o.min_pf)}
+    ${num("min_win_lo", "Min. nyerési arány alsó határa (0–1, opcionális)", o.min_win_lo)}${num("min_trades", "Min. kötés a tanító időszakban", o.min_trades, 1)}
+    ${num("seed", "Seed", s.seed, 1)}
+    <label>Módszer<select name="method">${opt({ halving: "Successive halving", random: "Véletlen", grid: "Rács" }, s.method)}</select></label>
+    ${num("max_variants", "Max. változat", s.max_variants, 1)}${num("max_cpu_minutes", "Max. CPU-perc", s.max_cpu_minutes)}
+    <label class="wide">Rögzített mezők (JSON)<input name="fixed" value="${esc(JSON.stringify(s.fixed || {}))}"></label>
+    <div class="wide"><button class="btn primary" type="submit">Mentés</button>
+      ${agentEdit ? `<button class="btn" type="button" id="ag-new">Új kutatási cél</button>` : ""}
+      <span class="muted small">A kiválasztás csak a tanító időszakon (2022 előtt) történik; a célmutató az átlagos nettó hozam
+        bootstrap alsó határa. A zárolt holdout érintetlen marad.</span></div>
+  </form>`;
+}
+
+function agentBriefFromForm(form) {
+  const v = (n) => form.elements[n].value.trim();
+  const n = (k) => (v(k) === "" ? null : Number(v(k)));
+  let fixed = {};
+  try { fixed = v("fixed") ? JSON.parse(v("fixed")) : {}; } catch (_) { throw new Error("A rögzített mezők nem érvényes JSON."); }
+  return { name: v("name"), description: v("description"), engine: v("engine"), universe: v("universe"),
+    objective: { trades_per_week: [n("tpw_lo"), n("tpw_hi")], max_drawdown_pct: n("max_drawdown_pct"), max_hold_days: n("max_hold_days"),
+      cost_bps: n("cost_bps"), min_pf: n("min_pf"), min_win_lo: n("min_win_lo"), min_trades: n("min_trades") },
+    search: { seed: n("seed"), method: v("method"), max_variants: n("max_variants"), max_cpu_minutes: n("max_cpu_minutes"), fixed } };
+}
+
+async function pageAgent(msg = "") {
+  clearInterval(agentTimer);
+  const d = await api("/api/agent");
+  const brief = agentEdit ? ((d.briefs.find((b) => b.id === agentEdit) || {}).brief || d.defaults) : d.defaults;
+  const st = (s) => { const [cls, label] = AGENT_STATE[s.state] || ["fail", s.state]; return `<span class="badge ${cls}">${label}</span>`; };
+  view.innerHTML = `
+    <div class="page-head"><h1>Kutatóügynök</h1>
+      <span class="muted">Stratégiaváltozatokat keres és tesztel egy kutatási cél szerint, a labor-szolgáltatásban (éjjel vagy azonnal).
+        Determinisztikus, a kipróbált változatok száma mindig látszik. Nem kereskedik, nem ad tanácsot.</span></div>
+    ${msg ? `<section class="card"><div class="card-body">${esc(msg)}</div></section>` : ""}
+    <section class="card"><h2>Kutatási célok</h2><div class="card-body">${d.briefs.length ? `<table class="table"><thead><tr><th>Név</th><th>Motor</th><th>Univerzum</th><th>Cél</th><th></th></tr></thead><tbody>
+      ${d.briefs.map((x) => { const o = x.brief.objective; return `<tr><td>${esc(x.brief.name)}</td><td>${esc(d.engines[x.brief.engine])}</td><td>${esc(d.universes[x.brief.universe])}</td>
+        <td class="small">heti ${fmt(o.trades_per_week[0], 1)}–${fmt(o.trades_per_week[1], 1)} kötés · max. ${fmt(o.max_drawdown_pct, 0)}% visszaesés · legfeljebb ${o.max_hold_days} nap · ${fmt(o.cost_bps, 0)} bps</td>
+        <td><button class="btn primary" type="button" data-ag-run="${esc(x.id)}" data-when="now">Futtatás most</button>
+          <button class="btn" type="button" data-ag-run="${esc(x.id)}" data-when="night">Ma éjjel</button>
+          <button class="btn" type="button" data-ag-edit="${esc(x.id)}">Szerkesztés</button>
+          <button class="btn" type="button" data-ag-delete="${esc(x.id)}">Törlés</button></td></tr>`; }).join("")}</tbody></table>`
+      : `<div class="muted">Még nincs kutatási cél – lent vehetsz fel egyet.</div>`}</div></section>
+    <section class="card"><h2>${agentEdit ? "Kutatási cél szerkesztése" : "Új kutatási cél"}</h2><div class="card-body">${agentBriefForm(d, brief)}</div></section>
+    <section class="card"><h2>Futások</h2><div class="card-body">${d.runs.length ? `<table class="table"><thead><tr><th>Futás</th><th>Cél</th><th>Állapot</th><th>Változat</th><th>Jelölt</th><th></th></tr></thead><tbody>
+      ${d.runs.map((r) => `<tr class="clickable" data-href="#/agent/run/${esc(r.run_id)}"><td class="small">${esc(r.run_id)}</td><td>${esc(r.brief_name || "")}</td>
+        <td>${st(r)} <span class="muted small">${esc(r.message || "")}</span></td><td class="num">${r.tried ?? "–"}</td><td class="num">${r.finalists ?? "–"}</td>
+        <td>${r.state === "queued" ? `<button class="btn" type="button" data-ag-cancel="${esc(r.run_id)}">Visszavonás</button>` : ""}</td></tr>`).join("")}</tbody></table>`
+      : `<div class="muted">Még nem futott.</div>`}</div></section>`;
+  bindRowLinks();
+  const post = async (action, body) => {
+    try { const r = await api(`/api/agent/${action}`, { method: "POST", body: JSON.stringify(body) }); await pageAgent(r.message || ""); }
+    catch (e) { await pageAgent(`Hiba: ${e.message}`); }
+  };
+  $("#ag-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    let b;
+    try { b = agentBriefFromForm(ev.target); } catch (e) { await pageAgent(`Hiba: ${e.message}`); return; }
+    const replace = agentEdit; agentEdit = null;
+    await post("save", { brief: b, replace });
+  });
+  const nb = $("#ag-new");
+  if (nb) nb.addEventListener("click", () => { agentEdit = null; pageAgent(); });
+  view.querySelectorAll("[data-ag-run]").forEach((x) => x.addEventListener("click", () => post("run", { brief_id: x.dataset.agRun, when: x.dataset.when })));
+  view.querySelectorAll("[data-ag-edit]").forEach((x) => x.addEventListener("click", () => { agentEdit = x.dataset.agEdit; pageAgent(); }));
+  view.querySelectorAll("[data-ag-delete]").forEach((x) => x.addEventListener("click", () => { if (confirm("Törlöd ezt a kutatási célt?")) post("delete", { brief_id: x.dataset.agDelete }); }));
+  view.querySelectorAll("[data-ag-cancel]").forEach((x) => x.addEventListener("click", (ev) => { ev.stopPropagation(); post("cancel", { run_id: x.dataset.agCancel }); }));
+  if (d.runs.some((r) => r.state === "queued" || r.state === "running")) {
+    agentTimer = setInterval(() => {
+      if (!location.hash.startsWith("#/agent") || location.hash.startsWith("#/agent/run/")) { clearInterval(agentTimer); return; }
+      if (!document.querySelector("#ag-form :focus")) pageAgent();
+    }, 10000);
+  }
+}
+
+const AG_COLORS = ["var(--accent)", "var(--info)", "var(--warn)"];
+
+function agentEquity(svg, series) {
+  const W = Math.max(320, svg.parentElement.clientWidth), H = 220, pad = { l: 8, r: 56, t: 12, b: 22 };
+  const pts = series.flatMap((s) => s.points.map(([t, v]) => [Date.parse(t), v]));
+  if (!pts.length) { svg.outerHTML = `<div class="muted">Nincs lezárt kötés.</div>`; return; }
+  const t0 = Math.min(...pts.map((p) => p[0])), t1 = Math.max(...pts.map((p) => p[0]));
+  let lo = Math.min(0, ...pts.map((p) => p[1])), hi = Math.max(0, ...pts.map((p) => p[1]));
+  const span = hi - lo || 1; lo -= span * 0.08; hi += span * 0.08;
+  const x = (t) => pad.l + ((t - t0) / Math.max(1, t1 - t0)) * (W - pad.l - pad.r);
+  const y = (v) => pad.t + (hi - v) / (hi - lo) * (H - pad.t - pad.b);
+  const ticks = niceTicks(lo, hi, 4);
+  const parts = [`<g class="grid">${ticks.map((t) => `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(t)}" y2="${y(t)}"/>`).join("")}</g>`,
+    `<g class="axis">${ticks.map((t) => `<text x="${W - pad.r + 6}" y="${y(t) + 4}">${fmt(t, 0)}%</text>`).join("")}</g>`,
+    `<g class="axis"><text x="${pad.l}" y="${H - 6}">${new Date(t0).toISOString().slice(0, 7)}</text><text x="${W - pad.r}" y="${H - 6}" text-anchor="end">${new Date(t1).toISOString().slice(0, 7)}</text></g>`];
+  series.forEach((s, i) => {
+    const d = s.points.map(([t, v], k) => `${k ? "L" : "M"}${x(Date.parse(t)).toFixed(1)},${y(v).toFixed(1)}`).join("");
+    if (d) parts.push(`<path d="${d}" fill="none" stroke="${AG_COLORS[i % 3]}" stroke-width="2"/>`);
+  });
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H); svg.innerHTML = parts.join("");
+}
+
+function agentMetricRows(f, unit) {
+  const u = unit === "%" ? "%" : " R";
+  const row = (label, m) => (m ? `<tr><td>${label}</td><td class="num">${m.n}</td><td class="num">${fmt(m.per_week, 2)}</td>
+    <td class="num">${fmt((m.win || 0) * 100, 1)}% <span class="muted small">(${fmt((m.win_lo || 0) * 100, 1)}%)</span></td>
+    <td class="num">${signed(m.ev, 2, u)} <span class="muted small">(${signed(m.ev_lo, 2, u)})</span></td>
+    <td class="num">${m.pf >= 99 ? "∞" : fmt(m.pf, 2)}</td><td class="num">${fmt(m.max_dd, 1)}%</td></tr>` : `<tr><td>${label}</td><td colspan="6" class="muted">–</td></tr>`);
+  return `<table class="table"><thead><tr><th>Időszak</th><th>Kötés</th><th>Heti</th><th>Nyerési arány (alsó határ)</th><th>Átlag (alsó határ)</th><th>PF</th><th>Max. visszaesés</th></tr></thead>
+    <tbody>${row("Tanító", f.train || f.train_search)}${f.test !== undefined ? row("Validáció", f.test) + row("Holdout előtt összesen", f.visible) : ""}</tbody></table>`;
+}
+
+async function pageAgentRun(runId) {
+  clearInterval(agentTimer);
+  const d = await api(`/api/agent/run/${runId}`);
+  const s = d.status, r = d.report;
+  const [cls, label] = AGENT_STATE[s.state] || ["fail", s.state];
+  const lines = (arr) => `<ul class="digest-list">${(arr || []).map((l) => `<li><span>${esc(l.text)}</span></li>`).join("")}</ul>`;
+  view.innerHTML = `
+    <div class="page-head"><a href="#/agent" class="muted">← Kutatóügynök</a><h1>${esc(s.brief_name || runId)}</h1>
+      <span class="badge ${cls}">${label}</span> <span class="muted small">${esc(s.message || "")}</span></div>
+    ${r ? `<section class="card"><h2>Összefoglaló <span class="muted">${esc(r.engine_label)} · ${esc(r.universe_label)} · ${r.symbols} papír · seed ${r.brief.search.seed}</span></h2>
+      <div class="card-body">${lines(r.summary)}${r.warnings.length ? lines(r.warnings) : ""}
+        <h3>Kiinduló beállítás (tanító időszak)</h3>${agentMetricRows({ train: r.preset.train }, r.unit)}</div></section>
+      <section class="card"><h2>Tőkegörbék (fix súly, holdout előtt)</h2><div class="card-body"><svg id="ag-equity" class="bt-chart" role="img" aria-label="Tőkegörbék"></svg>
+        <div class="small">${r.finalists.map((f, i) => `<span style="color:${AG_COLORS[i % 3]}">■</span> ${f.rank}. jelölt`).join(" · ")}</div></div></section>
+      ${r.finalists.map((f) => `<section class="card"><h2>${f.rank}. jelölt ${f.assess.violations.length ? `<span class="badge fail">nem teljesít minden feltételt</span>` : `<span class="badge go">teljesíti a feltételeket</span>`}</h2>
+        <div class="card-body">${agentMetricRows(f, r.unit)}${lines(f.explanation)}
+        ${f.gate ? `<details><summary>Elfogadási feltétel (${f.gate.checks.filter((c) => c[1]).length} / ${f.gate.checks.length})</summary><ul>${f.gate.checks.map(([n, ok]) => `<li>${ok ? "✔" : "✘"} ${esc(n)}</li>`).join("")}</ul></details>` : ""}
+        <p><button class="btn" type="button" data-ag-adopt="${f.rank}">Átvétel a Homokozóba</button>
+          <span class="muted small">Értesítés és paper-kötés nélkül; a Homokozó élő virtuális követése indul.</span></p></div></section>`).join("")}
+      <p class="muted small">${esc(r.disclaimer.text)}</p>` : ""}
+    <section class="card"><h2>Hogyan jutott ide <span class="muted">${d.log_count} lépés</span></h2><div class="card-body">${d.timeline.length ? lines(d.timeline) : `<div class="muted">Még nincs lépés.</div>`}</div></section>`;
+  if (r) agentEquity($("#ag-equity"), r.finalists.map((f) => ({ points: f.equity || [] })));
+  view.querySelectorAll("[data-ag-adopt]").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm("A Homokozó mostani beállítása az előzménylistába kerül, és ez a jelölt lesz a Homokozó szabálya (értesítés és paper-kötés nélkül). Folytatod?")) return;
+    try { const res = await api("/api/agent/adopt", { method: "POST", body: JSON.stringify({ run_id: runId, rank: Number(b.dataset.agAdopt), confirm: true }) }); alert(res.message); }
+    catch (e) { alert(`Hiba: ${e.message}`); }
+  }));
+  if (s.state === "queued" || s.state === "running") {
+    agentTimer = setInterval(() => { if (location.hash !== `#/agent/run/${runId}`) { clearInterval(agentTimer); return; } pageAgentRun(runId); }, 8000);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Esemenytanulmanyok: mi tortent az arral egy esemenytipus utan (abnormalis hozam, CAR)
+// ---------------------------------------------------------------------------
+let eventsTimer = null;
+const EV_GROUPS = { direction: "Irány", sector: "Szektor", regime: "Piaci rezsim", year: "Év" };
+const EV_VALUES = { up: "felfelé", down: "lefelé", flat: "semleges", bull: "emelkedő piac", bear: "eső piac", unknown: "nem ismert" };
+const EV_PARAM_LABELS = { gap_pct: "Gap küszöb (%)", item: "8-K tételkód (pl. 2.02; üres: mind)", quiet_days: "Csendes napok előtte",
+  strategy: "Stratégia", min_value: "Min. érték ($)", exclude_plans: "10b5-1 terv nélkül", min_insiders: "Min. bennfentes", days: "Napokon belül" };
+
+function eventsParamFields(d, type, values) {
+  const params = (d.types[type] || {}).params || {};
+  return Object.entries(params).map(([k, def]) => {
+    const v = values && values[k] !== undefined ? values[k] : def;
+    if (k === "strategy") return `<label>${EV_PARAM_LABELS[k]}<select name="p_${k}">${d.strategies.map((s) => `<option ${s === v ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label>`;
+    if (typeof def === "boolean") return `<label>${EV_PARAM_LABELS[k] || k}<select name="p_${k}"><option value="true" ${v ? "selected" : ""}>igen</option><option value="false" ${v ? "" : "selected"}>nem</option></select></label>`;
+    return `<label>${EV_PARAM_LABELS[k] || k}<input name="p_${k}" ${typeof def === "number" ? 'type="number" step="any"' : ""} value="${esc(v)}"></label>`;
+  }).join("");
+}
+
+function eventsSpecFromForm(form, d) {
+  const v = (n) => form.elements[n].value.trim();
+  const type = v("type");
+  const params = {};
+  Object.entries(d.types[type].params).forEach(([k, def]) => {
+    const raw = v(`p_${k}`);
+    params[k] = typeof def === "boolean" ? raw === "true" : typeof def === "number" ? Number(raw) : raw;
+  });
+  return { type, params, universe: v("universe"), symbol: v("symbol") || null, sector: v("sector") || null,
+    start: v("start"), end: v("end") || null, window: [Number(v("w0")), Number(v("w1"))],
+    estimation: [Number(v("e0")), Number(v("e1"))], benchmark: v("benchmark"), include_holdout: form.elements.include_holdout.checked };
+}
+
+async function pageEvents(msg = "") {
+  clearInterval(eventsTimer);
+  const d = await api("/api/events");
+  const s = d.defaults;
+  view.innerHTML = `
+    <div class="page-head"><h1>Eseménytanulmányok</h1>
+      <span class="muted">Mi történt az árral egy eseménytípus után? Abnormális hozam a benchmarkhoz képest (piaci modell), kumulálva.
+        Csak az akkor ismert adatból; a zárolt holdout alapból kimarad. Múltbeli statisztika, nem ajánlás.</span></div>
+    ${msg ? `<section class="card"><div class="card-body">${esc(msg)}</div></section>` : ""}
+    <section class="card"><h2>Új tanulmány</h2><div class="card-body">
+      <form id="ev-form" class="ag-form">
+        <label>Esemény<select name="type">${Object.entries(d.types).map(([k, t]) => `<option value="${esc(k)}">${esc(t.label)}</option>`).join("")}</select></label>
+        <label>Univerzum<select name="universe">${Object.entries(d.universes).map(([k, l]) => `<option value="${esc(k)}" ${k === s.universe ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
+        <label>Papír (egy papírnál)<input name="symbol" placeholder="pl. NVDA"></label>
+        <label>Szektor<select name="sector"><option value="">mind</option>${d.sectors.map((x) => `<option>${esc(x)}</option>`).join("")}</select></label>
+        <label>Kezdet<input name="start" type="date" value="${esc(s.start)}"></label>
+        <label>Vég (üres: a holdout előtt)<input name="end" type="date"></label>
+        <label>Ablak kezdete (nap)<input name="w0" type="number" value="${s.window[0]}"></label>
+        <label>Ablak vége (nap)<input name="w1" type="number" value="${s.window[1]}"></label>
+        <label>Becslési ablak kezdete<input name="e0" type="number" value="${s.estimation[0]}"></label>
+        <label>Becslési ablak vége<input name="e1" type="number" value="${s.estimation[1]}"></label>
+        <label>Benchmark<select name="benchmark"><option value="index">a papír indexe</option><option value="SPY">SPY</option></select></label>
+        <div id="ev-params" class="wide ag-form"></div>
+        <label class="wide"><span><input type="checkbox" name="include_holdout"> A zárolt holdout is (naplózva – utána az az időszak már nem független)</span></label>
+        <div class="wide"><button class="btn primary" type="submit">Futtatás</button> <span id="ev-job" class="small"></span>
+          <span class="muted small">Egy papír és a watchlist azonnal fut; a nagyobb univerzumot a labor-szolgáltatás futtatja.
+            Form 4: ${d.sources.form4.years.length ? esc(d.sources.form4.years.join(", ")) : "nincs letöltve"} · S&amp;P 500 változások: ${d.sources.index_changes || "nincs letöltve"}</span></div>
+      </form></div></section>
+    <section class="card"><h2>Mentett tanulmányok</h2><div class="card-body">${d.studies.length ? `<table class="table"><thead><tr><th>Készült</th><th>Esemény</th><th>Univerzum</th><th>Esemény (db)</th><th>Átlagos CAR</th><th>Pozitív</th><th></th></tr></thead><tbody>
+      ${d.studies.map((x) => `<tr class="clickable" data-href="#/events/${esc(x.id)}"><td class="small">${when(x.created) || ""}</td><td>${esc((d.types[x.spec.type] || {}).label || x.spec.type)}</td>
+        <td>${esc(d.universes[x.spec.universe] || x.spec.universe)}${x.spec.symbol ? ` (${esc(x.spec.symbol)})` : ""}</td><td class="num">${x.n ?? "–"}</td>
+        <td class="num">${signed(x.mean, 2, "%")}</td><td class="num">${x.hit == null ? "–" : `${fmt(x.hit * 100, 1)}%`}</td>
+        <td><button class="btn" type="button" data-ev-delete="${esc(x.id)}">Törlés</button></td></tr>`).join("")}</tbody></table>`
+      : `<div class="muted">Még nincs mentett tanulmány.</div>`}
+      ${d.queue.length ? `<p class="small muted">Munkasor: ${d.queue.map((q) => `${esc(q.status)} (${esc(q.message || "")})`).join(" · ")}</p>` : ""}</div></section>`;
+  const form = $("#ev-form");
+  const showParams = () => { $("#ev-params").innerHTML = eventsParamFields(d, form.elements.type.value); };
+  form.elements.type.addEventListener("change", showParams);
+  showParams();
+  bindRowLinks();
+  const job = (j) => { const el = $("#ev-job"); if (el && j && j.state !== "idle") el.innerHTML = `<span class="badge ${j.state === "error" ? "bad" : j.state === "done" ? "go" : "watch"}">${j.state === "running" ? "Fut" : j.state === "done" ? "Kész" : "Hiba"}</span> ${esc(j.message)}`; };
+  const poll = () => {
+    clearInterval(eventsTimer);
+    eventsTimer = setInterval(async () => {
+      if (location.hash !== "#/events") { clearInterval(eventsTimer); return; }
+      const p = await api("/api/events").catch(() => null);
+      if (!p) return;
+      job(p.job);
+      if (p.job.state !== "running") { clearInterval(eventsTimer); if (p.job.state === "done" && p.job.run_id) location.hash = `#/events/${p.job.run_id}`; }
+    }, 1500);
+  };
+  job(d.job);
+  if (d.job.state === "running") poll();
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const spec = eventsSpecFromForm(form, d);
+    if (spec.include_holdout && !confirm("A zárolt holdout megnyitása naplózódik, és utána ez az időszak már nem független teszt. Biztosan?")) return;
+    try { const r = await api("/api/events/study", { method: "POST", body: JSON.stringify({ spec }) }); if (r.queued) await pageEvents(r.message); else { job(r.job); poll(); } }
+    catch (e) { job({ state: "error", message: e.message }); }
+  });
+  view.querySelectorAll("[data-ev-delete]").forEach((b) => b.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    if (!confirm("Törlöd ezt a tanulmányt?")) return;
+    const r = await api("/api/events/delete", { method: "POST", body: JSON.stringify({ id: b.dataset.evDelete }) });
+    await pageEvents(r.message);
+  }));
+}
+
+function eventsPathChart(svg, days, path) {
+  const W = Math.max(320, svg.parentElement.clientWidth), H = 240, pad = { l: 8, r: 56, t: 12, b: 24 };
+  const vals = [...path.mean, ...path.median, ...(path.lo || []), ...(path.hi || []), 0];
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = hi - lo || 1; lo -= span * 0.08; hi += span * 0.08;
+  const x = (i) => pad.l + (i / Math.max(1, days.length - 1)) * (W - pad.l - pad.r);
+  const y = (v) => pad.t + (hi - v) / (hi - lo) * (H - pad.t - pad.b);
+  const ticks = niceTicks(lo, hi, 4);
+  const line = (arr) => arr.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const zero = days.indexOf(0);
+  const parts = [`<g class="grid">${ticks.map((t) => `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(t)}" y2="${y(t)}"/>`).join("")}</g>`,
+    `<g class="axis">${ticks.map((t) => `<text x="${W - pad.r + 6}" y="${y(t) + 4}">${fmt(t, 1)}%</text>`).join("")}</g>`,
+    `<g class="axis">${days.map((dd, i) => (dd % 10 === 0 ? `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${dd}</text>` : "")).join("")}</g>`];
+  if (zero >= 0) parts.push(`<line x1="${x(zero)}" x2="${x(zero)}" y1="${pad.t}" y2="${H - pad.b}" stroke="var(--muted)" stroke-dasharray="3 3"/>`);
+  if (path.lo && path.hi) parts.push(`<path d="${line(path.hi)}L${[...path.lo].reverse().map((v, k) => `${x(path.lo.length - 1 - k).toFixed(1)},${y(v).toFixed(1)}`).join("L")}Z" fill="var(--info-soft)" stroke="none"/>`);
+  parts.push(`<path d="${line(path.median)}" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 3"/>`);
+  parts.push(`<path d="${line(path.mean)}" fill="none" stroke="var(--accent)" stroke-width="2"/>`);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H); svg.innerHTML = parts.join("");
+}
+
+function eventsHistogram(svg, h) {
+  const W = Math.max(320, svg.parentElement.clientWidth), H = 160, pad = { l: 8, r: 8, t: 8, b: 22 };
+  const n = h.counts.length, maxc = Math.max(1, ...h.counts);
+  const bw = (W - pad.l - pad.r) / n;
+  const parts = h.counts.map((c, i) => {
+    const mid = (h.edges[i] + h.edges[i + 1]) / 2, bh = (c / maxc) * (H - pad.t - pad.b);
+    return `<rect x="${pad.l + i * bw + 1}" y="${H - pad.b - bh}" width="${Math.max(1, bw - 2)}" height="${bh}" fill="${mid >= 0 ? "var(--up)" : "var(--down)"}" opacity="0.75"/>`;
+  });
+  parts.push(`<g class="axis"><text x="${pad.l}" y="${H - 6}">${fmt(h.edges[0], 0)}%</text><text x="${W - pad.r}" y="${H - 6}" text-anchor="end">${fmt(h.edges[n], 0)}%</text></g>`);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H); svg.innerHTML = parts.join("");
+}
+
+async function pageEventStudy(id) {
+  clearInterval(eventsTimer);
+  const r = await api(`/api/events/study/${id}`);
+  const res = r.result, spec = r.spec;
+  const lines = `<ul class="digest-list">${r.lines.map((l) => `<li><span>${esc(l.text)}</span></li>`).join("")}</ul>`;
+  const groups = Object.entries(res.groups || {}).map(([key, vals]) => `<h3>${esc(EV_GROUPS[key] || key)}</h3>
+    <table class="table"><thead><tr><th></th><th>Esemény</th><th>Átlagos CAR</th><th>Medián</th><th>Pozitív</th><th>Utána (átlag)</th></tr></thead><tbody>
+    ${Object.entries(vals).map(([v, g]) => `<tr><td>${esc(EV_VALUES[v] || v)}</td><td class="num">${g.car.n}</td><td class="num">${signed(g.car.mean, 2, "%")}</td>
+      <td class="num">${signed(g.car.median, 2, "%")}</td><td class="num">${g.car.hit == null ? "–" : `${fmt(g.car.hit * 100, 1)}%`}</td><td class="num">${signed(g.post.mean, 2, "%")}</td></tr>`).join("")}</tbody></table>`).join("");
+  view.innerHTML = `
+    <div class="page-head"><a href="#/events" class="muted">← Eseménytanulmányok</a><h1>${esc(r.type_label)}</h1>
+      <span class="muted">${esc(r.universe_label)}${spec.symbol ? ` (${esc(spec.symbol)})` : ""} · ${esc(spec.start)} – ${esc(r.end)} · ablak ${spec.window[0]} … ${spec.window[1]}. nap</span>
+      <a class="btn" href="/api/events/study/${esc(id)}.csv" download>CSV</a></div>
+    <section class="card"><h2>Összefoglaló</h2><div class="card-body">${lines}</div></section>
+    ${res.path ? `<section class="card"><h2>Átlagos kumulált abnormális hozam <span class="muted">sáv: 95%, dátum szerint csoportosított bootstrap · szaggatott: medián</span></h2>
+      <div class="card-body"><svg id="ev-path" class="bt-chart" role="img" aria-label="Átlagos pálya"></svg></div></section>
+    <section class="card"><h2>Eloszlás (CAR, %)</h2><div class="card-body"><svg id="ev-hist" class="bt-chart" role="img" aria-label="Eloszlás"></svg></div></section>
+    <section class="card"><h2>Bontás</h2><div class="card-body">${groups || `<div class="muted">–</div>`}</div></section>` : ""}
+    <section class="card"><h2>Események <span class="muted">${r.events.length} db – kattints egy sorra</span></h2><div class="card-body">
+      <div id="ev-detail"></div>
+      <table class="table"><thead><tr><th>Papír</th><th>0. nap</th><th>CAR</th><th>Utána</th><th>Modell</th><th>Részletek</th></tr></thead><tbody>
+      ${r.events.slice(0, 500).map((e, i) => `<tr class="clickable" data-ev-n="${i}"><td class="ticker">${esc(e.symbol)}</td><td>${esc(e.day)}${e.exact ? "" : ` <span class="muted small">(csak dátum)</span>`}</td>
+        <td class="num">${signed(e.car, 2, "%")}</td><td class="num">${signed(e.post, 2, "%")}</td><td class="small">${e.model === "market" ? "piaci modell" : "piac-korrigált"}</td>
+        <td class="small">${esc(Object.entries(e.attrs || {}).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`).join(" · "))}</td></tr>`).join("")}</tbody></table>
+      ${r.events.length > 500 ? `<p class="muted small">Az első 500 látszik; a teljes lista a CSV-ben.</p>` : ""}</div></section>`;
+  if (res.path) { eventsPathChart($("#ev-path"), res.days, res.path); eventsHistogram($("#ev-hist"), res.histogram); }
+  view.querySelectorAll("tr[data-ev-n]").forEach((tr) => tr.addEventListener("click", async () => {
+    const dd = await api(`/api/events/study/${id}/event/${tr.dataset.evN}`).catch((e) => ({ error: e.message }));
+    const box = $("#ev-detail");
+    if (dd.error) { box.innerHTML = `<div class="muted">${esc(dd.error)}</div>`; return; }
+    box.innerHTML = `<h3><a href="#/p/${esc(dd.symbol)}">${esc(dd.symbol)}</a> · ${esc(dd.day)} <span class="muted small">CAR ${signed(dd.car, 2, "%")} · utána ${signed(dd.post, 2, "%")}</span></h3>
+      <svg id="ev-one" class="bt-chart" role="img" aria-label="Az esemény környezete"></svg>
+      <p class="small"><span style="color:var(--accent)">■</span> papír (100 = az esemény előtti nap) · <span style="color:var(--muted)">■</span> benchmark</p>`;
+    eventsPathChart($("#ev-one"), dd.rel, { mean: dd.close.map((v) => v - 100), median: dd.bench.map((v) => v - 100), lo: null, hi: null });
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -2191,7 +2613,7 @@ function pageInfo() {
 // Strategia-labor: kiserletek multbeli adatokon (a szamolast a hatterfolyamat vegzi)
 // ---------------------------------------------------------------------------
 const LAB_STATUS = { queued: ["watch", "Sorban áll"], running: ["watch", "Számol"], done: ["go", "Kész"], error: ["bad", "Hiba"] };
-const LAB_PHASE = { indul: "Indul", adat: "Adatletöltés", kitoresek: "Kitörések gyűjtése", ertekeles: "Kísérletek értékelése",
+const LAB_PHASE = { munkasor: "Munkasor (kutatóügynök)", indul: "Indul", adat: "Adatletöltés", kitoresek: "Kitörések gyűjtése", ertekeles: "Kísérletek értékelése",
   "gepi tanulas": "Gépi tanulás", var: "Pihen – nincs teendő", hiba: "Hiba" };
 const LAB_EXIT = { target: "teljes pozíció a célig", partial: "fele +1R-nél, maradék a célig", trail: "követett stop", partial_trail: "fele +1R-nél, maradék követett stoppal" };
 let labTimer = null;
@@ -2874,4 +3296,295 @@ function newsCard(d) {
       <div class="muted small">A döntés csak a 16:00 (New York) előtt megjelent híreket látja. ${last ? `Utolsó letöltés: ${esc(when(last))}.` : "Még nem volt letöltés."}</div>
       ${rows ? `<ul class="news-list">${rows}</ul>` : `<div class="muted" style="margin-top:6px">Nincs tárolt hír – nyomd meg a „Frissítés” gombot.</div>`}
     </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Gyakorlas: rejtett multbeli helyzetek (practice/) - a papir es a datum csak a dontes utan derul ki
+// ---------------------------------------------------------------------------
+let practiceTimer = null;
+const PR_REASON = { stop: "stop", gap_stop: "stop (nyitási rés)", target: "cél", time: "időkorlát", signal: "kilépési jel" };
+const PR_STRAT = { pullback: "Visszahúzás (RSI2)", deep: "Mély visszahúzás", breakout: "Kitörés" };
+const PR_CAT = { strategy: "stratégia-jelzés", pattern: "formálódó alakzat", nothing: "semmi különös" };
+const PR_STATUS = { unfilled: "a limit nem teljesült", open: "nyitva maradt", filtered: "a szűrők kizárták", unknown: "a labor még nem értékelte" };
+const rCls = (r) => (r == null ? "" : r > 0 ? "up" : r < 0 ? "down" : "");
+const fmtIn = (v) => (Math.round(v * 100) / 100).toFixed(2);       // <input type="number"> erteke: pont a tizedesjel
+
+async function pagePractice(msg = "") {
+  clearInterval(practiceTimer);
+  const d = await api("/api/practice");
+  const p = d.pool;
+  const busy = d.queue.find((q) => q.status === "queued" || q.status === "running");
+  const total = p ? p.counts.strategy + p.counts.pattern + p.counts.nothing : 0;
+  view.innerHTML = `
+    <div class="page-head"><h1>Gyakorlás</h1>
+      <span class="muted">Rejtett, múltbeli chart-helyzetek: eldöntöd, kihagyod-e vagy belépsz-e (stoppal, opcionális céllal és időkorláttal), utána megnézed, mi történt, és összeveted a stratégiákkal és egy véletlen alapvonallal.
+        A papír és a dátum csak a döntés után derül ki. Szimuláció múltbeli adaton, nem ajánlás.</span></div>
+    ${msg ? `<section class="card"><div class="card-body">${esc(msg)}</div></section>` : ""}
+    <section class="card"><h2>Feladatkészlet</h2><div class="card-body">
+      ${p ? `<p>${p.symbols} papír, ${total} helyzet: stratégia-jelzés ${p.counts.strategy}, formálódó alakzat ${p.counts.pattern}, semmi különös ${p.counts.nothing}.</p>
+        <p class="muted small">Készült: ${when(p.created)} · az adat a zárolt holdout előtt véget ér (${esc(p.visible_end)})${p.partial ? " · részleges: elfogyott az időkeret" : ""}</p>`
+        : `<p>Még nincs feladatkészlet.</p>`}
+      <div class="digest-controls"><button class="btn ${p ? "" : "primary"}" id="pr-pool" type="button" ${busy ? "disabled" : ""}>${p ? "Újraépítés" : "Feladatkészlet építése"}</button>
+        ${busy ? `<span class="badge watch">${busy.status === "running" ? "Épül" : "Sorban áll"}</span> <span class="small muted">${esc(busy.message || "")}</span>` : ""}</div>
+      <p class="muted small">A labor-szolgáltatás építi fel, kb. 1–2 perc alatt.${d.lab_running ? "" : " A labor most nem fut – helyben parancssorból: python cli.py practice-pool"}</p>
+    </div></section>
+    ${p ? `<section class="card"><h2>Új kör</h2><div class="card-body">
+      <form id="pr-form" class="ag-form">
+        <label>Helyzetek száma<input name="rounds" type="number" min="1" max="${d.defaults.max_rounds}" value="${d.defaults.rounds}"></label>
+        <label>Seed (üres: véletlen)<input name="seed" type="number" min="0"></label>
+        <label>Megosztási kód (ha van)<input name="code" placeholder="abcdefg-hjkmnpqr-st" autocomplete="off"></label>
+        <label>Stratégia-jelzés (%)<input name="m_strategy" type="number" min="0" value="${d.defaults.mix.strategy}"></label>
+        <label>Formálódó alakzat (%)<input name="m_pattern" type="number" min="0" value="${d.defaults.mix.pattern}"></label>
+        <label>Semmi különös (%)<input name="m_nothing" type="number" min="0" value="${d.defaults.mix.nothing}"></label>
+        <div class="wide"><button class="btn primary" type="submit">Kör indítása</button> <span id="pr-msg" class="small"></span>
+          <span class="muted small">Megosztási kóddal a helyzetek száma és sorrendje a kódból jön.</span></div>
+      </form></div></section>` : ""}
+    <section class="card"><h2>Körök</h2><div class="card-body">${d.sessions.length ? `<table class="table"><thead><tr><th>Készült</th><th>Állás</th><th>Átlag R</th><th>Megosztási kód</th><th></th></tr></thead><tbody>
+      ${d.sessions.map((s) => `<tr class="clickable" data-href="#/practice/${esc(s.id)}"><td class="small">${when(s.created)}</td>
+        <td>${s.decided} / ${s.rounds}${s.done ? ` <span class="badge go">kész</span>` : ""}</td><td class="num ${rCls(s.mean_r)}">${signed(s.mean_r, 2, " R")}</td>
+        <td class="small"><code>${esc(s.code)}</code></td><td><button class="btn" type="button" data-pr-delete="${esc(s.id)}">Törlés</button></td></tr>`).join("")}</tbody></table>`
+      : `<div class="muted">Még nincs kör.</div>`}</div></section>`;
+  bindRowLinks();
+  if (busy) {
+    practiceTimer = setInterval(async () => {
+      if (location.hash !== "#/practice") { clearInterval(practiceTimer); return; }
+      const q = await api("/api/practice").catch(() => null);
+      if (q && !q.queue.some((j) => j.status === "queued" || j.status === "running")) { clearInterval(practiceTimer); await pagePractice(); }
+    }, 3000);
+  }
+  $("#pr-pool").addEventListener("click", async () => {
+    try { const r = await api("/api/practice/pool", { method: "POST", body: JSON.stringify({ force: !!p }) }); await pagePractice(r.message); }
+    catch (e) { await pagePractice(e.message); }
+  });
+  const form = $("#pr-form");
+  if (form) form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const v = (n) => form.elements[n].value.trim();
+    const body = { rounds: Number(v("rounds")), seed: v("seed") === "" ? null : Number(v("seed")), code: v("code") || null,
+      mix: { strategy: Number(v("m_strategy")), pattern: Number(v("m_pattern")), nothing: Number(v("m_nothing")) } };
+    try { const r = await api("/api/practice/session", { method: "POST", body: JSON.stringify(body) }); location.hash = `#/practice/${r.session.id}`; }
+    catch (e) { const m = $("#pr-msg"); m.className = "msg err small"; m.textContent = e.message; }
+  });
+  view.querySelectorAll("[data-pr-delete]").forEach((b) => b.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    if (!confirm("Törlöd ezt a kört?")) return;
+    const r = await api("/api/practice/delete", { method: "POST", body: JSON.stringify({ id: b.dataset.prDelete }) });
+    await pagePractice(r.message);
+  }));
+}
+
+// a rejtett chart: index-tengely (0 = a dontes napja), normalizalt ar, relativ volumen; a felfedeskor a jovo
+function practiceChart(svg, bars, opt = {}) {
+  const future = (opt.future || []).slice(0, opt.shown ?? (opt.future || []).length);
+  const all = bars.concat(future);
+  const W = Math.max(320, svg.parentElement.clientWidth);
+  const H = W < 600 ? 340 : 420;
+  const pad = { l: 8, r: 64, t: 12, b: 24 };
+  const volH = Math.round(H * 0.14);
+  const priceH = H - pad.t - pad.b - volH - 8;
+  const slots = bars.length + (opt.future ? opt.future.length : 0);
+  const step = (W - pad.l - pad.r) / slots;
+  const x = (j) => pad.l + step * j + step / 2;
+  let lo = Infinity, hi = -Infinity;
+  all.forEach((k) => { lo = Math.min(lo, k.l); hi = Math.max(hi, k.h); });
+  const levels = (opt.levels || []).filter((h) => h.v != null && Number.isFinite(h.v));
+  levels.forEach((h) => { lo = Math.min(lo, h.v); hi = Math.max(hi, h.v); });
+  const span = hi - lo || 1;
+  lo -= span * 0.04; hi += span * 0.04;
+  const y = (v) => pad.t + (hi - v) / (hi - lo) * priceH;
+  const volTop = pad.t + priceH + 8;
+  const vmax = Math.max(...bars.map((k) => k.v || 0)) || 1;
+  const vy = (v) => volTop + volH - (Math.min(v, vmax) / vmax) * volH;
+  const parts = [];
+  const ticks = niceTicks(lo, hi, 6);
+  parts.push(`<g class="grid">${ticks.map((t) => `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(t)}" y2="${y(t)}"/>`).join("")}</g>`);
+  parts.push(`<g class="axis">${ticks.map((t) => `<text x="${W - pad.r + 6}" y="${y(t) + 4}">${fmt(t, 0)}</text>`).join("")}</g>`);
+  const zero = bars.length - 1;
+  const labels = [];
+  for (let j = 0; j < slots; j += 1) { const rel = j - zero; if (rel % 20 === 0 || (rel > 0 && rel % 10 === 0)) labels.push(j); }
+  parts.push(`<g class="axis">${labels.map((j) => `<text x="${x(j)}" y="${H - 6}" text-anchor="middle">${j - zero > 0 ? "+" : ""}${j - zero}</text>`).join("")}</g>`);
+  parts.push(`<line x1="${x(zero) + step / 2}" x2="${x(zero) + step / 2}" y1="${pad.t}" y2="${volTop + volH}" stroke="var(--muted)" stroke-dasharray="3 3"/>`);
+  parts.push(`<g>${bars.map((k, j) => (k.v == null ? "" : `<rect class="vol ${k.c >= k.o ? "up" : "down"}" x="${x(j) - step * 0.35}" y="${vy(k.v)}" width="${Math.max(1, step * 0.7)}" height="${volTop + volH - vy(k.v)}"/>`)).join("")}</g>`);
+  const bw = Math.max(1, step * 0.62);
+  parts.push(`<g>${all.map((k, j) => {
+    const top = y(Math.max(k.o, k.c)), bot = y(Math.min(k.o, k.c));
+    return `<g class="candle ${k.c >= k.o ? "up" : "down"}${j > zero ? " future" : ""}"><line x1="${x(j)}" x2="${x(j)}" y1="${y(k.h)}" y2="${y(k.l)}"/><rect x="${x(j) - bw / 2}" y="${top}" width="${bw}" height="${Math.max(1, bot - top)}"/></g>`;
+  }).join("")}</g>`);
+  ["ema20", "ema50", "ema200"].forEach((key) => {
+    let dpath = "";
+    bars.forEach((k, j) => { if (k[key] != null) dpath += `${dpath ? "L" : "M"}${x(j).toFixed(1)},${y(k[key]).toFixed(1)}`; });
+    if (dpath) parts.push(`<path class="ema ${key}" d="${dpath}"/>`);
+  });
+  (opt.marks || []).forEach((m) => {
+    const j = zero + m.k;
+    if (m.k == null || j >= all.length || m.v == null) return;
+    parts.push(`<circle cx="${x(j)}" cy="${y(m.v)}" r="4.5" fill="${m.color}" stroke="var(--surface)" stroke-width="1.5"><title>${esc(m.label)}</title></circle>`);
+  });
+  levels.forEach((h) => {
+    const yy = y(h.v);
+    parts.push(`<line class="hline ${h.dash ? "dash" : ""}" x1="${pad.l}" x2="${W - pad.r}" y1="${yy}" y2="${yy}" stroke="${h.color}"/>`);
+    parts.push(`<rect class="hlabel-bg" x="${W - pad.r + 1}" y="${yy - 9}" width="${pad.r - 2}" height="18" rx="4" fill="${h.color}"/>`);
+    parts.push(`<text class="hlabel" x="${W - pad.r + 5}" y="${yy + 4}" fill="#fff">${esc(h.label)}</text>`);
+  });
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("height", H);
+  svg.innerHTML = parts.join("");
+}
+
+async function pagePracticeSession(id) {
+  clearInterval(practiceTimer);
+  const s = await api(`/api/practice/session/${id}/summary`);
+  if (s.session.done) { renderPracticeSummary(s); return; }
+  await pagePracticeTask(id, s.session.next, s.session);
+}
+
+function practiceLevels(f) {
+  const out = [];
+  if (!f || f.action !== "enter") return out;
+  if (f.entry === "limit" && f.limit) out.push({ v: f.limit, label: "Limit", color: "var(--info)" });
+  if (f.stop) out.push({ v: f.stop, label: "Stop", color: "var(--down)" });
+  if (f.target) out.push({ v: f.target, label: "Cél", color: "var(--up)", dash: true });
+  return out;
+}
+
+async function pagePracticeTask(id, k, sess) {
+  clearInterval(practiceTimer);
+  const t = await api(`/api/practice/session/${id}/task/${k}`);
+  const atr = t.chart.atr || 1;
+  view.innerHTML = `
+    <div class="page-head"><a href="#/practice" class="muted">← Gyakorlás</a><h1>Helyzet ${k + 1} / ${t.rounds}</h1>
+      <span class="muted">Az utolsó látható záró = 100; a vízszintes tengely kereskedési napokban (0 = a döntés napja). ATR (14): ${fmt(atr, 2)}</span></div>
+    ${sess.warning === "other_pool" ? `<section class="card"><div class="card-body">Ez a megosztási kód más feladatkészlethez készült: itt ugyanaz a kód más helyzeteket ad.</div></section>` : ""}
+    <section class="card chart-card"><div class="chart-legend"><span><span class="swatch" style="background:var(--ema20)"></span> EMA20</span>
+      <span><span class="swatch" style="background:var(--ema50)"></span> EMA50</span><span><span class="swatch" style="background:var(--ema200)"></span> EMA200</span>
+      <span class="muted">Volumen: a 20 napos átlaghoz viszonyítva</span></div>
+      <div class="card-body"><svg id="pr-chart" role="img" aria-label="Rejtett chart"></svg></div></section>
+    <section class="card" id="pr-decision"><h2>Döntés</h2><div class="card-body">
+      <form id="pr-dform" class="ag-form">
+        <label>Döntés<select name="action"><option value="enter">Belépés</option><option value="skip">Kihagyás</option></select></label>
+        <label>Belépés módja<select name="entry"><option value="open">Következő nyitás</option><option value="limit">Limit (egynapos, a következő napra)</option></select></label>
+        <label>Limit ár<input name="limit" type="number" step="0.01" value="${fmtIn(100 - 0.5 * atr)}"></label>
+        <label>Stop (kötelező)<input name="stop" type="number" step="0.01" value="${fmtIn(100 - 2 * atr)}"></label>
+        <label>Cél (üres: nincs)<input name="target" type="number" step="0.01"></label>
+        <label>Időkorlát (nap)<input name="days" type="number" min="1" max="${t.max_days}" value="10"></label>
+        <div class="wide"><span id="pr-risk" class="small muted"></span></div>
+        <div class="wide"><button class="btn primary" type="submit">Döntés rögzítése</button> <span class="muted small">A döntés után nem módosítható.</span> <span id="pr-err" class="small"></span></div>
+      </form></div></section>
+    <div id="pr-reveal"></div>`;
+  const svg = $("#pr-chart");
+  const form = $("#pr-dform");
+  const read = () => {
+    const n = (name) => { const raw = form.elements[name].value.trim(); return raw === "" ? null : Number(raw); };
+    return { action: form.elements.action.value, entry: form.elements.entry.value, limit: n("limit"), stop: n("stop"), target: n("target"), days: n("days") };
+  };
+  let chartOpt = {};
+  const draw = () => practiceChart(svg, t.chart.bars, chartOpt);
+  const preview = () => {
+    const f = read();
+    const enter = f.action === "enter";
+    ["entry", "limit", "stop", "target", "days"].forEach((name) => { form.elements[name].closest("label").hidden = !enter || (name === "limit" && f.entry !== "limit"); });
+    const ref = f.entry === "limit" ? f.limit : 100;
+    $("#pr-risk").textContent = enter && f.stop != null && ref ? `Stop-távolság: ${fmt((ref - f.stop) / atr, 2)} ATR (${fmt((ref - f.stop) / ref * 100, 1)}%)`
+      + (f.target ? ` · cél: ${fmt((f.target - ref) / (ref - f.stop), 2)} R` : "") : "";
+    chartOpt = { levels: practiceLevels(f) };
+    draw();
+  };
+  form.addEventListener("input", preview);
+  form.addEventListener("change", preview);
+  if (chartRO) chartRO.disconnect();
+  chartRO = new ResizeObserver(() => draw());
+  chartRO.observe(svg.parentElement);
+  preview();
+  if (t.decided) { showPracticeReveal(id, k, t, t.reveal, (o) => { chartOpt = o; draw(); }, true); return; }
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const f = read();
+    const body = f.action === "skip" ? { action: "skip" } : { ...f, limit: f.entry === "limit" ? f.limit : null };
+    try {
+      const r = await api(`/api/practice/session/${id}/task/${k}/decision`, { method: "POST", body: JSON.stringify(body) });
+      showPracticeReveal(id, k, t, r.reveal, (o) => { chartOpt = o; draw(); }, false, r.session);
+    } catch (e) { const m = $("#pr-err"); m.className = "msg err small"; m.textContent = e.message; }
+  });
+}
+
+function showPracticeReveal(id, k, t, rev, redraw, instant, sess) {
+  const d = rev.decision || {};
+  const u = rev.user;
+  $("#pr-dform").querySelectorAll("input, select, button").forEach((el) => { el.disabled = true; });
+  const levels = practiceLevels(d.action === "enter" ? d : null);
+  const marks = u && u.entry_k != null ? [{ k: u.entry_k, v: u.entry, color: "var(--info)", label: "Belépés" }] : [];
+  if (u && u.exit_k != null) marks.push({ k: u.exit_k, v: u.exit, color: u.r > 0 ? "var(--up)" : "var(--down)", label: "Kilépés" });
+  const n = rev.future.length;
+  let shown = instant ? n : 0;
+  const box = $("#pr-reveal");
+  const finish = () => {
+    clearInterval(practiceTimer);
+    shown = n;
+    redraw({ levels, future: rev.future, shown, marks });
+    box.innerHTML = practiceOutcome(k, t, rev, sess);
+    $("#pr-next").addEventListener("click", () => pagePracticeSession(id));
+  };
+  if (instant) { finish(); return; }
+  box.innerHTML = `<section class="card"><div class="card-body"><button class="btn" id="pr-skipanim" type="button">Mutasd egyben</button> <span class="muted small">Ami a döntés után történt…</span></div></section>`;
+  $("#pr-skipanim").addEventListener("click", finish);
+  clearInterval(practiceTimer);
+  practiceTimer = setInterval(() => {
+    if (!location.hash.startsWith(`#/practice/${id}`)) { clearInterval(practiceTimer); return; }
+    shown += 1;
+    redraw({ levels, future: rev.future, shown, marks: marks.filter((m) => m.k <= shown) });
+    if (shown >= n) finish();
+  }, 70);
+}
+
+function practiceOutcome(k, t, rev, sess) {
+  const d = rev.decision || {};
+  const u = rev.user;
+  const mine = d.action === "skip" ? ["Kihagytad", "", "–"]
+    : u.status === "closed" ? [signed(u.r, 2, " R"), rCls(u.r), `${esc(PR_REASON[u.reason] || u.reason || "")} · ${u.held} nap · nettó ${pct(u.net_pct, 2)}`]
+      : [esc(PR_STATUS[u.status] || u.status), "", "nem volt kötés"];
+  const ref = rev.reference, base = rev.baseline;
+  const rows = rev.strategies.map((s) => `<tr><td>${esc(PR_STRAT[s.strategy] || s.strategy)}</td>
+    <td>${s.signaled ? "jelzett" : s.blocked === "earnings" ? "nem (gyorsjelentés-tilalom)" : "nem jelzett"}</td>
+    <td class="num ${rCls(s.r)}">${s.signaled ? (s.r != null ? signed(s.r, 2, " R") : esc(PR_STATUS[s.status] || "–")) : "–"}</td>
+    <td class="small muted">${s.signaled && s.reason ? `${esc(PR_REASON[s.reason] || s.reason)}${s.held ? ` · ${s.held} nap` : ""}` : ""}</td></tr>`).join("");
+  const last = sess ? sess.done : k + 1 >= t.rounds;
+  return `<section class="card"><h2>Eredmény</h2><div class="card-body">
+    <div class="kpis check-kpis">
+      <div class="kpi"><div class="label">A te döntésed</div><div class="value ${mine[1]}">${mine[0]}</div><div class="sub">${mine[2]}</div></div>
+      <div class="kpi"><div class="label">Referencia-kötés</div><div class="value ${rCls(ref.r)}">${signed(ref.r, 2, " R")}</div>
+        <div class="sub">következő nyitás, ${fmt(ref.stop_atr, 0)} ATR stop, ${ref.days} nap</div></div>
+      <div class="kpi"><div class="label">Véletlen alapvonal</div><div class="value ${rCls(base.mean_r)}">${signed(base.mean_r, 2, " R")}</div>
+        <div class="sub">${base.n} véletlen nap ugyanezen a papíron, azonos stop-távolsággal</div></div>
+    </div>
+    <table class="table"><thead><tr><th>Stratégia ugyanezen a ponton</th><th>Jelzés</th><th>Eredmény</th><th>Kilépés</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="pr-name"><strong>${esc(rev.symbol)}</strong> · ${esc(rev.date)} · ${esc(PR_CAT[rev.category] || rev.category)}${rev.source && rev.category !== "strategy" ? ` (${esc(rev.source)})` : ""}</p>
+    <div class="digest-controls"><button class="btn primary" id="pr-next" type="button">${last ? "Összegzés" : "Következő helyzet"}</button>
+      <span class="muted small">Nem befektetési tanács. Szimulált kötés múltbeli adaton.</span></div>
+  </div></section>`;
+}
+
+function renderPracticeSummary(p) {
+  const s = p.summary;
+  const lines = `<ul class="digest-list">${p.lines.map((l) => `<li><span>${esc(l.text)}</span></li>`).join("")}</ul>`;
+  const maxb = Math.max(1, ...s.stop_buckets.map((b) => b.n));
+  const buckets = s.stop_buckets.map((b) => `<div class="part"><span>${b.hi == null ? `≥ ${fmt(b.lo, 0)} ATR` : `${fmt(b.lo, 0)}–${fmt(b.hi, 0)} ATR`}</span>
+    <span class="track"><span class="fill" style="width:${(b.n / maxb) * 100}%"></span></span><span class="muted small">${b.n}</span></div>`).join("");
+  view.innerHTML = `
+    <div class="page-head"><a href="#/practice" class="muted">← Gyakorlás</a><h1>A kör összegzése</h1>
+      <span class="muted">Megosztási kód: <code>${esc(p.session.code)}</code> – ugyanazzal a feladatkészlettel ugyanazt a helyzetsort adja.</span></div>
+    <div class="kpis">
+      <div class="kpi"><div class="label">Teljesült kötés</div><div class="value">${s.filled}</div><div class="sub">${s.entered} belépési döntés, ${s.skipped} kihagyás</div></div>
+      <div class="kpi"><div class="label">Nyerési arány</div><div class="value">${s.win == null ? "–" : `${fmt(s.win * 100, 1)}%`}</div><div class="sub">átlag ${signed(s.mean_r, 2, " R")}</div></div>
+      <div class="kpi"><div class="label">Véletlen alapvonal</div><div class="value ${rCls(s.baseline_r)}">${signed(s.baseline_r, 2, " R")}</div><div class="sub">ugyanazokon a papírokon</div></div>
+      <div class="kpi"><div class="label">Kihagyott jó helyzet</div><div class="value">${s.missed_good}</div><div class="sub">${s.good_total} helyzetben volt legalább +1 R</div></div>
+    </div>
+    <section class="card"><h2>Összefoglaló</h2><div class="card-body">${lines}</div></section>
+    <section class="card"><h2>Stop-távolság (ATR)</h2><div class="card-body"><div class="parts">${buckets}</div></div></section>
+    <section class="card"><h2>Helyzetek</h2><div class="card-body"><table class="table"><thead><tr><th>#</th><th>Papír</th><th>Dátum</th><th>Helyzet</th><th>Döntés</th><th>Eredmény</th><th>Stratégiák</th><th>Referencia</th><th>Alapvonal</th></tr></thead><tbody>
+      ${p.tasks.map((t) => `<tr><td>${t.k + 1}</td><td class="ticker">${esc(t.symbol || "")}</td><td>${esc(t.date || "")}</td><td>${esc(PR_CAT[t.category] || "")}</td>
+        <td>${t.action === "skip" ? "kihagyás" : t.action === "enter" ? "belépés" : "–"}</td>
+        <td class="num ${rCls(t.r)}">${t.r != null ? signed(t.r, 2, " R") : t.status ? esc(PR_STATUS[t.status] || t.status) : "–"}</td>
+        <td class="small">${(t.strategies || []).map((x) => `${esc(PR_STRAT[x.strategy] || x.strategy)}: ${x.r != null ? signed(x.r, 2, " R") : esc(PR_STATUS[x.status] || "–")}`).join(" · ") || "–"}</td>
+        <td class="num ${rCls(t.reference_r)}">${signed(t.reference_r, 2, " R")}</td><td class="num ${rCls(t.baseline_r)}">${signed(t.baseline_r, 2, " R")}</td></tr>`).join("")}
+    </tbody></table></div></section>`;
 }

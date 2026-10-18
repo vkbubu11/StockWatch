@@ -69,16 +69,7 @@ class DayReport:
     late: bool = False              # potlolagos futas (a monitor nem futott a zaraskor)
 
 
-def trading_day(day: pd.Timestamp) -> bool | None:
-    """Kereskedesi nap volt-e (unnepnap!). None, ha a naptar nem elerheto."""
-    if day.weekday() >= 5:
-        return False
-    try:
-        import pandas_market_calendars as mcal
-
-        return not mcal.get_calendar("NASDAQ").schedule(start_date=day.date(), end_date=day.date()).empty
-    except Exception:
-        return None
+trading_day = sessions.trading_day        # a tesztek ezen a neven csereljek
 
 
 def _events_line(sent: Counter) -> str:

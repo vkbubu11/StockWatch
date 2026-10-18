@@ -27,6 +27,11 @@ log = logging.getLogger(__name__)
 MB = 1024 * 1024
 ACTIVE_STATE_MAX_DAYS = 365      # ennel regebbi, le nem zarult formacio-bejegyzes torlodik
 UNIVERSE_STALE_DAYS = 30         # a mar nem hasznalt universe-fajlok ennyi nap utan torlodnek
+EVENTS_LIMIT_MB = 30              # esemenytanulmanyok: munkateruletenkent 30 tanulmany (events/store.py)
+FORM4_LIMIT_MB = 50               # Form 4 kivonat, evenkent (events/sources/form4.py)
+AGENT_LIMIT_MB = 50               # kutatougynok: munkateruletenkent 30 futas, 50 MB (research_agent/store.py)
+DIGEST_LIMIT_MB = 10              # reggeli osszefoglalok: ~90 nap x 20-60 KB
+PRACTICE_LIMIT_MB = 10            # gyakorlo mod: 100 kor (~20-60 KB) + a feladatkeszlet (<= 5 MB)
 LAB_LIMIT_MB = 100                # strategia-labor: 60 kiserlet x max. 20k trade + papironkenti kitores-cache
 
 
@@ -207,7 +212,40 @@ def disk_usage(settings: Settings | None = None) -> list[UsageEntry]:
         UsageEntry("Riasztasi cooldown (entry_state.json)", _file_size(settings.entry_state_path), None),
         UsageEntry("Earnings cache (earnings.json)", _file_size(settings.earnings_path), None),
         UsageEntry("Strategia-labor (data/lab)", _dir_size(DATA_DIR / "lab"), int(LAB_LIMIT_MB * MB)),
+        UsageEntry("Reggeli osszefoglalok (data/users/*/digest)", _digest_bytes(), int(DIGEST_LIMIT_MB * MB)),
+        UsageEntry("Kutatougynok (data/users/*/agent)", _agent_bytes(), int(AGENT_LIMIT_MB * MB)),
+        UsageEntry("Labor-munkasor (data/queue)", _dir_size(DATA_DIR / "queue"), None),
+        UsageEntry("Gyakorlo mod (data/users/*/practice + data/practice)", _practice_bytes(),
+                   int(PRACTICE_LIMIT_MB * MB)),
+        UsageEntry("Esemenytanulmanyok (data/users/*/events)", _event_bytes(), int(EVENTS_LIMIT_MB * MB)),
+        UsageEntry("Form 4 bennfentes-tranzakciok (data/events/form4)", _dir_size(DATA_DIR / "events" / "form4"),
+                   int(FORM4_LIMIT_MB * MB)),
+        UsageEntry("Indexvaltozasok, szektorok (data/events/*.json)", _dir_size(DATA_DIR / "events", "*.json"), None),
     ]
+
+
+def _event_bytes() -> int:
+    from .events import store as event_store
+
+    return event_store.usage_bytes()
+
+
+def _agent_bytes() -> int:
+    from .research_agent import store as agent_store
+
+    return agent_store.usage_bytes()
+
+
+def _practice_bytes() -> int:
+    from .practice import store as practice_store
+
+    return practice_store.usage_bytes()
+
+
+def _digest_bytes() -> int:
+    from .digest import store as digest_store
+
+    return digest_store.usage_bytes()
 
 
 def total_usage_mb(settings: Settings | None = None) -> float:
@@ -365,6 +403,40 @@ def _prune_lab(settings: Settings) -> dict:
         return {}
 
 
+def _prune_digest(settings: Settings) -> int:
+    """A reggeli osszefoglalok archivuma: `digest.keep_days` napnal regebbiek (admin munkaterulet)."""
+    try:
+        from .digest import store as digest_store
+
+        return digest_store.prune(settings.digest.keep_days)
+    except Exception:
+        log.exception("Az osszefoglalok takaritasa nem sikerult")
+        return 0
+
+
+def _prune_practice() -> int:
+    """Gyakorlo mod: munkateruletenkent legfeljebb 100 kor (a feladatkeszlet mentesekor ellenorzott)."""
+    try:
+        from . import workspace
+        from .practice import store as practice_store
+
+        return practice_store.prune(workspace.DEFAULT)
+    except Exception:
+        log.exception("A gyakorlo korok takaritasa nem sikerult")
+        return 0
+
+
+def _prune_queue() -> int:
+    """A labor-munkasor 7 napnal regebbi, befejezett feladatai."""
+    try:
+        from . import labqueue
+
+        return labqueue.prune()
+    except Exception:
+        log.exception("A munkasor takaritasa nem sikerult")
+        return 0
+
+
 def run(settings: Settings | None = None) -> dict:
     """A napi takaritas - a scheduler ezt hivja piaczaras utan."""
     settings = settings or load_settings()
@@ -376,6 +448,9 @@ def run(settings: Settings | None = None) -> dict:
         "pruned_universe_files": prune_universe(settings),
         "ledger": _prune_ledger(),
         "lab": _prune_lab(settings),
+        "digest": _prune_digest(settings),
+        "queue": _prune_queue(),
+        "practice": _prune_practice(),
     }
     enforce_jsonl_limits(settings)
 

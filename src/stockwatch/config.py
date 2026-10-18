@@ -10,6 +10,7 @@ rossz tipus mar indulaskor kiderul, nem fel ora futas utan.
 from __future__ import annotations
 
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -532,6 +533,67 @@ class SentimentSettings(BaseModel):
         return list(dict.fromkeys(value))
 
 
+class DigestWeights(BaseModel):
+    """A reggeli osszefoglalo esemenyeinek alapsulya (digest/score.py) - szabalyalapu fontossag."""
+
+    regime_change: float = 5.0          # QQQ / S&P 500 a 200 napos atlag folott / alatt
+    pattern_triggered: float = 5.0      # formacio triggerszintje atlepve
+    level_break: float = 4.0            # rezisztencia folott / support alatt zart
+    earnings_soon: float = 4.0          # gyorsjelentes kuszobon belul
+    candidate_in: float = 4.0           # bekerult egy strategia jeloltjei koze
+    material_news: float = 4.0          # lenyeges negativ hir (sentiment)
+    near_trigger: float = 3.0           # a trigger kozeleben (ATR-ben)
+    pattern_new: float = 3.0
+    filing_8k: float = 3.0              # uj 8-K (lenyeges tetelnel x2)
+    own_trend: float = 3.0              # a papir zaroja a sajat 200 napos atlaga folott / alatt
+    candidate_out: float = 2.0
+    pattern_gone: float = 2.0
+    sentiment_flip: float = 2.0         # a hirhangulat elojelet valtott
+
+    @model_validator(mode="after")
+    def _check(self) -> "DigestWeights":
+        if any(not 0 <= v <= 100 for v in self.model_dump().values()):
+            raise ValueError("digest.weights: 0 es 100 kozott")
+        return self
+
+
+class DigestSettings(BaseModel):
+    """Reggeli osszefoglalo (digest/): a watchlist es a Sajat poziciok valtozasai nyitas elott."""
+
+    enabled: bool = True
+    send_discord: bool = False          # Discordra is (a meglevo ertesitesi retegen); a web mindig mutatja
+    time: str = "06:30"                 # Europe/Budapest - 07:00-ra kesz
+    max_items: int = 15                 # osszesen legfeljebb ennyi tetel
+    per_symbol: int = 3                 # papironkent legfeljebb ennyi sor
+    near_trigger_atr: float = 1.0       # ennyi ATR-en belul a triggerhez: "kozel"
+    earnings_days: list[int] = Field(default_factory=lambda: [7, 3, 1])   # ezeknel a kuszoboknel szol
+    sentiment_deadband: float = 0.1    # a hangulat-atlag ennyin belul semleges
+    holding_mult: float = 1.5           # a Sajat poziciok esemenyei ennyivel fontosabbak
+    keep_days: int = 90                 # az archivum megorzese
+    weights: DigestWeights = Field(default_factory=DigestWeights)
+
+    @field_validator("time")
+    @classmethod
+    def _time(cls, value: str) -> str:
+        m = re.fullmatch(r"(\d{1,2}):(\d{2})", str(value).strip())
+        if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+            raise ValueError(f"digest.time: {value} - formatum: OO:PP")
+        return f"{int(m.group(1)):02d}:{m.group(2)}"
+
+    @model_validator(mode="after")
+    def _check(self) -> "DigestSettings":
+        if not 1 <= self.max_items <= 50 or not 1 <= self.per_symbol <= 5:
+            raise ValueError("digest: max_items 1-50, per_symbol 1-5")
+        if not 0.1 <= self.near_trigger_atr <= 5 or not 0 <= self.sentiment_deadband <= 1:
+            raise ValueError("digest: near_trigger_atr 0,1-5, sentiment_deadband 0-1")
+        if not self.earnings_days or any(not 0 <= d <= 60 for d in self.earnings_days):
+            raise ValueError("digest.earnings_days: 0-60 napos kuszobok")
+        if not 1 <= self.holding_mult <= 5 or not 7 <= self.keep_days <= 365:
+            raise ValueError("digest: holding_mult 1-5, keep_days 7-365")
+        self.earnings_days = sorted(set(self.earnings_days), reverse=True)
+        return self
+
+
 class Settings(BaseModel):
     data: DataSettings = Field(default_factory=DataSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
@@ -547,6 +609,7 @@ class Settings(BaseModel):
     lab: LabSettings = Field(default_factory=LabSettings)
     strategies: StrategiesSettings = Field(default_factory=StrategiesSettings)
     sentiment: SentimentSettings = Field(default_factory=SentimentSettings)
+    digest: DigestSettings = Field(default_factory=DigestSettings)
 
     @model_validator(mode="after")
     def _resolve_benchmark(self) -> "Settings":

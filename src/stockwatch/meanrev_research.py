@@ -54,16 +54,24 @@ class SymbolData:
     earnings: list = field(default_factory=list)
 
 
+def load_raw(symbol: str, settings: Settings) -> pd.DataFrame:
+    df = store.load(symbol, settings, universe=True)
+    return df if not df.empty else store.load(symbol, settings)
+
+
 def load_universe(symbols: list[str], settings: Settings, params: PullbackParams,
                   ctx: market.MarketContext, earnings: market.HistoricalEarnings | None = None,
-                  progress=None) -> dict[str, SymbolData]:
+                  progress=None, end: pd.Timestamp | None = None,
+                  frames: dict[str, pd.DataFrame] | None = None) -> dict[str, SymbolData]:
+    """`end`: az adat ezen a napon VAGODIK (kesobbi gyertya nem latszik - pl. a holdout elott).
+    `frames`: mar betoltott gyertyak (a kutatougynok egyszer tolti be, es tobb jellemzo-csoporthoz hasznalja)."""
     out = {}
     for n, symbol in enumerate(symbols, 1):
         if progress and n % 50 == 1:
             progress(f"Adat: {n}/{len(symbols)} ({symbol})")
-        df = store.load(symbol, settings, universe=True)
-        if df.empty:
-            df = store.load(symbol, settings)
+        df = frames[symbol] if frames is not None and symbol in frames else load_raw(symbol, settings)
+        if end is not None and not df.empty:
+            df = df.loc[: pd.Timestamp(end)]
         if len(df) < meanrev.WARMUP + 20:
             continue
         feat = meanrev.features(df, params)
@@ -154,8 +162,7 @@ def stats(trades: list[meanrev.Trade], orders: list[meanrev.Trade], start, end, 
     wins, losses = net[net > 0], net[net <= 0]
     lo, hi = wilson(int((net > 0).sum()), len(net))
     ev_lo, ev_hi = block_bootstrap_ci(closed)
-    weight = 1 / (params.max_open or 10)                       # fix sulyu pozicio (korlat nelkul: 10%)
-    equity = np.cumprod(1 + net / 100 * weight)
+    equity = equity_curve(net, params)
     peak = np.maximum.accumulate(np.r_[1.0, equity])
     dd = float(((peak - np.r_[1.0, equity]) / peak).max() * 100)
     reasons = pd.Series([t.reason for t in closed]).value_counts().to_dict()
@@ -168,6 +175,13 @@ def stats(trades: list[meanrev.Trade], orders: list[meanrev.Trade], start, end, 
         "total_pct": float((equity[-1] - 1) * 100), "reasons": reasons,
         "stop_share": (reasons.get("stop", 0) + reasons.get("gap_stop", 0)) / len(closed),
     }
+
+
+def equity_curve(net_pcts, params: PullbackParams) -> np.ndarray:
+    """A fix sulyu tokegorbe (1-rol indul) a lezart kotesek netto %-abol, a kilepes sorrendjeben:
+    kotesenkent 1 / max_open (korlat nelkul 10%) suly. A max. visszaeses es a kutatougynok gorbeje is ez."""
+    weight = 1 / (params.max_open or 10)
+    return np.cumprod(1 + np.asarray(net_pcts, dtype=float) / 100 * weight)
 
 
 def split(orders: list[meanrev.Trade], params: PullbackParams, first, last, holdout: bool) -> dict:
@@ -250,12 +264,15 @@ def evaluate_variant(data: dict[str, SymbolData], params: PullbackParams, holdou
 
 def run(symbols: list[str], settings: Settings | None = None, params: PullbackParams | None = None,
         holdout: bool = False, neighbourhood_check: bool = False, survivorship_symbols: list[str] | None = None,
-        progress=print, out_dir=None, study: str = "meanrev") -> dict:
+        progress=print, out_dir=None, study: str = "meanrev", end: pd.Timestamp | None = None) -> dict:
+    """`end`: az adat ezen a napon vagodik (alapbol nem; a kutatougynok paritas-ellenorzese a holdout elott vag)."""
     settings = settings or load_settings()
     params = params or settings.strategies.pullback.params
     ctx = market.load_context(settings, refresh=True)
     earnings = market.HistoricalEarnings(settings) if params.earnings_blackout_days > 0 else None
-    data = load_universe(symbols, settings, params, ctx, earnings, progress)
+    if holdout and end is not None and pd.Timestamp(end) < HOLDOUT_START:
+        raise ValueError("A holdout nem nyithato meg a holdout elott vagott adattal.")
+    data = load_universe(symbols, settings, params, ctx, earnings, progress, end=end)
     if earnings is not None:
         earnings.save()
     if not data:
@@ -278,7 +295,7 @@ def run(symbols: list[str], settings: Settings | None = None, params: PullbackPa
         report["neighbourhood"] = rows
     if survivorship_symbols:
         progress(f"Survivorship-ellenorzes: {len(survivorship_symbols)} papir")
-        other = load_universe(survivorship_symbols, settings, params, ctx, earnings, progress)
+        other = load_universe(survivorship_symbols, settings, params, ctx, earnings, progress, end=end)
         if other:
             report["survivorship"] = {"symbols": len(other),
                                       "visible": evaluate_variant(other, params, False)["split"]["visible"]}

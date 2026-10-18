@@ -286,18 +286,33 @@ class HistoricalEarnings:
         if stale and self.allow_network:
             fetched = self._fetch(symbol)
             if fetched is not None:
-                entry = {"fetched": date.today().isoformat(), "dates": fetched}
+                dates, times = fetched
+                entry = {"fetched": date.today().isoformat(), "dates": dates, "times": times}
                 self.data[symbol] = entry
         return [date.fromisoformat(d) for d in (entry or {}).get("dates", [])]
 
-    def _fetch(self, symbol: str) -> list[str] | None:
+    def times(self, symbol: str) -> dict[str, str]:
+        """Datum -> a bejelentes idopontja (New York, "HH:MM"), ahol a forras megadta. Regi cache-ben nincs:
+        ott az idopont nem ismert (az esemenytanulmany konzervativan a kovetkezo kereskedesi napot veszi)."""
+        self.dates(symbol)
+        return dict((self.data.get(symbol.upper()) or {}).get("times") or {})
+
+    def _fetch(self, symbol: str) -> tuple[list[str], dict[str, str]] | None:
         try:
             import yfinance as yf
 
             frame = yf.Ticker(symbol).get_earnings_dates(limit=100)
             if frame is None or frame.empty:
                 return None
-            return sorted(set(pd.DatetimeIndex(frame.index).tz_localize(None).strftime("%Y-%m-%d")))
+            index = pd.DatetimeIndex(frame.index)
+            local = index.tz_convert("America/New_York") if index.tz is not None else index
+            dates = sorted(set(local.tz_localize(None).strftime("%Y-%m-%d")))
+            times = {}
+            if index.tz is not None:
+                for ts in local:
+                    if (ts.hour, ts.minute) != (0, 0):           # az ejfel = csak datum (idopont nelkul)
+                        times[f"{ts:%Y-%m-%d}"] = f"{ts:%H:%M}"
+            return dates, times
         except Exception as exc:
             log.warning("Historikus earnings datumok nem tolthetok le (%s): %s", symbol, exc)
             return None

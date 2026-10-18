@@ -19,7 +19,7 @@ MAX_PAGES = 200
 
 
 def credentials() -> tuple[str | None, str | None]:
-    from ...broker import alpaca_credentials
+    from ...config import alpaca_credentials           # nem a broker modulbol: a hirforras ne erje el
 
     _, key, secret = alpaca_credentials()
     return key, secret

@@ -82,6 +82,7 @@ EDITABLE = {
     "sp500": ("scan", bool),
     "index_setups": ("scan", bool),
     "best_list": ("scan", str),
+    "send_discord": ("digest", bool),
 }
 
 
@@ -1136,7 +1137,7 @@ def update_settings(changes: dict) -> dict:
 
     # validalas a pydantic modellel, MIELOTT barmit irnank
     current = load_settings()
-    sections = {name: getattr(current, name).model_dump() for name in ("entry", "alerts", "broker", "scan")}
+    sections = {name: getattr(current, name).model_dump() for name in ("entry", "alerts", "broker", "scan", "digest")}
     for key, (section, value) in parsed.items():
         sections[section][key] = value
     entry_values = sections["entry"]
@@ -1144,6 +1145,7 @@ def update_settings(changes: dict) -> dict:
     config.AlertSettings(**sections["alerts"])
     config.BrokerSettings(**sections["broker"])
     config.ScanSettings(**sections["scan"])
+    config.DigestSettings(**sections["digest"])
     if not 1 <= sections["broker"]["max_open_trades"] <= 50:
         raise ValueError("A max. nyitott paper trade 1 es 50 kozott legyen.")
     if not 0 < entry_values["risk_per_trade_pct"] <= 5:
@@ -1202,6 +1204,193 @@ BREAKOUT_SUMMARY = ("min_score", "confirm_breakout", "exit_mode", "partial_r", "
 # Backteszt oldal (egy papir teljes tortenete) - docs/BACKTEST-PAGE-DESIGN.md
 # ---------------------------------------------------------------------------
 _BT_JOBS = None
+
+
+_DIGEST_JOBS = None
+
+
+def digest_jobs():
+    global _DIGEST_JOBS
+    if _DIGEST_JOBS is None:
+        from .backtest_page.jobs import Jobs
+
+        _DIGEST_JOBS = Jobs()
+    return _DIGEST_JOBS
+
+
+def digest_payload(day: str | None = None) -> dict:
+    """Reggeli osszefoglalo: a kert (alapbol a legutobbi) nap + az archivum listaja + a kapcsolo."""
+    from .digest import store as digest_store
+
+    settings = load_settings()
+    days = digest_store.days()
+    record = digest_store.load(day) if day else (digest_store.load(days[0]) if days else None)
+    keep = ("for_day", "as_of", "created_at", "first", "previous", "symbols_count", "market", "lines", "selected",
+            "delivered")
+    return {"days": days, "record": {k: record.get(k) for k in keep} if record else None,
+            "settings": {"send_discord": settings.digest.send_discord, "time": settings.digest.time,
+                         "enabled": settings.digest.enabled, "discord": discord_status()["configured"]},
+            "job": digest_jobs().snapshot()}
+
+
+def digest_action(action: str) -> dict:
+    if action != "run":
+        raise ValueError("Ismeretlen muvelet")
+
+    def work(progress):
+        from .digest import service as digest
+
+        progress("Pillanatkep es valtozasok...")
+        record = digest.build(load_settings())
+        return {"message": f"Kesz: {record['for_day']}"}
+
+    if not digest_jobs().start("digest", "", work):
+        raise ValueError("Mar fut egy osszefoglalo-keszites.")
+    return digest_payload()
+
+
+_EVENT_JOBS = None
+
+
+def event_jobs():
+    global _EVENT_JOBS
+    if _EVENT_JOBS is None:
+        from .backtest_page.jobs import Jobs
+
+        _EVENT_JOBS = Jobs()
+    return _EVENT_JOBS
+
+
+def events_payload() -> dict:
+    """Esemenytanulmanyok: tipusok, mentett tanulmanyok, a futo feladat es a munkasor, a forrasadat allapota."""
+    from . import labqueue
+    from .events import catalog
+    from .events import service as ev_service
+    from .events import store as ev_store
+    from .events.sources import form4, index_changes
+
+    return {"types": {k: {"label": v["label"], "params": v["params"]} for k, v in catalog.TYPES.items()},
+            "strategies": list(catalog.STRATEGIES), "universes": ev_service.UNIVERSE_LABELS,
+            "sectors": sorted(set(index_changes.load_sectors().values())),
+            "studies": ev_store.listing(), "job": event_jobs().snapshot(),
+            "queue": labqueue.jobs("admin", "event_study")[:10],
+            "sources": {"form4": form4.coverage(), "index_changes": len(index_changes.load_changes())},
+            "defaults": ev_service.StudySpec(type="earnings").model_dump(mode="json")}
+
+
+def events_action(action: str, body: dict) -> dict:
+    from .events import service as ev_service
+    from .events import store as ev_store
+
+    if action == "study":
+        spec = ev_service.StudySpec(**(body.get("spec") or {}))
+        if spec.universe in ev_service.INLINE_UNIVERSES:
+            def work(progress):
+                record = ev_service.run(spec, load_settings(), progress=progress)
+                return {"message": f"Kesz: {record['result']['n']} esemeny", "run_id": record["id"]}
+
+            if not event_jobs().start("event_study", spec.symbol or spec.universe, work):
+                raise ValueError("Mar fut egy esemenytanulmany.")
+            return events_payload() | {"message": "A tanulmany fut."}
+        job = ev_service.submit(spec)
+        return events_payload() | {"message": "A labor-szolgaltatas sorba allitotta (nagy univerzum).", "queued": job["id"]}
+    if action == "delete":
+        ev_store.delete(str(body.get("id") or ""))
+        return events_payload() | {"message": "Torolve."}
+    raise ValueError("Ismeretlen muvelet")
+
+
+def agent_payload() -> dict:
+    """Kutatougynok: briefek, futasok, a munkasor, es az urlap alapertekei / a keresheto ter."""
+    from . import labqueue
+    from .research_agent import space as agent_space
+    from .research_agent import store as agent_store
+    from .research_agent.brief import ENGINE_LABELS, UNIVERSE_LABELS, Brief
+
+    dims = {"pullback": agent_space.PULLBACK_DIMS, "etf": agent_space.ETF_DIMS,
+            "breakout": agent_space.BREAKOUT_DIMS}
+    return {"briefs": agent_store.list_briefs(), "runs": agent_store.runs()[:30],
+            "jobs": labqueue.jobs("admin", "agent")[:20], "defaults": Brief(name="Új kutatási cél").model_dump(),
+            "engines": ENGINE_LABELS, "universes": UNIVERSE_LABELS,
+            "fields": {k: [{"name": d.name, "label": agent_space.FIELD_LABELS.get(d.name, d.name),
+                            "values": list(d.values)} for d in v] for k, v in dims.items()}}
+
+
+def agent_run_payload(run_id: str) -> dict:
+    from .research_agent import explain
+    from .research_agent import store as agent_store
+
+    status = agent_store.status(run_id)
+    if status is None:
+        raise ValueError("Nincs ilyen futas.")
+    log_items = agent_store.read_log(run_id)
+    timeline = [ln.to_dict() for ln in (explain.log_line(rec) for rec in log_items) if ln is not None]
+    return {"status": status, "report": agent_store.load_report(run_id), "timeline": timeline[-400:],
+            "log_count": len(log_items)}
+
+
+def agent_action(action: str, body: dict) -> dict:
+    from .research_agent import service as agent
+    from .research_agent import store as agent_store
+    from .research_agent.brief import Brief
+
+    if action == "save":
+        brief = Brief(**(body.get("brief") or {}))
+        if body.get("replace") and body["replace"] != brief.id:
+            agent_store.delete_brief(str(body["replace"]))
+        agent_store.save_brief(brief)
+        return agent_payload() | {"message": f"Mentve: {brief.name}", "brief_id": brief.id}
+    if action == "delete":
+        agent_store.delete_brief(str(body.get("brief_id") or ""))
+        return agent_payload() | {"message": "Torolve."}
+    if action == "run":
+        out = agent.submit(str(body.get("brief_id") or ""), when=str(body.get("when") or "now"))
+        return agent_payload() | {"message": "Sorba allitva.", "run_id": out["run_id"]}
+    if action == "cancel":
+        agent.cancel(str(body.get("run_id") or ""))
+        return agent_payload() | {"message": "Visszavonva."}
+    if action == "adopt":
+        if body.get("confirm") is not True:
+            raise ValueError("Az atvetelhez megerosites kell.")
+        sandbox = agent.adopt(str(body.get("run_id") or ""), int(body.get("rank") or 0))
+        return {"ok": True, "message": "A jelolt atkerult a Homokozoba (ertesites nelkul, paper-kotes nelkul).",
+                "sandbox": sandbox}
+    raise ValueError("Ismeretlen muvelet")
+
+
+PRACTICE_SESSION_RE = re.compile(r"/api/practice/session/([a-z]{12})/(task/(\d{1,2})(/decision)?|summary)")
+
+
+def practice_payload() -> dict:
+    """Gyakorlo mod: a feladatkeszlet allapota, a korok (papir es datum nelkul), a munkasor, az alapertekek."""
+    from . import lab, labqueue
+    from .practice import sampler
+    from .practice import session as practice
+    from .practice import store as practice_store
+
+    return {"pool": sampler.pool_info(practice_store.load_pool()), "sessions": practice.listing()[:30],
+            "queue": labqueue.jobs("admin", "practice_pool")[:5], "lab_running": bool(lab.read_status().get("running")),
+            "defaults": {"rounds": 20, "mix": sampler.DEFAULT_MIX, "max_days": sampler.MAX_DAYS,
+                         "max_rounds": sampler.MAX_ROUNDS}}
+
+
+def practice_action(action: str, body: dict) -> dict:
+    from .practice import sampler
+    from .practice import session as practice
+
+    if action == "session":
+        seed = body.get("seed")
+        created = practice.create(load_settings(), seed=int(seed) if seed not in (None, "") else None,
+                                  rounds=int(body.get("rounds") or 20), mix=body.get("mix") or None,
+                                  code=str(body.get("code") or "").strip() or None)
+        return {"session": created}
+    if action == "pool":
+        job = sampler.submit(force=bool(body.get("force")))
+        return practice_payload() | {"message": "A labor-szolgaltatas sorba allitotta.", "queued": job["id"]}
+    if action == "delete":
+        practice.delete(str(body.get("id") or ""))
+        return practice_payload() | {"message": "Torolve."}
+    raise ValueError("Ismeretlen muvelet")
 
 
 def backtest_jobs():
@@ -1712,6 +1901,56 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                     if not SYMBOL_RE.match(symbol):
                         return self._error(400, "Ervenytelen ticker")
                     return self._json(news_payload(symbol))
+                if path == "/api/events":
+                    return self._json(events_payload())
+                m = re.fullmatch(r"/api/events/study/(\d{8}-[0-9a-f]{8})(\.csv|/event/(\d{1,5}))?", path)
+                if m:
+                    from .events import service as ev_service
+                    from .events import store as ev_store
+
+                    record = ev_store.load(m.group(1))
+                    if record is None:
+                        return self._error(404, "Nincs ilyen tanulmany")
+                    if m.group(2) == ".csv":
+                        return self._send(200, ev_service.to_csv(record).encode("utf-8"), "text/csv; charset=utf-8")
+                    if m.group(3) is not None:
+                        try:
+                            return self._json(ev_service.event_detail(record, int(m.group(3))))
+                        except ValueError as exc:
+                            return self._error(404, str(exc))
+                    return self._json(record)
+                if path == "/api/agent":
+                    return self._json(agent_payload())
+                if path.startswith("/api/agent/run/"):
+                    run_id = path.rsplit("/", 1)[-1]
+                    if not re.fullmatch(r"\d{8}-[0-9a-f]{8}", run_id):
+                        return self._error(400, "Ervenytelen futas-azonosito")
+                    try:
+                        return self._json(agent_run_payload(run_id))
+                    except ValueError as exc:
+                        return self._error(404, str(exc))
+                if path == "/api/digest":
+                    return self._json(digest_payload())
+                if path.startswith("/api/digest/"):
+                    day = path.rsplit("/", 1)[-1]
+                    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+                        return self._error(400, "Ervenytelen nap")
+                    payload = digest_payload(day)
+                    return self._json(payload) if payload["record"] else self._error(404, "Nincs ilyen osszefoglalo")
+                if path == "/api/practice":
+                    return self._json(practice_payload())
+                m = PRACTICE_SESSION_RE.fullmatch(path)
+                if m and not m.group(4):
+                    from .practice import session as practice
+
+                    try:
+                        if m.group(2) == "summary":
+                            return self._json(practice.summary_payload(m.group(1)))
+                        return self._json(practice.task_payload(m.group(1), int(m.group(3))))
+                    except LookupError as exc:
+                        return self._error(404, str(exc))
+                    except ValueError as exc:
+                        return self._error(400, str(exc))
                 if path == "/api/backtest":
                     return self._json(backtest_payload())
                 if path == "/api/backtest/job":
@@ -1753,13 +1992,25 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
             self._send(200, target.read_bytes(), ctype)
 
         # -- POST ------------------------------------------------------
+        def _discard_body(self) -> None:
+            """Elutasitas elott a (kis) keres-torzs kiolvasasa: Windowson az olvasatlan adattal lezart kapcsolat
+            RST-t kuld, es a kliens a valasz helyett kapcsolat-megszakadast lat."""
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                return
+            if 0 < length <= 64_000:
+                self.rfile.read(length)
+
         def do_POST(self):  # noqa: N802
             path = urlparse(self.path).path
             if path == "/login":
                 return self._login()
             if self.headers.get("X-StockWatch") != "1":
+                self._discard_body()
                 return self._error(403, "Hianyzo X-StockWatch fejlec")
             if not self._authorized():
+                self._discard_body()
                 return self._error(401, "Bejelentkezes szukseges")
             if path == "/logout":
                 return self._logout()
@@ -1800,6 +2051,22 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                     return self._json(lab_action(path.rsplit("/", 1)[-1], body))
                 if path.startswith("/api/backtest/"):
                     return self._json(backtest_action(path.rsplit("/", 1)[-1], body))
+                if path.startswith("/api/digest/"):
+                    return self._json(digest_action(path.rsplit("/", 1)[-1]))
+                if path.startswith("/api/agent/"):
+                    return self._json(agent_action(path.rsplit("/", 1)[-1], body))
+                if path.startswith("/api/events/"):
+                    return self._json(events_action(path.rsplit("/", 1)[-1], body))
+                m = PRACTICE_SESSION_RE.fullmatch(path)
+                if m and m.group(4):
+                    from .practice import session as practice
+
+                    try:
+                        return self._json(practice.decide(m.group(1), int(m.group(3)), body))
+                    except LookupError as exc:
+                        return self._error(404, str(exc))
+                if path.startswith("/api/practice/"):
+                    return self._json(practice_action(path.rsplit("/", 1)[-1], body))
                 if path == "/api/news/refresh":
                     symbol = str(body.get("symbol") or "").upper()
                     if not SYMBOL_RE.match(symbol):

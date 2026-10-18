@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<ownershipDocument>
+    <schemaVersion>X0508</schemaVersion>
+    <documentType>4</documentType>
+    <periodOfReport>2024-03-01</periodOfReport>
+    <aff10b5One>0</aff10b5One>
+    <issuer>
+        <issuerCik>0000320193</issuerCik>
+        <issuerName>EXAMPLE CORP</issuerName>
+        <issuerTradingSymbol>exmp</issuerTradingSymbol>
+    </issuer>
+    <reportingOwner>
+        <reportingOwnerId>
+            <rptOwnerCik>0001111111</rptOwnerCik>
+            <rptOwnerName>Doe Jane</rptOwnerName>
+        </reportingOwnerId>
+        <reportingOwnerRelationship>
+            <isDirector>1</isDirector>
+            <isOfficer>0</isOfficer>
+            <isTenPercentOwner>0</isTenPercentOwner>
+        </reportingOwnerRelationship>
+    </reportingOwner>
+    <nonDerivativeTable>
+        <nonDerivativeTransaction>
+            <securityTitle><value>Common Stock</value></securityTitle>
+            <transactionDate><value>2024-03-01</value></transactionDate>
+            <transactionCoding><transactionFormType>4</transactionFormType><transactionCode>P</transactionCode></transactionCoding>
+            <transactionAmounts>
+                <transactionShares><value>1000</value></transactionShares>
+                <transactionPricePerShare><value>50.25</value></transactionPricePerShare>
+                <transactionAcquiredDisposedCode><value>A</value></transactionAcquiredDisposedCode>
+            </transactionAmounts>
+        </nonDerivativeTransaction>
+        <nonDerivativeTransaction>
+            <securityTitle><value>Common Stock</value></securityTitle>
+            <transactionDate><value>2024-03-01</value></transactionDate>
+            <transactionCoding><transactionFormType>4</transactionFormType><transactionCode>P</transactionCode></transactionCoding>
+            <transactionAmounts>
+                <transactionShares><value>2,000</value></transactionShares>
+                <transactionPricePerShare><value>50.5</value></transactionPricePerShare>
+                <transactionAcquiredDisposedCode><value>A</value></transactionAcquiredDisposedCode>
+            </transactionAmounts>
+        </nonDerivativeTransaction>
+    </nonDerivativeTable>
+</ownershipDocument>

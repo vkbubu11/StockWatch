@@ -70,6 +70,35 @@ def parse_constituents(html: str, columns: tuple[str, ...]) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def parse_sectors(html: str) -> dict[str, str]:
+    """Az S&P 500 `constituents` tablazatabol: ticker -> GICS-szektor (az esemenytanulmany bontasahoz)."""
+    from bs4 import BeautifulSoup
+
+    table = BeautifulSoup(html, "lxml").find("table", id="constituents")
+    if table is None:
+        raise ValueError("nincs 'constituents' tablazat az oldalon")
+    rows = table.find_all("tr")
+    heads = [c.get_text(" ", strip=True) for c in rows[0].find_all(["th", "td"])]
+    if "GICS Sector" not in heads:
+        raise ValueError(f"nincs GICS Sector oszlop (fejlec: {heads[:6]})")
+    tcol = next(heads.index(n) for n in ("Symbol", "Ticker") if n in heads)
+    scol = heads.index("GICS Sector")
+    out = {}
+    for row in rows[1:]:
+        cells = row.find_all(["td", "th"])
+        if len(cells) > max(tcol, scol):
+            ticker = cells[tcol].get_text(strip=True).upper()
+            if TICKER_RE.match(ticker):
+                out[yahoo_symbol(ticker)] = cells[scol].get_text(" ", strip=True)
+    return out
+
+
+def fetch_sectors() -> dict[str, str]:
+    response = requests.get(SOURCES["sp500"]["url"], headers=HEADERS, timeout=20)
+    response.raise_for_status()
+    return parse_sectors(response.text)
+
+
 def fetch(name: str) -> list[str]:
     source = SOURCES[name]
     response = requests.get(source["url"], headers=HEADERS, timeout=20)

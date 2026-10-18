@@ -2045,3 +2045,329 @@
 {"hu": "● semleges", "en": "● neutral", "de": "● neutral", "es": "● neutral"}
 {"hu": "✓ választaná", "en": "✓ would pick", "de": "✓ würde wählen", "es": "✓ elegiría"}
 {"hu": "✗ nem választaná", "en": "✗ would not pick", "de": "✗ würde nicht wählen", "es": "✗ no elegiría"}
+{"hu": "Reggeli összefoglaló – {0} (adat: a(z) {1}-i zárásig)", "en": "Morning summary – {0} (data: up to the close of {1})", "de": "Morgenübersicht – {0} (Daten: bis zum Schluss vom {1})", "es": "Resumen matinal – {0} (datos: hasta el cierre del {1})"}
+{"hu": "{0}: a záróár ({1:n}) a(z) {2:n} napos átlag ({3:n}) fölé került.", "en": "{0}: the close ({1}) moved above the {2}-day average ({3}).", "de": "{0}: der Schlusskurs ({1}) stieg über den {2}-Tage-Durchschnitt ({3}).", "es": "{0}: el cierre ({1}) pasó por encima de la media de {2} días ({3})."}
+{"hu": "{0}: a záróár ({1:n}) a(z) {2:n} napos átlag ({3:n}) alá került.", "en": "{0}: the close ({1}) moved below the {2}-day average ({3}).", "de": "{0}: der Schlusskurs ({1}) fiel unter den {2}-Tage-Durchschnitt ({3}).", "es": "{0}: el cierre ({1}) pasó por debajo de la media de {2} días ({3})."}
+{"hu": "{0}: a záróár ({1:n}) a saját {2:n} napos átlaga ({3:n}) fölé került.", "en": "{0}: the close ({1}) moved above its own {2}-day average ({3}).", "de": "{0}: der Schlusskurs ({1}) stieg über den eigenen {2}-Tage-Durchschnitt ({3}).", "es": "{0}: el cierre ({1}) pasó por encima de su propia media de {2} días ({3})."}
+{"hu": "{0}: a záróár ({1:n}) a saját {2:n} napos átlaga ({3:n}) alá került.", "en": "{0}: the close ({1}) moved below its own {2}-day average ({3}).", "de": "{0}: der Schlusskurs ({1}) fiel unter den eigenen {2}-Tage-Durchschnitt ({3}).", "es": "{0}: el cierre ({1}) pasó por debajo de su propia media de {2} días ({3})."}
+{"hu": "{0}: a(z) {1} formáció triggerszintje ({2:n}) átlépve.", "en": "{0}: the trigger level ({2}) of the {1} pattern was crossed.", "de": "{0}: das Trigger-Niveau ({2}) der Formation {1} wurde überschritten.", "es": "{0}: se cruzó el nivel de activación ({2}) de la figura {1}."}
+{"hu": "{0}: új formáció: {1} ({2}).", "en": "{0}: new pattern: {1} ({2}).", "de": "{0}: neue Formation: {1} ({2}).", "es": "{0}: nueva figura: {1} ({2})."}
+{"hu": "{0}: a(z) {1} formáció már nem látszik.", "en": "{0}: the {1} pattern is no longer visible.", "de": "{0}: die Formation {1} ist nicht mehr sichtbar.", "es": "{0}: la figura {1} ya no es visible."}
+{"hu": "{0}: {1:n} ATR-re került a(z) {2} triggerétől ({3:n}).", "en": "{0}: now {1} ATR from the {2} trigger ({3}).", "de": "{0}: jetzt {1} ATR vom Trigger der Formation {2} entfernt ({3}).", "es": "{0}: ahora a {1} ATR del nivel de activación de {2} ({3})."}
+{"hu": "{0}: {1:n} ATR-re került a(z) {2} triggerétől ({3:n}); gyorsjelentés {4:n} nap múlva.", "en": "{0}: now {1} ATR from the {2} trigger ({3}); earnings in {4} days.", "de": "{0}: jetzt {1} ATR vom Trigger der Formation {2} entfernt ({3}); Quartalszahlen in {4} Tagen.", "es": "{0}: ahora a {1} ATR del nivel de activación de {2} ({3}); resultados en {4} días."}
+{"hu": "{0}: a záróár ({1:n}) a(z) {2:n} körüli rezisztencia fölé került.", "en": "{0}: the close ({1}) moved above the resistance near {2}.", "de": "{0}: der Schlusskurs ({1}) stieg über den Widerstand bei etwa {2}.", "es": "{0}: el cierre ({1}) superó la resistencia en torno a {2}."}
+{"hu": "{0}: a záróár ({1:n}) a(z) {2:n} körüli support alá került.", "en": "{0}: the close ({1}) moved below the support near {2}.", "de": "{0}: der Schlusskurs ({1}) fiel unter die Unterstützung bei etwa {2}.", "es": "{0}: el cierre ({1}) cayó por debajo del soporte en torno a {2}."}
+{"hu": "{0}: gyorsjelentés {1:n} nap múlva ({2}).", "en": "{0}: earnings in {1} days ({2}).", "de": "{0}: Quartalszahlen in {1} Tagen ({2}).", "es": "{0}: resultados en {1} días ({2})."}
+{"hu": "{0}: gyorsjelentés ma ({1}).", "en": "{0}: earnings today ({1}).", "de": "{0}: Quartalszahlen heute ({1}).", "es": "{0}: resultados hoy ({1})."}
+{"hu": "{0}: új {1} bejelentés, tételek: {2}.", "en": "{0}: new {1} filing, items: {2}.", "de": "{0}: neue {1}-Meldung, Punkte: {2}.", "es": "{0}: nuevo informe {1}, apartados: {2}."}
+{"hu": "{0}: új {1} bejelentés lényeges tétellel: {2}.", "en": "{0}: new {1} filing with a material item: {2}.", "de": "{0}: neue {1}-Meldung mit wesentlichem Punkt: {2}.", "es": "{0}: nuevo informe {1} con un apartado relevante: {2}."}
+{"hu": "{0}: új {1} bejelentés.", "en": "{0}: new {1} filing.", "de": "{0}: neue {1}-Meldung.", "es": "{0}: nuevo informe {1}."}
+{"hu": "{0}: a hírhangulat negatívra fordult ({1:n} napos átlag: {2:n}).", "en": "{0}: news sentiment turned negative ({1}-day average: {2}).", "de": "{0}: die Nachrichtenstimmung drehte ins Negative ({1}-Tage-Durchschnitt: {2}).", "es": "{0}: el sentimiento de las noticias pasó a negativo (media de {1} días: {2})."}
+{"hu": "{0}: a hírhangulat pozitívra fordult ({1:n} napos átlag: {2:n}).", "en": "{0}: news sentiment turned positive ({1}-day average: {2}).", "de": "{0}: die Nachrichtenstimmung drehte ins Positive ({1}-Tage-Durchschnitt: {2}).", "es": "{0}: el sentimiento de las noticias pasó a positivo (media de {1} días: {2})."}
+{"hu": "{0}: lényeges negatív hír: {1}.", "en": "{0}: material negative news: {1}.", "de": "{0}: wesentliche negative Nachricht: {1}.", "es": "{0}: noticia negativa relevante: {1}."}
+{"hu": "{0}: bekerült a(z) {1} stratégia jelöltjei közé.", "en": "{0}: became a candidate of the {1} strategy.", "de": "{0}: wurde Kandidat der Strategie {1}.", "es": "{0}: pasó a ser candidata de la estrategia {1}."}
+{"hu": "{0}: kikerült a(z) {1} stratégia jelöltjei közül.", "en": "{0}: is no longer a candidate of the {1} strategy.", "de": "{0}: ist kein Kandidat der Strategie {1} mehr.", "es": "{0}: dejó de ser candidata de la estrategia {1}."}
+{"hu": "{0} (saját pozíció)", "en": "{0} (my position)", "de": "{0} (eigene Position)", "es": "{0} (mi posición)"}
+{"hu": "Változás nélkül: {0}.", "en": "No change: {0}.", "de": "Unverändert: {0}.", "es": "Sin cambios: {0}."}
+{"hu": "További {0:n} tétel a webes felületen.", "en": "{0} more items in the web interface.", "de": "{0} weitere Einträge in der Weboberfläche.", "es": "{0} elementos más en la interfaz web."}
+{"hu": "Első összefoglaló: a változásokat a következő kereskedési naptól jelzi.", "en": "First summary: changes are reported from the next trading day.", "de": "Erste Übersicht: Änderungen werden ab dem nächsten Handelstag gemeldet.", "es": "Primer resumen: los cambios se indican a partir de la próxima sesión."}
+{"hu": "Az előző összefoglaló óta nincs jelentős változás.", "en": "No significant change since the previous summary.", "de": "Keine wesentliche Änderung seit der letzten Übersicht.", "es": "Sin cambios significativos desde el resumen anterior."}
+{"hu": "Nincs figyelt papír és Saját pozíció.", "en": "No watched stocks and no own positions.", "de": "Keine beobachteten Aktien und keine eigenen Positionen.", "es": "No hay acciones vigiladas ni posiciones propias."}
+{"hu": "Nem befektetési tanács. Tényközlés és múltbeli / szimulált statisztika.", "en": "Not financial advice. Facts and past / simulated statistics.", "de": "Keine Anlageberatung. Fakten und vergangene / simulierte Statistik.", "es": "No es asesoramiento financiero. Hechos y estadística pasada / simulada."}
+{"hu": "medvés", "en": "bearish", "de": "bärisch", "es": "bajista"}
+{"hu": "Összefoglaló", "en": "Summary", "de": "Übersicht", "es": "Resumen"}
+{"hu": "Reggeli összefoglaló", "en": "Morning summary", "de": "Morgenübersicht", "es": "Resumen matinal"}
+{"hu": "Minden kereskedési napon {0}-kor (budapesti idő) készül a watchlistről és a Saját pozíciókról.", "en": "Prepared every trading day at {0} (Budapest time) for the watchlist and own positions.", "de": "Wird an jedem Handelstag um {0} (Budapester Zeit) für die Watchlist und die eigenen Positionen erstellt.", "es": "Se prepara cada día de mercado a las {0} (hora de Budapest) para la lista de seguimiento y las posiciones propias."}
+{"hu": "Készítés most", "en": "Prepare now", "de": "Jetzt erstellen", "es": "Preparar ahora"}
+{"hu": "Discordra is", "en": "Also to Discord", "de": "Auch an Discord", "es": "También a Discord"}
+{"hu": "(nincs Discord webhook –", "en": "(no Discord webhook –", "de": "(kein Discord-Webhook –", "es": "(sin webhook de Discord –"}
+{"hu": "Archívum", "en": "Archive", "de": "Archiv", "es": "Archivo"}
+{"hu": "Teljes összefoglaló és archívum →", "en": "Full summary and archive →", "de": "Vollständige Übersicht und Archiv →", "es": "Resumen completo y archivo →"}
+{"hu": "A papír oldala", "en": "Stock page", "de": "Aktienseite", "es": "Página de la acción"}
+{"hu": "Készült: {0}", "en": "Prepared: {0}", "de": "Erstellt: {0}", "es": "Preparado: {0}"}
+{"hu": "Discordra kiküldve", "en": "Sent to Discord", "de": "An Discord gesendet", "es": "Enviado a Discord"}
+{"hu": "Még nincs összefoglaló. A „Készítés most” gombbal azonnal elkészül.", "en": "No summary yet. The “Prepare now” button creates one immediately.", "de": "Noch keine Übersicht. Mit „Jetzt erstellen“ wird sie sofort erstellt.", "es": "Todavía no hay resumen. El botón «Preparar ahora» lo crea de inmediato."}
+{"hu": "{0:n} változatot próbált ki ({1:n} érvénytelen); a kiválasztás csak a tanító időszakon történt ({2} előtt).", "en": "Tried {0} variants ({1} invalid); selection used the training period only (before {2}).", "de": "{0} Varianten getestet ({1} ungültig); die Auswahl erfolgte nur im Trainingszeitraum (vor {2}).", "es": "Probó {0} variantes ({1} no válidas); la selección se hizo solo con el periodo de entrenamiento (antes de {2})."}
+{"hu": "A validációs időszakot ({0} – {1}) csak a(z) {2:n} döntősnél nézte meg, egyszer.", "en": "The validation period ({0} – {1}) was looked at only for the {2} finalists, once.", "de": "Der Validierungszeitraum ({0} – {1}) wurde nur für die {2} Finalisten angesehen, einmal.", "es": "El periodo de validación ({0} – {1}) solo se miró para los {2} finalistas, una vez."}
+{"hu": "A zárolt holdout ({0}-tól) érintetlen: az adat előtte véget ér, és a holdout-napló nem változott.", "en": "The locked holdout (from {0}) is untouched: the data ends before it and the holdout log did not change.", "de": "Der gesperrte Holdout (ab {0}) ist unberührt: die Daten enden davor, und das Holdout-Protokoll hat sich nicht geändert.", "es": "El holdout bloqueado (desde {0}) está intacto: los datos terminan antes y el registro de holdout no cambió."}
+{"hu": "A keresés a változat-keretnél ({0:n}) állt meg.", "en": "The search stopped at the variant budget ({0}).", "de": "Die Suche stoppte am Variantenbudget ({0}).", "es": "La búsqueda se detuvo en el límite de variantes ({0})."}
+{"hu": "A keresés a CPU-keretnél ({0:n} perc) állt meg; a jelentés az addigi legjobb eredményből készült.", "en": "The search stopped at the CPU budget ({0} minutes); the report uses the best result so far.", "de": "Die Suche stoppte am CPU-Budget ({0} Minuten); der Bericht nutzt das bisher beste Ergebnis.", "es": "La búsqueda se detuvo en el límite de CPU ({0} minutos); el informe usa el mejor resultado hasta entonces."}
+{"hu": "A keresés a reggeli határidőnél állt meg; a jelentés az addigi legjobb eredményből készült.", "en": "The search stopped at the morning deadline; the report uses the best result so far.", "de": "Die Suche stoppte an der Morgenfrist; der Bericht nutzt das bisher beste Ergebnis.", "es": "La búsqueda se detuvo en el plazo de la mañana; el informe usa el mejor resultado hasta entonces."}
+{"hu": "A keret miatt kimaradt lépések: {0}.", "en": "Steps skipped because of the budget: {0}.", "de": "Wegen des Budgets ausgelassene Schritte: {0}.", "es": "Pasos omitidos por el límite: {0}."}
+{"hu": "Egyik változat sem teljesítette a brief összes feltételét; a jelöltek a nem teljesült feltételekkel együtt látszanak.", "en": "No variant met all conditions of the brief; the candidates are shown with the unmet conditions.", "de": "Keine Variante erfüllte alle Bedingungen des Briefs; die Kandidaten werden mit den nicht erfüllten Bedingungen gezeigt.", "es": "Ninguna variante cumplió todas las condiciones del brief; los candidatos se muestran con las condiciones no cumplidas."}
+{"hu": "Nem volt értékelhető változat (nincs adat vagy kötés).", "en": "No variant could be evaluated (no data or trades).", "de": "Keine Variante war auswertbar (keine Daten oder Trades).", "es": "Ninguna variante se pudo evaluar (sin datos ni operaciones)."}
+{"hu": "Sok változatot próbált ki: a legjobb eredmény részben szerencse lehet (többszörös tesztelés).", "en": "Many variants were tried: the best result may partly be luck (multiple testing).", "de": "Viele Varianten getestet: das beste Ergebnis kann teilweise Glück sein (Mehrfachtests).", "es": "Se probaron muchas variantes: el mejor resultado puede deberse en parte a la suerte (pruebas múltiples)."}
+{"hu": "Csak a mai indextagok szerepelnek: a csődbe ment és kiesett papírok hiányoznak, ez felfelé torzít.", "en": "Only today's index members are included: bankrupt and removed stocks are missing, which biases upwards.", "de": "Nur heutige Indexmitglieder sind enthalten: insolvente und entfernte Aktien fehlen, das verzerrt nach oben.", "es": "Solo están los miembros actuales del índice: faltan las acciones quebradas o excluidas, lo que sesga al alza."}
+{"hu": "Ez a motorcsalád eddig {0:n} futásban nézte meg a validációs időszakot: sok megnézés után az sem független.", "en": "This engine family has looked at the validation period in {0} runs so far: after many looks it is no longer independent either.", "de": "Diese Motorfamilie hat den Validierungszeitraum bisher in {0} Läufen angesehen: nach vielen Blicken ist auch er nicht mehr unabhängig.", "es": "Esta familia de motores ya miró el periodo de validación en {0} ejecuciones: tras muchas miradas tampoco es independiente."}
+{"hu": "{0}: {1} (alap: {2}) – a tanító időszakban {3:n} százalékpont nyerési arányt és {4:n} százalékpont átlagos nettó hozamot adott a változtatás nélküli beállításhoz képest.", "en": "{0}: {1} (base: {2}) – in the training period it changed the win rate by {3} percentage points and the average net return by {4} percentage points versus the setting without this change.", "de": "{0}: {1} (Basis: {2}) – im Trainingszeitraum änderte es die Trefferquote um {3} Prozentpunkte und die durchschnittliche Nettorendite um {4} Prozentpunkte gegenüber der Einstellung ohne diese Änderung.", "es": "{0}: {1} (base: {2}) – en el periodo de entrenamiento cambió la tasa de acierto en {3} puntos porcentuales y el rendimiento neto medio en {4} puntos porcentuales frente al ajuste sin este cambio."}
+{"hu": "{0}: {1} (alap: {2}) – a tanító időszakban {3:n} százalékpont nyerési arányt és {4:n} R átlagos eredményt adott a változtatás nélküli beállításhoz képest.", "en": "{0}: {1} (base: {2}) – in the training period it changed the win rate by {3} percentage points and the average result by {4} R versus the setting without this change.", "de": "{0}: {1} (Basis: {2}) – im Trainingszeitraum änderte es die Trefferquote um {3} Prozentpunkte und das durchschnittliche Ergebnis um {4} R gegenüber der Einstellung ohne diese Änderung.", "es": "{0}: {1} (base: {2}) – en el periodo de entrenamiento cambió la tasa de acierto en {3} puntos porcentuales y el resultado medio en {4} R frente al ajuste sin este cambio."}
+{"hu": "{0}: {1} (alap: {2}).", "en": "{0}: {1} (base: {2}).", "de": "{0}: {1} (Basis: {2}).", "es": "{0}: {1} (base: {2})."}
+{"hu": "A tanító időszak eredményén nem változtatott: {0}.", "en": "No effect on the training-period result: {0}.", "de": "Keine Wirkung auf das Ergebnis im Trainingszeitraum: {0}.", "es": "Sin efecto en el resultado del periodo de entrenamiento: {0}."}
+{"hu": "A(z) {0:n} szomszédos beállításból {1:n} teljesíti a feltételeket; a nyerési arány {2:n}% és {3:n}% között maradt.", "en": "Of the {0} neighbouring settings, {1} meet the conditions; the win rate stayed between {2}% and {3}%.", "de": "Von den {0} benachbarten Einstellungen erfüllen {1} die Bedingungen; die Trefferquote blieb zwischen {2}% und {3}%.", "es": "De los {0} ajustes vecinos, {1} cumplen las condiciones; la tasa de acierto se mantuvo entre {2}% y {3}%."}
+{"hu": "Szomszédos beállítás nem volt kiértékelhető.", "en": "No neighbouring setting could be evaluated.", "de": "Keine benachbarte Einstellung war auswertbar.", "es": "No se pudo evaluar ningún ajuste vecino."}
+{"hu": "Kétszeres költséggel a holdout előtti időszakban: nyerési arány {0:n}%, átlagos nettó hozam {1:n}%.", "en": "With double costs, before the holdout: win rate {0}%, average net return {1}%.", "de": "Mit doppelten Kosten, vor dem Holdout: Trefferquote {0}%, durchschnittliche Nettorendite {1}%.", "es": "Con el doble de costes, antes del holdout: tasa de acierto {0}%, rendimiento neto medio {1}%."}
+{"hu": "Kétszeres költséggel a holdout előtti időszakban: nyerési arány {0:n}%, átlagos eredmény {1:n} R.", "en": "With double costs, before the holdout: win rate {0}%, average result {1} R.", "de": "Mit doppelten Kosten, vor dem Holdout: Trefferquote {0}%, durchschnittliches Ergebnis {1} R.", "es": "Con el doble de costes, antes del holdout: tasa de acierto {0}%, resultado medio {1} R."}
+{"hu": "{0:n} évből {1:n} évben volt pozitív az átlagos eredmény.", "en": "The average result was positive in {1} of {0} years.", "de": "Das durchschnittliche Ergebnis war in {1} von {0} Jahren positiv.", "es": "El resultado medio fue positivo en {1} de {0} años."}
+{"hu": "Az előre rögzített elfogadási feltételből {0:n} / {1:n} teljesül.", "en": "{0} / {1} of the pre-registered acceptance criteria are met.", "de": "{0} / {1} der vorab festgelegten Annahmekriterien sind erfüllt.", "es": "Se cumplen {0} / {1} de los criterios de aceptación fijados de antemano."}
+{"hu": "Nem teljesül: {0}.", "en": "Not met: {0}.", "de": "Nicht erfüllt: {0}.", "es": "No se cumple: {0}."}
+{"hu": "Ez maga a kiinduló beállítás, változtatás nélkül.", "en": "This is the starting setting itself, unchanged.", "de": "Dies ist die Ausgangseinstellung selbst, unverändert.", "es": "Este es el propio ajuste inicial, sin cambios."}
+{"hu": "{0:n}. fok: {1:n} változat a papírok {2:n}%-án ({3:n} papír); {4:n} ment tovább.", "en": "Rung {0}: {1} variants on {2}% of the stocks ({3} stocks); {4} advanced.", "de": "Stufe {0}: {1} Varianten auf {2}% der Aktien ({3} Aktien); {4} kamen weiter.", "es": "Escalón {0}: {1} variantes en el {2}% de las acciones ({3} acciones); {4} pasaron."}
+{"hu": "Finomítás: {0} {1} → {2}: a pontszám {3} → {4} (javított).", "en": "Refinement: {0} {1} → {2}: score {3} → {4} (improved).", "de": "Verfeinerung: {0} {1} → {2}: Wert {3} → {4} (verbessert).", "es": "Ajuste fino: {0} {1} → {2}: puntuación {3} → {4} (mejoró)."}
+{"hu": "Finomítás: {0} {1} → {2}: a pontszám {3} → {4} (nem javított).", "en": "Refinement: {0} {1} → {2}: score {3} → {4} (no improvement).", "de": "Verfeinerung: {0} {1} → {2}: Wert {3} → {4} (keine Verbesserung).", "es": "Ajuste fino: {0} {1} → {2}: puntuación {3} → {4} (sin mejora)."}
+{"hu": "Új legjobb változat: {0}.", "en": "New best variant: {0}.", "de": "Neue beste Variante: {0}.", "es": "Nueva mejor variante: {0}."}
+{"hu": "Elutasítva ({0}): {1}.", "en": "Rejected ({0}): {1}.", "de": "Abgelehnt ({0}): {1}.", "es": "Rechazada ({0}): {1}."}
+{"hu": "{0:n}. döntős: a validációs időszak megnézve.", "en": "Finalist {0}: validation period checked.", "de": "Finalist {0}: Validierungszeitraum geprüft.", "es": "Finalista {0}: periodo de validación revisado."}
+{"hu": "Nem befektetési tanács. Múltbeli / szimulált eredmény, a jövőbelit nem garantálja.", "en": "Not financial advice. Past / simulated performance does not guarantee future results.", "de": "Keine Anlageberatung. Vergangene / simulierte Ergebnisse garantieren keine zukünftigen.", "es": "No es asesoramiento financiero. Los resultados pasados / simulados no garantizan los futuros."}
+{"hu": "Az éjszakai kutatás elkészült: {0} – {1:n} jelölt, {2:n} kipróbált változat.", "en": "The overnight research is ready: {0} – {1} candidates, {2} variants tried.", "de": "Die nächtliche Recherche ist fertig: {0} – {1} Kandidaten, {2} getestete Varianten.", "es": "La investigación nocturna está lista: {0} – {1} candidatos, {2} variantes probadas."}
+{"hu": "kevés kötés", "en": "few trades", "de": "wenige Trades", "es": "pocas operaciones"}
+{"hu": "ritkább a kért sávnál", "en": "rarer than the requested band", "de": "seltener als der gewünschte Bereich", "es": "menos frecuente que la banda pedida"}
+{"hu": "sűrűbb a kért sávnál", "en": "more frequent than the requested band", "de": "häufiger als der gewünschte Bereich", "es": "más frecuente que la banda pedida"}
+{"hu": "nagyobb visszaesés a megengedettnél", "en": "larger drawdown than allowed", "de": "größerer Rückgang als erlaubt", "es": "caída mayor que la permitida"}
+{"hu": "kisebb profit-faktor a megengedettnél", "en": "lower profit factor than allowed", "de": "niedrigerer Profitfaktor als erlaubt", "es": "factor de beneficio menor que el permitido"}
+{"hu": "a nyerési arány alsó határa a kért alatt", "en": "the lower bound of the win rate is below the requested level", "de": "die untere Grenze der Trefferquote liegt unter dem gewünschten Wert", "es": "el límite inferior de la tasa de acierto está por debajo de lo pedido"}
+{"hu": "hosszabb tartás a megengedettnél", "en": "longer holding than allowed", "de": "längere Haltedauer als erlaubt", "es": "mantenimiento más largo que el permitido"}
+{"hu": "RSI(2) küszöb", "en": "RSI(2) threshold", "de": "RSI(2)-Schwelle", "es": "umbral RSI(2)"}
+{"hu": "limit a záró alatt (%)", "en": "limit below the close (%)", "de": "Limit unter dem Schlusskurs (%)", "es": "límite bajo el cierre (%)"}
+{"hu": "stop (ATR)", "en": "stop (ATR)", "de": "Stopp (ATR)", "es": "stop (ATR)"}
+{"hu": "kilépési ConnorsRSI", "en": "exit ConnorsRSI", "de": "Ausstiegs-ConnorsRSI", "es": "ConnorsRSI de salida"}
+{"hu": "kilépési SMA", "en": "exit SMA", "de": "Ausstiegs-SMA", "es": "SMA de salida"}
+{"hu": "időkorlát (nap)", "en": "time limit (days)", "de": "Zeitlimit (Tage)", "es": "límite de tiempo (días)"}
+{"hu": "trend-SMA", "en": "trend SMA", "de": "Trend-SMA", "es": "SMA de tendencia"}
+{"hu": "rezsimszűrő", "en": "regime filter", "de": "Regimefilter", "es": "filtro de régimen"}
+{"hu": "gyorsjelentés-tilalom (nap)", "en": "earnings blackout (days)", "de": "Sperre vor Quartalszahlen (Tage)", "es": "bloqueo por resultados (días)"}
+{"hu": "max. nyitott kötés", "en": "max. open trades", "de": "max. offene Trades", "es": "máx. operaciones abiertas"}
+{"hu": "min. pontszám", "en": "min. score", "de": "Mindestpunktzahl", "es": "puntuación mín."}
+{"hu": "min. stop (ATR)", "en": "min. stop (ATR)", "de": "Mindeststopp (ATR)", "es": "stop mín. (ATR)"}
+{"hu": "kilépési mód", "en": "exit mode", "de": "Ausstiegsmodus", "es": "modo de salida"}
+{"hu": "részleges zárás (R)", "en": "partial close (R)", "de": "Teilschließung (R)", "es": "cierre parcial (R)"}
+{"hu": "követett stop (ATR)", "en": "trailing stop (ATR)", "de": "Nachlaufender Stopp (ATR)", "es": "stop dinámico (ATR)"}
+{"hu": "min. hozam/kockázat", "en": "min. reward/risk", "de": "min. Chance/Risiko", "es": "mín. beneficio/riesgo"}
+{"hu": "max. távolság a triggertől (ATR)", "en": "max. distance from trigger (ATR)", "de": "max. Abstand vom Trigger (ATR)", "es": "distancia máx. al nivel de activación (ATR)"}
+{"hu": "min. kitörési volumen", "en": "min. breakout volume", "de": "min. Ausbruchsvolumen", "es": "volumen mín. de ruptura"}
+{"hu": "max. összehúzódás", "en": "max. contraction", "de": "max. Kontraktion", "es": "contracción máx."}
+{"hu": "igen", "en": "yes", "de": "ja", "es": "sí"}
+{"hu": "nem", "en": "no", "de": "nein", "es": "no"}
+{"hu": "Kutatóügynök", "en": "Research agent", "de": "Recherche-Agent", "es": "Agente de investigación"}
+{"hu": "Ügynök", "en": "Agent", "de": "Agent", "es": "Agente"}
+{"hu": "Stratégiaváltozatokat keres és tesztel egy kutatási cél szerint, a labor-szolgáltatásban (éjjel vagy azonnal). Determinisztikus, a kipróbált változatok száma mindig látszik. Nem kereskedik, nem ad tanácsot.", "en": "Searches and tests strategy variants for a research goal in the lab service (overnight or right away). Deterministic; the number of variants tried is always shown. It does not trade and gives no advice.", "de": "Sucht und testet Strategievarianten für ein Rechercheziel im Labor-Dienst (nachts oder sofort). Deterministisch; die Zahl der getesteten Varianten ist immer sichtbar. Handelt nicht und berät nicht.", "es": "Busca y prueba variantes de estrategia para un objetivo de investigación en el servicio de laboratorio (de noche o al momento). Determinista; el número de variantes probadas siempre se muestra. No opera ni asesora."}
+{"hu": "Kutatási célok", "en": "Research goals", "de": "Rechercheziele", "es": "Objetivos de investigación"}
+{"hu": "Új kutatási cél", "en": "New research goal", "de": "Neues Rechercheziel", "es": "Nuevo objetivo de investigación"}
+{"hu": "Kutatási cél szerkesztése", "en": "Edit research goal", "de": "Rechercheziel bearbeiten", "es": "Editar objetivo de investigación"}
+{"hu": "Még nincs kutatási cél – lent vehetsz fel egyet.", "en": "No research goal yet – you can add one below.", "de": "Noch kein Rechercheziel – unten kannst du eines anlegen.", "es": "Aún no hay objetivo de investigación: puedes añadir uno abajo."}
+{"hu": "Futtatás most", "en": "Run now", "de": "Jetzt ausführen", "es": "Ejecutar ahora"}
+{"hu": "Ma éjjel", "en": "Tonight", "de": "Heute Nacht", "es": "Esta noche"}
+{"hu": "Futások", "en": "Runs", "de": "Läufe", "es": "Ejecuciones"}
+{"hu": "Még nem futott.", "en": "Not run yet.", "de": "Noch nicht gelaufen.", "es": "Aún no se ha ejecutado."}
+{"hu": "Kötés / hét (min.)", "en": "Trades / week (min.)", "de": "Trades / Woche (min.)", "es": "Operaciones / semana (mín.)"}
+{"hu": "Kötés / hét (max.)", "en": "Trades / week (max.)", "de": "Trades / Woche (max.)", "es": "Operaciones / semana (máx.)"}
+{"hu": "Max. visszaesés (%)", "en": "Max. drawdown (%)", "de": "Max. Rückgang (%)", "es": "Caída máx. (%)"}
+{"hu": "Max. tartás (nap)", "en": "Max. holding (days)", "de": "Max. Haltedauer (Tage)", "es": "Mantenimiento máx. (días)"}
+{"hu": "Költség (bps / oldal)", "en": "Cost (bps / side)", "de": "Kosten (bps / Seite)", "es": "Coste (pb / lado)"}
+{"hu": "Min. profit-faktor", "en": "Min. profit factor", "de": "Min. Profitfaktor", "es": "Factor de beneficio mín."}
+{"hu": "Min. nyerési arány alsó határa (0–1, opcionális)", "en": "Min. lower bound of win rate (0–1, optional)", "de": "Min. untere Grenze der Trefferquote (0–1, optional)", "es": "Límite inferior mín. de la tasa de acierto (0–1, opcional)"}
+{"hu": "Min. kötés a tanító időszakban", "en": "Min. trades in the training period", "de": "Min. Trades im Trainingszeitraum", "es": "Mín. operaciones en el periodo de entrenamiento"}
+{"hu": "Módszer", "en": "Method", "de": "Methode", "es": "Método"}
+{"hu": "Successive halving", "en": "Successive halving", "de": "Successive Halving", "es": "Successive halving"}
+{"hu": "Véletlen", "en": "Random", "de": "Zufällig", "es": "Aleatorio"}
+{"hu": "Rács", "en": "Grid", "de": "Raster", "es": "Rejilla"}
+{"hu": "Max. változat", "en": "Max. variants", "de": "Max. Varianten", "es": "Máx. variantes"}
+{"hu": "Max. CPU-perc", "en": "Max. CPU minutes", "de": "Max. CPU-Minuten", "es": "Máx. minutos de CPU"}
+{"hu": "Rögzített mezők (JSON)", "en": "Fixed fields (JSON)", "de": "Feste Felder (JSON)", "es": "Campos fijos (JSON)"}
+{"hu": "A kiválasztás csak a tanító időszakon (2022 előtt) történik; a célmutató az átlagos nettó hozam bootstrap alsó határa. A zárolt holdout érintetlen marad.", "en": "Selection uses the training period only (before 2022); the objective is the bootstrap lower bound of the average net return. The locked holdout stays untouched.", "de": "Die Auswahl nutzt nur den Trainingszeitraum (vor 2022); Zielgröße ist die Bootstrap-Untergrenze der durchschnittlichen Nettorendite. Der gesperrte Holdout bleibt unberührt.", "es": "La selección usa solo el periodo de entrenamiento (antes de 2022); el objetivo es el límite inferior bootstrap del rendimiento neto medio. El holdout bloqueado queda intacto."}
+{"hu": "Törlöd ezt a kutatási célt?", "en": "Delete this research goal?", "de": "Dieses Rechercheziel löschen?", "es": "¿Borrar este objetivo de investigación?"}
+{"hu": "Kiinduló beállítás (tanító időszak)", "en": "Starting setting (training period)", "de": "Ausgangseinstellung (Trainingszeitraum)", "es": "Ajuste inicial (periodo de entrenamiento)"}
+{"hu": "Tőkegörbék (fix súly, holdout előtt)", "en": "Equity curves (fixed weight, before the holdout)", "de": "Kapitalkurven (feste Gewichtung, vor dem Holdout)", "es": "Curvas de capital (peso fijo, antes del holdout)"}
+{"hu": "nem teljesít minden feltételt", "en": "does not meet every condition", "de": "erfüllt nicht alle Bedingungen", "es": "no cumple todas las condiciones"}
+{"hu": "teljesíti a feltételeket", "en": "meets the conditions", "de": "erfüllt die Bedingungen", "es": "cumple las condiciones"}
+{"hu": "Átvétel a Homokozóba", "en": "Copy to the Sandbox", "de": "In die Sandbox übernehmen", "es": "Copiar al Sandbox"}
+{"hu": "Értesítés és paper-kötés nélkül; a Homokozó élő virtuális követése indul.", "en": "Without notifications and without a paper link; the Sandbox's live virtual tracking starts.", "de": "Ohne Benachrichtigung und ohne Paper-Verknüpfung; die virtuelle Live-Verfolgung der Sandbox beginnt.", "es": "Sin notificaciones ni vínculo con la cuenta paper; empieza el seguimiento virtual en vivo del Sandbox."}
+{"hu": "Hogyan jutott ide", "en": "How it got here", "de": "Wie es dazu kam", "es": "Cómo llegó aquí"}
+{"hu": "Még nincs lépés.", "en": "No steps yet.", "de": "Noch keine Schritte.", "es": "Aún no hay pasos."}
+{"hu": "Nyerési arány (alsó határ)", "en": "Win rate (lower bound)", "de": "Trefferquote (Untergrenze)", "es": "Tasa de acierto (límite inferior)"}
+{"hu": "Átlag (alsó határ)", "en": "Average (lower bound)", "de": "Durchschnitt (Untergrenze)", "es": "Media (límite inferior)"}
+{"hu": "Holdout előtt összesen", "en": "Total before the holdout", "de": "Gesamt vor dem Holdout", "es": "Total antes del holdout"}
+{"hu": "Nincs lezárt kötés.", "en": "No closed trades.", "de": "Keine geschlossenen Trades.", "es": "No hay operaciones cerradas."}
+{"hu": "A Homokozó mostani beállítása az előzménylistába kerül, és ez a jelölt lesz a Homokozó szabálya (értesítés és paper-kötés nélkül). Folytatod?", "en": "The Sandbox's current setting goes to the history list and this candidate becomes the Sandbox rule (without notifications and without a paper link). Continue?", "de": "Die aktuelle Sandbox-Einstellung kommt in die Verlaufsliste, und dieser Kandidat wird zur Sandbox-Regel (ohne Benachrichtigung und ohne Paper-Verknüpfung). Fortfahren?", "es": "El ajuste actual del Sandbox pasa al historial y este candidato será la regla del Sandbox (sin notificaciones ni vínculo paper). ¿Continuar?"}
+{"hu": "Munkasor (kutatóügynök)", "en": "Queue (research agent)", "de": "Warteschlange (Recherche-Agent)", "es": "Cola (agente de investigación)"}
+{"hu": "A kutatóügynök jelentései", "en": "Research agent reports", "de": "Berichte des Recherche-Agenten", "es": "Informes del agente de investigación"}
+{"hu": "Nasdaq-100 + S&P 500", "en": "Nasdaq-100 + S&P 500", "de": "Nasdaq-100 + S&P 500", "es": "Nasdaq-100 + S&P 500"}
+{"hu": "ETF-lista", "en": "ETF list", "de": "ETF-Liste", "es": "Lista de ETF"}
+{"hu": "Kutatási minta", "en": "Research sample", "de": "Forschungsstichprobe", "es": "Muestra de investigación"}
+{"hu": "{0:n} esemény {1:n} papíron; felhasznált {2:n}, átfedés miatt kimaradt {3:n}, nem teljes ablak {4:n}.", "en": "{0} events on {1} stocks; used {2}, dropped for overlap {3}, incomplete window {4}.", "de": "{0} Ereignisse bei {1} Aktien; verwendet {2}, wegen Überlappung entfallen {3}, unvollständiges Fenster {4}.", "es": "{0} eventos en {1} acciones; usados {2}, descartados por solapamiento {3}, ventana incompleta {4}."}
+{"hu": "Kumulált abnormális hozam ({0:n}. – {1:n}. nap): átlag {2:n}% ({7:n}%-os sáv: {3:n}% – {4:n}%), medián {5:n}%; az esetek {6:n}%-ában pozitív.", "en": "Cumulative abnormal return (day {0} – {1}): mean {2}% ({7}% band: {3}% – {4}%), median {5}%; positive in {6}% of cases.", "de": "Kumulierte Überrendite (Tag {0} – {1}): Mittel {2}% ({7}%-Band: {3}% – {4}%), Median {5}%; in {6}% der Fälle positiv.", "es": "Rendimiento anormal acumulado (día {0} – {1}): media {2}% (banda del {7}%: {3}% – {4}%), mediana {5}%; positivo en el {6}% de los casos."}
+{"hu": "Az esemény napjának zárója után ({0:n}. – {1:n}. nap): átlag {2:n}% ({7:n}%-os sáv: {3:n}% – {4:n}%), medián {5:n}%; az esetek {6:n}%-ában pozitív.", "en": "After the close of the event day (day {0} – {1}): mean {2}% ({7}% band: {3}% – {4}%), median {5}%; positive in {6}% of cases.", "de": "Nach dem Schluss des Ereignistags (Tag {0} – {1}): Mittel {2}% ({7}%-Band: {3}% – {4}%), Median {5}%; in {6}% der Fälle positiv.", "es": "Tras el cierre del día del evento (día {0} – {1}): media {2}% (banda del {7}%: {3}% – {4}%), mediana {5}%; positivo en el {6}% de los casos."}
+{"hu": "Nem volt kiértékelhető esemény.", "en": "No event could be evaluated.", "de": "Kein auswertbares Ereignis.", "es": "No hubo eventos evaluables."}
+{"hu": "Kevés esemény ({0:n}): az eredmény főleg zaj.", "en": "Few events ({0}): the result is mostly noise.", "de": "Wenige Ereignisse ({0}): das Ergebnis ist vor allem Rauschen.", "es": "Pocos eventos ({0}): el resultado es sobre todo ruido."}
+{"hu": "{0:n} eseménynél csak a dátum ismert: ezek a következő kereskedési naptól számítanak.", "en": "For {0} events only the date is known: they count from the next trading day.", "de": "Bei {0} Ereignissen ist nur das Datum bekannt: sie zählen ab dem nächsten Handelstag.", "es": "En {0} eventos solo se conoce la fecha: cuentan desde la siguiente sesión."}
+{"hu": "{0:n} eseménynél kevés volt a becslési adat: piac-korrigált hozam (piaci modell nélkül).", "en": "For {0} events there was too little estimation data: market-adjusted return (no market model).", "de": "Bei {0} Ereignissen gab es zu wenige Schätzdaten: marktbereinigte Rendite (ohne Marktmodell).", "es": "En {0} eventos hubo pocos datos de estimación: rendimiento ajustado al mercado (sin modelo de mercado)."}
+{"hu": "Az esemény napja előtti szakasz leíró jellegű: az esemény akkor még nem volt ismert.", "en": "The part before the event day is descriptive only: the event was not yet known then.", "de": "Der Abschnitt vor dem Ereignistag ist nur beschreibend: das Ereignis war damals noch nicht bekannt.", "es": "El tramo anterior al día del evento es solo descriptivo: el evento aún no se conocía."}
+{"hu": "Csak a mai indextagok szerepelnek: a csődbe ment és kiesett papírok hiányoznak, ez torzíthat.", "en": "Only today's index members are included: bankrupt and removed stocks are missing, which can bias the result.", "de": "Nur heutige Indexmitglieder sind enthalten: insolvente und entfernte Aktien fehlen, das kann verzerren.", "es": "Solo están los miembros actuales del índice: faltan las acciones quebradas o excluidas, lo que puede sesgar."}
+{"hu": "A(z) {0} változásoknál a hatályos dátum számít; a bejelentési hatás (jellemzően néhány nappal korábban) nincs benne.", "en": "For {0} changes the effective date counts; the announcement effect (usually a few days earlier) is not included.", "de": "Bei {0}-Änderungen zählt das Wirksamkeitsdatum; der Ankündigungseffekt (meist einige Tage früher) ist nicht enthalten.", "es": "En los cambios del {0} cuenta la fecha efectiva; el efecto del anuncio (normalmente unos días antes) no está incluido."}
+{"hu": "A zárolt holdout ({0}-tól) kimaradt: az adat előtte véget ér.", "en": "The locked holdout (from {0}) was left out: the data ends before it.", "de": "Der gesperrte Holdout (ab {0}) wurde ausgelassen: die Daten enden davor.", "es": "El holdout bloqueado (desde {0}) quedó fuera: los datos terminan antes."}
+{"hu": "A tanulmány a zárolt holdoutot is tartalmazza (naplózva).", "en": "The study also includes the locked holdout (logged).", "de": "Die Studie enthält auch den gesperrten Holdout (protokolliert).", "es": "El estudio incluye también el holdout bloqueado (registrado)."}
+{"hu": "Nincs {0} adat a vizsgált időszakra – letöltés: {1}", "en": "No {0} data for the period – download: {1}", "de": "Keine {0}-Daten für den Zeitraum – Download: {1}", "es": "No hay datos de {0} para el periodo – descarga: {1}"}
+{"hu": "Nincs {0} változás-tábla – letöltés: {1}", "en": "No {0} change table – download: {1}", "de": "Keine {0}-Änderungstabelle – Download: {1}", "es": "No hay tabla de cambios del {0} – descarga: {1}"}
+{"hu": "Nem befektetési tanács. Múltbeli statisztika, a jövőbeli eredményt nem garantálja.", "en": "Not financial advice. Past statistics do not guarantee future results.", "de": "Keine Anlageberatung. Vergangene Statistik garantiert keine zukünftigen Ergebnisse.", "es": "No es asesoramiento financiero. La estadística pasada no garantiza resultados futuros."}
+{"hu": "Gyorsjelentés", "en": "Earnings", "de": "Quartalszahlen", "es": "Resultados"}
+{"hu": "8-K bejelentés", "en": "8-K filing", "de": "8-K-Meldung", "es": "Informe 8-K"}
+{"hu": "Új 52 hetes csúcs", "en": "New 52-week high", "de": "Neues 52-Wochen-Hoch", "es": "Nuevo máximo de 52 semanas"}
+{"hu": "Új 52 hetes mélypont", "en": "New 52-week low", "de": "Neues 52-Wochen-Tief", "es": "Nuevo mínimo de 52 semanas"}
+{"hu": "Nagy nyitó gap", "en": "Large opening gap", "de": "Große Eröffnungslücke", "es": "Gran gap de apertura"}
+{"hu": "Saját stratégia jelzése", "en": "Own strategy signal", "de": "Signal der eigenen Strategie", "es": "Señal de la estrategia propia"}
+{"hu": "Bennfentes vétel (Form 4)", "en": "Insider purchase (Form 4)", "de": "Insiderkauf (Form 4)", "es": "Compra de insider (Form 4)"}
+{"hu": "Bennfentes eladás (Form 4)", "en": "Insider sale (Form 4)", "de": "Insiderverkauf (Form 4)", "es": "Venta de insider (Form 4)"}
+{"hu": "Csoportos bennfentes vétel (cluster buy)", "en": "Cluster insider purchase (cluster buy)", "de": "Gehäufte Insiderkäufe (Cluster Buy)", "es": "Compras agrupadas de insiders (cluster buy)"}
+{"hu": "S&P 500 bekerülés", "en": "S&P 500 addition", "de": "Aufnahme in den S&P 500", "es": "Incorporación al S&P 500"}
+{"hu": "S&P 500 kikerülés", "en": "S&P 500 removal", "de": "Entfernung aus dem S&P 500", "es": "Salida del S&P 500"}
+{"hu": "Egy papír", "en": "Single stock", "de": "Einzelne Aktie", "es": "Una acción"}
+{"hu": "Eseménytanulmányok", "en": "Event studies", "de": "Ereignisstudien", "es": "Estudios de eventos"}
+{"hu": "Események", "en": "Events", "de": "Ereignisse", "es": "Eventos"}
+{"hu": "Mi történt az árral egy eseménytípus után? Abnormális hozam a benchmarkhoz képest (piaci modell), kumulálva. Csak az akkor ismert adatból; a zárolt holdout alapból kimarad. Múltbeli statisztika, nem ajánlás.", "en": "What happened to the price after a type of event? Abnormal return versus the benchmark (market model), cumulated. Only data known at the time; the locked holdout is excluded by default. Past statistics, not a recommendation.", "de": "Was geschah mit dem Kurs nach einem Ereignistyp? Überrendite gegenüber der Benchmark (Marktmodell), kumuliert. Nur damals bekannte Daten; der gesperrte Holdout ist standardmäßig ausgeschlossen. Vergangene Statistik, keine Empfehlung.", "es": "¿Qué pasó con el precio tras un tipo de evento? Rendimiento anormal frente al índice de referencia (modelo de mercado), acumulado. Solo datos conocidos en ese momento; el holdout bloqueado queda excluido por defecto. Estadística pasada, no una recomendación."}
+{"hu": "Új tanulmány", "en": "New study", "de": "Neue Studie", "es": "Nuevo estudio"}
+{"hu": "Esemény", "en": "Event", "de": "Ereignis", "es": "Evento"}
+{"hu": "Papír (egy papírnál)", "en": "Stock (single stock)", "de": "Aktie (bei einer Aktie)", "es": "Acción (una sola)"}
+{"hu": "Szektor", "en": "Sector", "de": "Sektor", "es": "Sector"}
+{"hu": "mind", "en": "all", "de": "alle", "es": "todos"}
+{"hu": "Kezdet", "en": "Start", "de": "Beginn", "es": "Inicio"}
+{"hu": "Vég (üres: a holdout előtt)", "en": "End (empty: before the holdout)", "de": "Ende (leer: vor dem Holdout)", "es": "Fin (vacío: antes del holdout)"}
+{"hu": "Ablak kezdete (nap)", "en": "Window start (day)", "de": "Fensterbeginn (Tag)", "es": "Inicio de la ventana (día)"}
+{"hu": "Ablak vége (nap)", "en": "Window end (day)", "de": "Fensterende (Tag)", "es": "Fin de la ventana (día)"}
+{"hu": "Becslési ablak kezdete", "en": "Estimation window start", "de": "Beginn des Schätzfensters", "es": "Inicio de la ventana de estimación"}
+{"hu": "Becslési ablak vége", "en": "Estimation window end", "de": "Ende des Schätzfensters", "es": "Fin de la ventana de estimación"}
+{"hu": "a papír indexe", "en": "the stock's index", "de": "der Index der Aktie", "es": "el índice de la acción"}
+{"hu": "A zárolt holdout is (naplózva – utána az az időszak már nem független)", "en": "Include the locked holdout (logged – afterwards that period is no longer independent)", "de": "Auch den gesperrten Holdout (protokolliert – danach ist dieser Zeitraum nicht mehr unabhängig)", "es": "Incluir el holdout bloqueado (registrado: después ese periodo ya no es independiente)"}
+{"hu": "Egy papír és a watchlist azonnal fut; a nagyobb univerzumot a labor-szolgáltatás futtatja.", "en": "A single stock and the watchlist run immediately; a larger universe is run by the lab service.", "de": "Eine Aktie und die Watchlist laufen sofort; ein größeres Universum führt der Labor-Dienst aus.", "es": "Una acción y la lista de seguimiento se ejecutan al momento; un universo mayor lo ejecuta el servicio de laboratorio."}
+{"hu": "nincs letöltve", "en": "not downloaded", "de": "nicht heruntergeladen", "es": "no descargado"}
+{"hu": "Mentett tanulmányok", "en": "Saved studies", "de": "Gespeicherte Studien", "es": "Estudios guardados"}
+{"hu": "Esemény (db)", "en": "Events (count)", "de": "Ereignisse (Anzahl)", "es": "Eventos (n.º)"}
+{"hu": "Átlagos CAR", "en": "Average CAR", "de": "Durchschnittliche CAR", "es": "CAR media"}
+{"hu": "Pozitív", "en": "Positive", "de": "Positiv", "es": "Positivo"}
+{"hu": "Még nincs mentett tanulmány.", "en": "No saved study yet.", "de": "Noch keine gespeicherte Studie.", "es": "Aún no hay estudios guardados."}
+{"hu": "Törlöd ezt a tanulmányt?", "en": "Delete this study?", "de": "Diese Studie löschen?", "es": "¿Borrar este estudio?"}
+{"hu": "← Eseménytanulmányok", "en": "← Event studies", "de": "← Ereignisstudien", "es": "← Estudios de eventos"}
+{"hu": "Átlagos kumulált abnormális hozam", "en": "Average cumulative abnormal return", "de": "Durchschnittliche kumulierte Überrendite", "es": "Rendimiento anormal acumulado medio"}
+{"hu": "sáv: 95%, dátum szerint csoportosított bootstrap · szaggatott: medián", "en": "band: 95%, date-clustered bootstrap · dashed: median", "de": "Band: 95 %, nach Datum gruppierter Bootstrap · gestrichelt: Median", "es": "banda: 95%, bootstrap agrupado por fecha · discontinua: mediana"}
+{"hu": "Eloszlás (CAR, %)", "en": "Distribution (CAR, %)", "de": "Verteilung (CAR, %)", "es": "Distribución (CAR, %)"}
+{"hu": "Bontás", "en": "Breakdown", "de": "Aufschlüsselung", "es": "Desglose"}
+{"hu": "Medián", "en": "Median", "de": "Median", "es": "Mediana"}
+{"hu": "Utána (átlag)", "en": "After (mean)", "de": "Danach (Mittel)", "es": "Después (media)"}
+{"hu": "Utána", "en": "After", "de": "Danach", "es": "Después"}
+{"hu": "(csak dátum)", "en": "(date only)", "de": "(nur Datum)", "es": "(solo fecha)"}
+{"hu": "piaci modell", "en": "market model", "de": "Marktmodell", "es": "modelo de mercado"}
+{"hu": "piac-korrigált", "en": "market-adjusted", "de": "marktbereinigt", "es": "ajustado al mercado"}
+{"hu": "Az első 500 látszik; a teljes lista a CSV-ben.", "en": "The first 500 are shown; the full list is in the CSV.", "de": "Die ersten 500 werden angezeigt; die vollständige Liste steht in der CSV.", "es": "Se muestran los 500 primeros; la lista completa está en el CSV."}
+{"hu": "papír (100 = az esemény előtti nap)", "en": "stock (100 = the day before the event)", "de": "Aktie (100 = Tag vor dem Ereignis)", "es": "acción (100 = día anterior al evento)"}
+{"hu": "benchmark", "en": "benchmark", "de": "Benchmark", "es": "índice de referencia"}
+{"hu": "felfelé", "en": "up", "de": "aufwärts", "es": "al alza"}
+{"hu": "lefelé", "en": "down", "de": "abwärts", "es": "a la baja"}
+{"hu": "semleges", "en": "neutral", "de": "neutral", "es": "neutral"}
+{"hu": "emelkedő piac", "en": "rising market", "de": "steigender Markt", "es": "mercado alcista"}
+{"hu": "eső piac", "en": "falling market", "de": "fallender Markt", "es": "mercado bajista"}
+{"hu": "Gap küszöb (%)", "en": "Gap threshold (%)", "de": "Gap-Schwelle (%)", "es": "Umbral de gap (%)"}
+{"hu": "8-K tételkód (pl. 2.02; üres: mind)", "en": "8-K item code (e.g. 2.02; empty: all)", "de": "8-K-Punkt (z. B. 2.02; leer: alle)", "es": "Apartado 8-K (p. ej. 2.02; vacío: todos)"}
+{"hu": "Csendes napok előtte", "en": "Quiet days before", "de": "Ruhige Tage davor", "es": "Días tranquilos antes"}
+{"hu": "Min. érték ($)", "en": "Min. value ($)", "de": "Mindestwert ($)", "es": "Valor mín. ($)"}
+{"hu": "10b5-1 terv nélkül", "en": "Without 10b5-1 plans", "de": "Ohne 10b5-1-Pläne", "es": "Sin planes 10b5-1"}
+{"hu": "Min. bennfentes", "en": "Min. insiders", "de": "Min. Insider", "es": "Mín. insiders"}
+{"hu": "Napokon belül", "en": "Within days", "de": "Innerhalb von Tagen", "es": "Dentro de días"}
+{"hu": "{0:n} helyzet, ebből {1:n} belépési döntés és {2:n} kihagyás.", "en": "{0} situations: {1} entry decisions and {2} skips.", "de": "{0} Situationen, davon {1} Einstiegsentscheidungen und {2} ausgelassen.", "es": "{0} situaciones: {1} decisiones de entrada y {2} omitidas."}
+{"hu": "{0:n} limitáras belépés nem teljesült.", "en": "{0} limit entries were not filled.", "de": "{0} Limit-Einstiege wurden nicht ausgeführt.", "es": "{0} entradas con límite no se ejecutaron."}
+{"hu": "A teljesült belépések: {0:n} kötés, nyerési arány {1:n}%, átlag {2:n} R, összesen {3:n} R.", "en": "Filled entries: {0} trades, win rate {1}%, average {2} R, total {3} R.", "de": "Ausgeführte Einstiege: {0} Trades, Trefferquote {1}%, Durchschnitt {2} R, gesamt {3} R.", "es": "Entradas ejecutadas: {0} operaciones, tasa de acierto {1}%, media {2} R, total {3} R."}
+{"hu": "Nem volt teljesült belépés.", "en": "There were no filled entries.", "de": "Es gab keine ausgeführten Einstiege.", "es": "No hubo entradas ejecutadas."}
+{"hu": "Véletlen alapvonal ugyanazokon a papírokon (azonos stop-távolság és időkorlát, véletlen napokon): átlag {0:n} R.", "en": "Random baseline on the same stocks (same stop distance and time limit, on random days): average {0} R.", "de": "Zufällige Basislinie auf denselben Aktien (gleicher Stop-Abstand und gleiches Zeitlimit, an zufälligen Tagen): Durchschnitt {0} R.", "es": "Línea base aleatoria en los mismos valores (misma distancia de stop y límite de tiempo, en días aleatorios): media {0} R."}
+{"hu": "Referencia-kötés minden helyzetben (következő nyitás, {0:n} ATR stop, {1:n} nap): átlag {2:n} R.", "en": "Reference trade in every situation (next open, {0} ATR stop, {1} days): average {2} R.", "de": "Referenz-Trade in jeder Situation (nächste Eröffnung, {0} ATR Stop, {1} Tage): Durchschnitt {2} R.", "es": "Operación de referencia en cada situación (siguiente apertura, stop de {0} ATR, {1} días): media {2} R."}
+{"hu": "{0}: {1:n} helyzetben jelzett; a szabály szerinti lezárt kötések ({2:n}) átlaga {3:n} R.", "en": "{0}: signaled in {1} situations; the closed rule-based trades ({2}) averaged {3} R.", "de": "{0}: Signal in {1} Situationen; die geschlossenen regelbasierten Trades ({2}) ergaben im Durchschnitt {3} R.", "es": "{0}: señal en {1} situaciones; las operaciones cerradas según la regla ({2}) promediaron {3} R."}
+{"hu": "{0}: {1:n} helyzetben jelzett, de lezárt szabály szerinti kötés nem volt (nem teljesült limit, szűrő, vagy a labor még nem értékelte).", "en": "{0}: signaled in {1} situations, but there was no closed rule-based trade (unfilled limit, filter, or not yet evaluated by the lab).", "de": "{0}: Signal in {1} Situationen, aber kein geschlossener regelbasierter Trade (Limit nicht ausgeführt, Filter oder vom Labor noch nicht ausgewertet).", "es": "{0}: señal en {1} situaciones, pero no hubo operación cerrada según la regla (límite no ejecutado, filtro o aún no evaluada por el laboratorio)."}
+{"hu": "{0:n} kihagyott helyzetben a szabály vagy a referencia-kötés legalább +{1:n} R lett volna.", "en": "In {0} skipped situations the rule or the reference trade would have made at least +{1} R.", "de": "In {0} ausgelassenen Situationen hätte die Regel oder der Referenz-Trade mindestens +{1} R ergeben.", "es": "En {0} situaciones omitidas, la regla o la operación de referencia habría dado al menos +{1} R."}
+{"hu": "A stop-távolság mediánja {0:n} ATR; a stopok {1:n}%-a {2:n} ATR-nél szorosabb.", "en": "Median stop distance {0} ATR; {1}% of the stops were tighter than {2} ATR.", "de": "Median des Stop-Abstands {0} ATR; {1}% der Stops waren enger als {2} ATR.", "es": "Mediana de la distancia del stop {0} ATR; el {1}% de los stops fue más ajustado que {2} ATR."}
+{"hu": "Kevés kötés ({0:n}): az eredmény főleg zaj.", "en": "Few trades ({0}): the result is mostly noise.", "de": "Wenige Trades ({0}): das Ergebnis ist überwiegend Rauschen.", "es": "Pocas operaciones ({0}): el resultado es sobre todo ruido."}
+{"hu": "Nem befektetési tanács. Gyakorlás múltbeli adaton, szimulált kötésekkel.", "en": "Not financial advice. Practice on historical data with simulated trades.", "de": "Keine Anlageberatung. Übung mit historischen Daten und simulierten Trades.", "es": "No es asesoramiento financiero. Práctica con datos históricos y operaciones simuladas."}
+{"hu": "Gyakorlás", "en": "Practice", "de": "Übung", "es": "Práctica"}
+{"hu": "← Gyakorlás", "en": "← Practice", "de": "← Übung", "es": "← Práctica"}
+{"hu": "Rejtett, múltbeli chart-helyzetek: eldöntöd, kihagyod-e vagy belépsz-e (stoppal, opcionális céllal és időkorláttal), utána megnézed, mi történt, és összeveted a stratégiákkal és egy véletlen alapvonallal. A papír és a dátum csak a döntés után derül ki. Szimuláció múltbeli adaton, nem ajánlás.", "en": "Hidden historical chart situations: you decide whether to skip or enter (with a stop, an optional target and a time limit), then see what happened and compare it with the strategies and a random baseline. The stock and the date are revealed only after the decision. Simulation on historical data, not a recommendation.", "de": "Verdeckte historische Chart-Situationen: Du entscheidest, ob du auslässt oder einsteigst (mit Stop, optionalem Ziel und Zeitlimit), siehst dann, was passiert ist, und vergleichst es mit den Strategien und einer zufälligen Basislinie. Aktie und Datum werden erst nach der Entscheidung gezeigt. Simulation mit historischen Daten, keine Empfehlung.", "es": "Situaciones históricas ocultas: decides si omitir o entrar (con stop, objetivo opcional y límite de tiempo), luego ves lo que ocurrió y lo comparas con las estrategias y una línea base aleatoria. El valor y la fecha se revelan solo después de la decisión. Simulación con datos históricos, no es una recomendación."}
+{"hu": "Feladatkészlet", "en": "Task pool", "de": "Aufgabenpool", "es": "Conjunto de tareas"}
+{"hu": "{0} papír, {1} helyzet: stratégia-jelzés {2}, formálódó alakzat {3}, semmi különös {4}.", "en": "{0} stocks, {1} situations: strategy signal {2}, forming pattern {3}, nothing special {4}.", "de": "{0} Aktien, {1} Situationen: Strategiesignal {2}, sich bildende Formation {3}, nichts Besonderes {4}.", "es": "{0} valores, {1} situaciones: señal de estrategia {2}, figura en formación {3}, nada especial {4}."}
+{"hu": "Készült:", "en": "Created:", "de": "Erstellt:", "es": "Creado:"}
+{"hu": "az adat a zárolt holdout előtt véget ér ({0})", "en": "the data ends before the locked holdout ({0})", "de": "die Daten enden vor dem gesperrten Holdout ({0})", "es": "los datos terminan antes del holdout bloqueado ({0})"}
+{"hu": "részleges", "en": "partial", "de": "unvollständig", "es": "parcial"}
+{"hu": "elfogyott az időkeret", "en": "the time budget ran out", "de": "das Zeitbudget ist aufgebraucht", "es": "se agotó el tiempo disponible"}
+{"hu": "Még nincs feladatkészlet.", "en": "No task pool yet.", "de": "Noch kein Aufgabenpool.", "es": "Todavía no hay conjunto de tareas."}
+{"hu": "Újraépítés", "en": "Rebuild", "de": "Neu aufbauen", "es": "Reconstruir"}
+{"hu": "Feladatkészlet építése", "en": "Build task pool", "de": "Aufgabenpool aufbauen", "es": "Construir conjunto de tareas"}
+{"hu": "Épül", "en": "Building", "de": "Wird aufgebaut", "es": "Construyendo"}
+{"hu": "A labor-szolgáltatás építi fel, kb. 1–2 perc alatt.", "en": "The lab service builds it in about 1–2 minutes.", "de": "Der Labor-Dienst baut ihn in etwa 1–2 Minuten auf.", "es": "El servicio del laboratorio lo construye en 1–2 minutos aprox."}
+{"hu": "A labor-szolgáltatás építi fel, kb. 1–2 perc alatt. A labor most nem fut – helyben parancssorból: python cli.py practice-pool", "en": "The lab service builds it in about 1–2 minutes. The lab is not running now – locally from the command line: python cli.py practice-pool", "de": "Der Labor-Dienst baut ihn in etwa 1–2 Minuten auf. Das Labor läuft gerade nicht – lokal über die Kommandozeile: python cli.py practice-pool", "es": "El servicio del laboratorio lo construye en 1–2 minutos aprox. El laboratorio no está en marcha – en local desde la línea de comandos: python cli.py practice-pool"}
+{"hu": "Új kör", "en": "New round", "de": "Neue Runde", "es": "Nueva ronda"}
+{"hu": "Helyzetek száma", "en": "Number of situations", "de": "Anzahl der Situationen", "es": "Número de situaciones"}
+{"hu": "Seed (üres: véletlen)", "en": "Seed (empty: random)", "de": "Seed (leer: zufällig)", "es": "Semilla (vacío: aleatoria)"}
+{"hu": "Megosztási kód (ha van)", "en": "Share code (if any)", "de": "Teilungscode (falls vorhanden)", "es": "Código para compartir (si lo hay)"}
+{"hu": "Stratégia-jelzés (%)", "en": "Strategy signal (%)", "de": "Strategiesignal (%)", "es": "Señal de estrategia (%)"}
+{"hu": "Formálódó alakzat (%)", "en": "Forming pattern (%)", "de": "Sich bildende Formation (%)", "es": "Figura en formación (%)"}
+{"hu": "Semmi különös (%)", "en": "Nothing special (%)", "de": "Nichts Besonderes (%)", "es": "Nada especial (%)"}
+{"hu": "Kör indítása", "en": "Start round", "de": "Runde starten", "es": "Iniciar ronda"}
+{"hu": "Megosztási kóddal a helyzetek száma és sorrendje a kódból jön.", "en": "With a share code, the number and order of situations come from the code.", "de": "Mit einem Teilungscode kommen Anzahl und Reihenfolge der Situationen aus dem Code.", "es": "Con un código para compartir, el número y el orden de las situaciones salen del código."}
+{"hu": "Körök", "en": "Rounds", "de": "Runden", "es": "Rondas"}
+{"hu": "Készült", "en": "Created", "de": "Erstellt", "es": "Creado"}
+{"hu": "Állás", "en": "Progress", "de": "Stand", "es": "Progreso"}
+{"hu": "Átlag R", "en": "Average R", "de": "Durchschnitt R", "es": "R medio"}
+{"hu": "Megosztási kód", "en": "Share code", "de": "Teilungscode", "es": "Código para compartir"}
+{"hu": "Még nincs kör.", "en": "No rounds yet.", "de": "Noch keine Runde.", "es": "Todavía no hay rondas."}
+{"hu": "Helyzet {0} / {1}", "en": "Situation {0} / {1}", "de": "Situation {0} / {1}", "es": "Situación {0} / {1}"}
+{"hu": "Az utolsó látható záró = 100; a vízszintes tengely kereskedési napokban (0 = a döntés napja). ATR (14): {0}", "en": "The last visible close = 100; the horizontal axis is in trading days (0 = the decision day). ATR (14): {0}", "de": "Der letzte sichtbare Schlusskurs = 100; die horizontale Achse in Handelstagen (0 = Entscheidungstag). ATR (14): {0}", "es": "El último cierre visible = 100; el eje horizontal en días de negociación (0 = el día de la decisión). ATR (14): {0}"}
+{"hu": "Ez a megosztási kód más feladatkészlethez készült: itt ugyanaz a kód más helyzeteket ad.", "en": "This share code was made for a different task pool: here the same code gives different situations.", "de": "Dieser Teilungscode gehört zu einem anderen Aufgabenpool: hier ergibt derselbe Code andere Situationen.", "es": "Este código se creó para otro conjunto de tareas: aquí el mismo código da otras situaciones."}
+{"hu": "Volumen: a 20 napos átlaghoz viszonyítva", "en": "Volume: relative to the 20-day average", "de": "Volumen: relativ zum 20-Tage-Durchschnitt", "es": "Volumen: relativo a la media de 20 días"}
+{"hu": "Kihagyás", "en": "Skip", "de": "Auslassen", "es": "Omitir"}
+{"hu": "Belépés módja", "en": "Entry type", "de": "Einstiegsart", "es": "Tipo de entrada"}
+{"hu": "Következő nyitás", "en": "Next open", "de": "Nächste Eröffnung", "es": "Siguiente apertura"}
+{"hu": "Limit (egynapos, a következő napra)", "en": "Limit (one day, for the next day)", "de": "Limit (eintägig, für den nächsten Tag)", "es": "Límite (de un día, para el día siguiente)"}
+{"hu": "Limit ár", "en": "Limit price", "de": "Limitpreis", "es": "Precio límite"}
+{"hu": "Stop (kötelező)", "en": "Stop (required)", "de": "Stop (Pflicht)", "es": "Stop (obligatorio)"}
+{"hu": "Cél (üres: nincs)", "en": "Target (empty: none)", "de": "Ziel (leer: keins)", "es": "Objetivo (vacío: ninguno)"}
+{"hu": "Döntés rögzítése", "en": "Record decision", "de": "Entscheidung festhalten", "es": "Registrar decisión"}
+{"hu": "A döntés után nem módosítható.", "en": "It cannot be changed after the decision.", "de": "Nach der Entscheidung nicht änderbar.", "es": "No se puede cambiar después de la decisión."}
+{"hu": "Stop-távolság: {0} ATR ({1}%)", "en": "Stop distance: {0} ATR ({1}%)", "de": "Stop-Abstand: {0} ATR ({1}%)", "es": "Distancia del stop: {0} ATR ({1}%)"}
+{"hu": "cél: {0} R", "en": "target: {0} R", "de": "Ziel: {0} R", "es": "objetivo: {0} R"}
+{"hu": "Mutasd egyben", "en": "Show at once", "de": "Alles auf einmal zeigen", "es": "Mostrar de una vez"}
+{"hu": "Ami a döntés után történt…", "en": "What happened after the decision…", "de": "Was nach der Entscheidung geschah…", "es": "Lo que ocurrió después de la decisión…"}
+{"hu": "A te döntésed", "en": "Your decision", "de": "Deine Entscheidung", "es": "Tu decisión"}
+{"hu": "Kihagytad", "en": "You skipped it", "de": "Ausgelassen", "es": "La omitiste"}
+{"hu": "stop", "en": "stop", "de": "Stop", "es": "stop"}
+{"hu": "stop (nyitási rés)", "en": "stop (opening gap)", "de": "Stop (Eröffnungslücke)", "es": "stop (hueco de apertura)"}
+{"hu": "{0} nap", "en": "{0} days", "de": "{0} Tage", "es": "{0} días"}
+{"hu": "nettó {0}", "en": "net {0}", "de": "netto {0}", "es": "neto {0}"}
+{"hu": "a limit nem teljesült", "en": "the limit was not filled", "de": "das Limit wurde nicht ausgeführt", "es": "el límite no se ejecutó"}
+{"hu": "nyitva maradt", "en": "remained open", "de": "blieb offen", "es": "quedó abierta"}
+{"hu": "a szűrők kizárták", "en": "excluded by the filters", "de": "von den Filtern ausgeschlossen", "es": "excluida por los filtros"}
+{"hu": "a labor még nem értékelte", "en": "not yet evaluated by the lab", "de": "vom Labor noch nicht ausgewertet", "es": "aún no evaluada por el laboratorio"}
+{"hu": "nem volt kötés", "en": "no trade", "de": "kein Trade", "es": "sin operación"}
+{"hu": "Referencia-kötés", "en": "Reference trade", "de": "Referenz-Trade", "es": "Operación de referencia"}
+{"hu": "következő nyitás, {0} ATR stop, {1} nap", "en": "next open, {0} ATR stop, {1} days", "de": "nächste Eröffnung, {0} ATR Stop, {1} Tage", "es": "siguiente apertura, stop de {0} ATR, {1} días"}
+{"hu": "Véletlen alapvonal", "en": "Random baseline", "de": "Zufällige Basislinie", "es": "Línea base aleatoria"}
+{"hu": "{0} véletlen nap ugyanezen a papíron, azonos stop-távolsággal", "en": "{0} random days on the same stock, with the same stop distance", "de": "{0} zufällige Tage auf derselben Aktie, mit gleichem Stop-Abstand", "es": "{0} días aleatorios en el mismo valor, con la misma distancia de stop"}
+{"hu": "Stratégia ugyanezen a ponton", "en": "Strategy at the same point", "de": "Strategie am selben Punkt", "es": "Estrategia en el mismo punto"}
+{"hu": "jelzett", "en": "signaled", "de": "Signal", "es": "señal"}
+{"hu": "nem jelzett", "en": "no signal", "de": "kein Signal", "es": "sin señal"}
+{"hu": "nem (gyorsjelentés-tilalom)", "en": "no (earnings blackout)", "de": "nein (Quartalszahlen-Sperre)", "es": "no (bloqueo por resultados)"}
+{"hu": "stratégia-jelzés", "en": "strategy signal", "de": "Strategiesignal", "es": "señal de estrategia"}
+{"hu": "formálódó alakzat", "en": "forming pattern", "de": "sich bildende Formation", "es": "figura en formación"}
+{"hu": "semmi különös", "en": "nothing special", "de": "nichts Besonderes", "es": "nada especial"}
+{"hu": "Összegzés", "en": "Summary", "de": "Zusammenfassung", "es": "Resumen"}
+{"hu": "Következő helyzet", "en": "Next situation", "de": "Nächste Situation", "es": "Siguiente situación"}
+{"hu": "Nem befektetési tanács. Szimulált kötés múltbeli adaton.", "en": "Not financial advice. Simulated trade on historical data.", "de": "Keine Anlageberatung. Simulierter Trade mit historischen Daten.", "es": "No es asesoramiento financiero. Operación simulada con datos históricos."}
+{"hu": "A kör összegzése", "en": "Round summary", "de": "Zusammenfassung der Runde", "es": "Resumen de la ronda"}
+{"hu": "Megosztási kód:", "en": "Share code:", "de": "Teilungscode:", "es": "Código para compartir:"}
+{"hu": "ugyanazzal a feladatkészlettel ugyanazt a helyzetsort adja.", "en": "gives the same sequence of situations with the same task pool.", "de": "ergibt mit demselben Aufgabenpool dieselbe Folge von Situationen.", "es": "da la misma secuencia de situaciones con el mismo conjunto de tareas."}
+{"hu": "Teljesült kötés", "en": "Filled trades", "de": "Ausgeführte Trades", "es": "Operaciones ejecutadas"}
+{"hu": "{0} belépési döntés, {1} kihagyás", "en": "{0} entry decisions, {1} skips", "de": "{0} Einstiegsentscheidungen, {1} ausgelassen", "es": "{0} decisiones de entrada, {1} omitidas"}
+{"hu": "átlag {0}", "en": "average {0}", "de": "Durchschnitt {0}", "es": "media {0}"}
+{"hu": "ugyanazokon a papírokon", "en": "on the same stocks", "de": "auf denselben Aktien", "es": "en los mismos valores"}
+{"hu": "Kihagyott jó helyzet", "en": "Skipped good situations", "de": "Ausgelassene gute Situationen", "es": "Situaciones buenas omitidas"}
+{"hu": "{0} helyzetben volt legalább +1 R", "en": "at least +1 R was available in {0} situations", "de": "in {0} Situationen waren mindestens +1 R möglich", "es": "en {0} situaciones hubo al menos +1 R"}
+{"hu": "Stop-távolság (ATR)", "en": "Stop distance (ATR)", "de": "Stop-Abstand (ATR)", "es": "Distancia del stop (ATR)"}
+{"hu": "Helyzetek", "en": "Situations", "de": "Situationen", "es": "Situaciones"}
+{"hu": "Dátum", "en": "Date", "de": "Datum", "es": "Fecha"}
+{"hu": "Referencia", "en": "Reference", "de": "Referenz", "es": "Referencia"}
+{"hu": "Alapvonal", "en": "Baseline", "de": "Basislinie", "es": "Línea base"}
+{"hu": "kihagyás", "en": "skip", "de": "ausgelassen", "es": "omitida"}
+{"hu": "belépés", "en": "entry", "de": "Einstieg", "es": "entrada"}
+{"hu": "Rejtett chart", "en": "Hidden chart", "de": "Verdeckter Chart", "es": "Gráfico oculto"}

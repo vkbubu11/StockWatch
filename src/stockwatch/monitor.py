@@ -1114,6 +1114,9 @@ def schedule_triggers(settings: Settings) -> dict:
         "broker": CronTrigger(day_of_week="mon-fri", hour="9-15", minute="*", timezone=MARKET_TZ),
         "preopen": CronTrigger(day_of_week="mon-fri", hour=9, minute=5, timezone=MARKET_TZ),
         "close": CronTrigger(day_of_week="mon-fri", hour=16, minute=15, timezone=MARKET_TZ),
+        # reggeli osszefoglalo: BUDAPESTI idoben (a NY / Budapest eltolodas marciusban es oktoberben 5 ora)
+        "digest": CronTrigger(day_of_week="mon-fri", hour=int(settings.digest.time[:2]),
+                              minute=int(settings.digest.time[3:]), timezone="Europe/Budapest"),
     }
 
 
@@ -1262,6 +1265,22 @@ def run_forever(settings: Settings | None = None, dry_run: bool = False) -> None
             log.exception("A nyitas elotti paper kilepes hibara futott")
 
     scheduler.add_job(preopen_job, triggers["preopen"], id="preopen", max_instances=1, coalesce=True)
+
+    def digest_job() -> None:
+        """Reggeli osszefoglalo (digest/): csak olyan reggelen, amikor New Yorkban aznap kereskedes van."""
+        from .digest import service as digest
+
+        fresh = _fresh_settings()
+        if not fresh.digest.enabled or digest.todays_session() is None:
+            return
+        try:
+            record = digest.build(fresh, send=not dry_run)
+            log.info("Reggeli osszefoglalo kesz: %s (%d tetel)", record["for_day"],
+                     len(record["selected"]["items"]) + len(record["selected"]["market"]))
+        except Exception:
+            log.exception("A reggeli osszefoglalo hibara futott")
+
+    scheduler.add_job(digest_job, triggers["digest"], id="digest", max_instances=1, coalesce=True)
     scheduler.add_job(close_job, triggers["close"], id="close", max_instances=1, coalesce=True)
 
     log.info(
@@ -1287,6 +1306,15 @@ def run_forever(settings: Settings | None = None, dry_run: bool = False) -> None
         log.warning("Kimaradt a %s-i zaras utani futas (a monitor nem futott) - potlas most.",
                     f"{missed:%Y-%m-%d}")
         close_job(missed)
+    # ugyanigy a reggeli osszefoglalo, ha az idopontja mar elmult, de meg nincs nyitas
+    try:
+        from .digest import service as digest
+
+        if not dry_run and digest.due_now(_fresh_settings()):
+            log.warning("A mai reggeli osszefoglalo kimaradt - potlas most.")
+            digest_job()
+    except Exception:
+        log.exception("A reggeli osszefoglalo potlasa nem sikerult")
 
     try:
         scheduler.start()

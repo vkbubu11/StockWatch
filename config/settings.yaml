@@ -179,3 +179,20 @@ sentiment:
   history_days: 120                 # elo frissiteskor ennyi napra vissza (EDGAR, Alpaca)
   cache_minutes: 60                 # forrasonkent ennyi ideig nem kerdezzuk ujra ugyanazt a papirt
   max_symbols_per_cycle: 30         # egy monitor-korben legfeljebb ennyi papir hirei frissulnek
+
+# --- Reggeli osszefoglalo (digest/) - a watchlist es a Sajat poziciok valtozasai, nyitas elott ---
+# Tenyeket kozol (formacio, szint, gyorsjelentes, 8-K, hirhangulat, strategiai jelolt, rezsim), nem ajanl.
+# Kezzel: python cli.py digest --print
+digest:
+  enabled: true
+  send_discord: false       # Discordra is (a webes feluleten mindig megvan)
+  time: "06:30"             # Europe/Budapest (07:00-ra kesz)
+  max_items: 15             # osszesen legfeljebb ennyi tetel
+  per_symbol: 3             # papironkent legfeljebb ennyi sor
+  near_trigger_atr: 1.0     # ennyi ATR-en belul a formacio triggeretol: "kozel"
+  earnings_days: [7, 3, 1]  # ezeknel a kuszoboknel szol a kozeledo gyorsjelentesrol
+  holding_mult: 1.5         # a Sajat poziciok esemenyei ennyivel fontosabbak
+  keep_days: 90             # az archivum megorzese
+  # weights:                # esemenytipusonkenti suly (alap: lasd config.DigestWeights)
+  #   regime_change: 5
+  #   near_trigger: 3

@@ -513,9 +513,11 @@ def calibration_from_caches(symbols: list[str]) -> er.PointInTimeCalibration:
 
 
 def evaluate(experiments: list[dict], symbols: list[str], settings: Settings, progress=None,
-             symbol_hook=None) -> dict[str, list[er.Result]]:
+             symbol_hook=None, until: pd.Timestamp | None = None, guard=None) -> dict[str, list[er.Result]]:
     """Az osszes megadott kiserlet egyetlen papironkenti korben. `symbol_hook(symbol, events, frame)`:
-    ugyanabban a korben tovabbi feldolgozas (gepi tanulas adatsorai)."""
+    ugyanabban a korben tovabbi feldolgozas (gepi tanulas adatsorai).
+    `until`: a gyertyak ezen a napon VAGODNAK (a kesobbi kitores es a kesobbi arfolyam nem latszik - a
+    kutatougynok a holdout elott vag). `guard(utolso_napok)`: ellenorzes, mielott barmi kiertekelodik."""
     universes = {exp["id"]: set(universe_symbols(exp["universe"], settings)) for exp in experiments}
     variants = {}
     for exp in experiments:
@@ -533,8 +535,13 @@ def evaluate(experiments: list[dict], symbols: list[str], settings: Settings, pr
         try:
             cache = load_cache(symbol)
             frame = load_frame(symbol, settings) if cache else None
+            if frame is not None and until is not None:
+                frame = frame.loc[: pd.Timestamp(until)]
+                frame = frame if len(frame) >= 320 else None
             if frame is None:
                 continue
+            if guard is not None:
+                guard([frame.index[-1]])
             events = to_events(symbol, cache["events"], frame)
             context.next_symbol()
             dates = {symbol: hist.dates(symbol)} if hist is not None else {}
@@ -547,7 +554,9 @@ def evaluate(experiments: list[dict], symbols: list[str], settings: Settings, pr
                                                  earnings=dates, context=context)
             if symbol_hook:
                 symbol_hook(symbol, events, frame, bench.bench_for(symbol))
-        except Exception:
+        except Exception as exc:
+            if guard is not None and type(exc).__name__ == "HoldoutLeak":
+                raise
             log.exception("Labor: %s ertekelese hibara futott - kimarad", symbol)
     if hist is not None:
         hist.save()
@@ -718,9 +727,12 @@ def run_once(settings: Settings | None = None, workers: int = 1, status: Status 
 
 
 def run_forever(workers: int = 1) -> None:
+    from . import labqueue
+
     status = Status()
     status.set("indul", force=True)
     log.info("Strategia-labor elindult (pid %s).", os.getpid())
+    labqueue.recover(all_running=True)            # egyetlen labor-folyamat: ami "fut", az mar nem fut
     while True:
         try:
             from . import config
@@ -731,6 +743,10 @@ def run_forever(workers: int = 1) -> None:
 
             # a homokozo visszahuzas-backtestje elsobbseget kap (a felulet kerte, valaszt var)
             did = meanrev_research.run_sandbox_request(load_settings())
+            # a munkasor (kutatougynok, ...) - feladatonkent, a sajat keretevel
+            if labqueue.has_due():
+                status.set("munkasor", "feladat fut (kutatougynok)", force=True)
+                did = labqueue.run_next(load_settings()) or did
             did = run_once(load_settings(), workers=workers, status=status) or did
         except Exception:
             log.exception("Strategia-labor: a kor hibara futott")
@@ -745,7 +761,7 @@ def run_forever(workers: int = 1) -> None:
 
                 store = load_store()
                 if (store["ml"].get("pending") or any(e["status"] == "queued" for e in store["experiments"])
-                        or meanrev_research.SANDBOX_REQUEST.exists()):
+                        or meanrev_research.SANDBOX_REQUEST.exists() or labqueue.has_due()):
                     break
 
 
