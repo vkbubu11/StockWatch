@@ -296,6 +296,9 @@ def universe_env(tmp_path, monkeypatch):
 
     monkeypatch.setattr(indexes.IndexMembers, "members", lambda self, name, allow_network=True: symbols)
     monkeypatch.setattr(market, "HistoricalEarnings", syn.NoEarnings)
+    # a rezsim-indexek a szintetikus univerzumbol (kulonben a valodi data/ cache-tol fuggne: CI-ban ures)
+    ctx = market.MarketContext({"QQQ": frames["QQQ"], "^GSPC": frames["^GSPC"]}, frozenset(symbols), frozenset())
+    monkeypatch.setattr(market, "load_context", lambda settings, refresh=True, allow_network=None: ctx)
     log = tmp_path / "holdout_log.jsonl"
     log.write_text("", encoding="utf-8")
     monkeypatch.setattr(er, "HOLDOUT_LOG", log)

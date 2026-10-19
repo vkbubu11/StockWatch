@@ -537,3 +537,35 @@ tr.lab-detail h3, #lab-ml h3 { font-size: 13px; margin: 6px 0; }
 #pr-chart .hlabel { font-size: 11px; font-weight: 650; }
 #pr-chart .hlabel-bg { opacity: .92; }
 .pr-name { font-size: 15px; margin: 12px 0 10px; }
+
+/* Gyakorlas: itelet, levezetes (#25, #26), irany-valaszto (#24) */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.pr-sides { margin-top: 4px; }
+.pr-sides .seg { min-height: 40px; min-width: 88px; }
+.pr-verdict { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border); }
+.pr-verdict.ok { background: var(--up-soft); color: var(--up); }
+.pr-verdict.bad { background: var(--down-soft); color: var(--down); }
+.pr-verdict.warn { background: var(--warn-soft); color: var(--warn); }
+.pr-verdict.info { background: var(--info-soft); color: var(--info); }
+.pr-verdict .small { color: var(--text); }
+.pr-verdict-icon { font-size: 28px; font-weight: 700; line-height: 1; width: 32px; text-align: center; }
+.pr-verdict-label { font-size: 20px; font-weight: 700; }
+.pr-verdict-parts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; }
+.pr-steps { list-style: none; counter-reset: prstep; padding: 0; margin: 0; display: grid; gap: 10px; }
+.pr-step { counter-increment: prstep; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; cursor: pointer; }
+.pr-step:hover, .pr-step:focus-visible { background: var(--surface-2); outline: none; }
+.pr-step.focused { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.pr-step h3 { margin: 0 0 6px; font-size: 15px; }
+.pr-step h3::before { content: counter(prstep) ". "; color: var(--muted); }
+.pr-step h4 { margin: 10px 0 4px; font-size: 13px; }
+.pr-alt-rows { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.pr-alt { font: inherit; display: inline-flex; gap: 10px; align-items: center; min-height: 40px; padding: 6px 12px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+.pr-alt:hover { background: var(--surface-2); }
+.pr-alt.focused { border-color: var(--accent); }
+.table.compact td, .table.compact th { padding: 4px 8px; }
+@media (max-width: 600px) {
+  .pr-verdict-label { font-size: 17px; }
+  .pr-sides { display: flex; width: 100%; }
+  .pr-sides .seg { flex: 1; min-width: 0; }
+}

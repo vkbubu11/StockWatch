@@ -196,3 +196,11 @@ digest:
   # weights:                # esemenytipusonkenti suly (alap: lasd config.DigestWeights)
   #   regime_change: 5
   #   near_trigger: 3
+
+# --- Gyakorlo mod (Gyakorlas ful) ---
+practice:
+  borrow_bps_day: 0.0       # short: kolcsonzesi dij naponta (bps a belepo erteken); 0 = nincs
+  good_r: 1.0               # kihagyasnal: ha valamelyik alternativa legalabb ennyi R lett volna, "kihagyott jo helyzet"
+  tight_stop_atr: 1.0       # ennel szorosabb stop: jelzes az iteletben
+  min_rr: 1.0               # ennel kisebb cel/kockazat arany: jelzes
+  better_r: 0.5             # a "jobb stop" utolagos osszevetes csak ekkora javulastol latszik
