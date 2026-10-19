@@ -2473,3 +2473,37 @@
 {"hu": "Limit (egynapos, a következő napra; shortnál a belépő fölött teljesül)", "en": "Limit (one day, for the next day; for a short it fills above the entry)", "de": "Limit (eintägig, für den nächsten Tag; bei Short wird es über dem Einstieg ausgeführt)", "es": "Límite (de un día, para el día siguiente; en corto se ejecuta por encima de la entrada)"}
 {"hu": "jó döntés · szerencsés {0} · balszerencsés {1} · rossz {2}", "en": "good decisions · lucky {0} · unlucky {1} · bad {2}", "de": "gute Entscheidungen · glücklich {0} · Pech {1} · schlecht {2}", "es": "buenas decisiones · afortunadas {0} · desafortunadas {1} · malas {2}"}
 {"hu": "{0} · nem volt kötés", "en": "{0} · no trade", "de": "{0} · kein Trade", "es": "{0} · sin operación"}
+{"hu": "Naptár", "en": "Calendar", "de": "Kalender", "es": "Calendario"}
+{"hu": "Továbbiak", "en": "More", "de": "Mehr", "es": "Más"}
+{"hu": "Kereskedési naptár", "en": "Trading calendar", "de": "Handelskalender", "es": "Calendario de operaciones"}
+{"hu": "A napi realizált eredmény: a lezárt kötések (és a részleges kilépések) a teljesülés napján. A virtuális és a paper eredmény szimulált; a Saját pozíciók a valódi kötéseid.", "en": "Daily realised result: closed trades (and partial exits) on the day they were filled. Virtual and paper results are simulated; My positions are your real trades.", "de": "Tägliches realisiertes Ergebnis: geschlossene Trades (und Teilausstiege) am Tag der Ausführung. Virtuelle und Paper-Ergebnisse sind simuliert; Meine Positionen sind deine echten Trades.", "es": "Resultado realizado diario: operaciones cerradas (y salidas parciales) el día de su ejecución. Los resultados virtuales y paper son simulados; Mis posiciones son tus operaciones reales."}
+{"hu": "Hónap", "en": "Month", "de": "Monat", "es": "Mes"}
+{"hu": "Ma", "en": "Today", "de": "Heute", "es": "Hoy"}
+{"hu": "Paper", "en": "Paper", "de": "Paper", "es": "Paper"}
+{"hu": "Virtuális követés", "en": "Virtual tracking", "de": "Virtuelle Verfolgung", "es": "Seguimiento virtual"}
+{"hu": "Backteszt-futtatás", "en": "Backtest run", "de": "Backtest-Lauf", "es": "Ejecución de backtest"}
+{"hu": "válassz…", "en": "choose…", "de": "auswählen…", "es": "elige…"}
+{"hu": "CSV", "en": "CSV", "de": "CSV", "es": "CSV"}
+{"hu": "A hónap eredménye", "en": "Result of the month", "de": "Ergebnis des Monats", "es": "Resultado del mes"}
+{"hu": "Nyerő / vesztes nap", "en": "Winning / losing days", "de": "Gewinn- / Verlusttage", "es": "Días ganadores / perdedores"}
+{"hu": "Legjobb nap", "en": "Best day", "de": "Bester Tag", "es": "Mejor día"}
+{"hu": "Legrosszabb nap", "en": "Worst day", "de": "Schlechtester Tag", "es": "Peor día"}
+{"hu": "ünnepnap", "en": "holiday", "de": "Feiertag", "es": "festivo"}
+{"hu": "hét", "en": "week", "de": "Woche", "es": "semana"}
+{"hu": "Hét", "en": "Week", "de": "Woche", "es": "Semana"}
+{"hu": "Az év eredménye", "en": "Result of the year", "de": "Ergebnis des Jahres", "es": "Resultado del año"}
+{"hu": "Kilépő", "en": "Exit", "de": "Ausstieg", "es": "Salida"}
+{"hu": "Ok", "en": "Reason", "de": "Grund", "es": "Motivo"}
+{"hu": "Rész", "en": "Part", "de": "Teil", "es": "Parte"}
+{"hu": "zárás", "en": "close", "de": "Schließung", "es": "cierre"}
+{"hu": "{0} lezárt kötés", "en": "{0} closed trades", "de": "{0} geschlossene Trades", "es": "{0} operaciones cerradas"}
+{"hu": "{0} részleges kilépés", "en": "{0} partial exits", "de": "{0} Teilausstiege", "es": "{0} salidas parciales"}
+{"hu": "szimulált is", "en": "includes simulated", "de": "auch simuliert", "es": "incluye simulado"}
+{"hu": "{0} zárás", "en": "{0} closes", "de": "{0} Schließungen", "es": "{0} cierres"}
+{"hu": "{0} rész", "en": "{0} partial", "de": "{0} Teil", "es": "{0} parcial"}
+{"hu": "dollárban számolva", "en": "counted in dollars", "de": "in Dollar gerechnet", "es": "contado en dólares"}
+{"hu": "{0} – lezárt kötések", "en": "{0} – closed trades", "de": "{0} – geschlossene Trades", "es": "{0} – operaciones cerradas"}
+{"hu": "Ebben a hónapban nincs realizált eredmény a kiválasztott forrásokból.", "en": "No realised result in this month from the selected sources.", "de": "In diesem Monat gibt es kein realisiertes Ergebnis aus den gewählten Quellen.", "es": "No hay resultado realizado este mes en las fuentes elegidas."}
+{"hu": "Az utolsó: {0}.", "en": "The latest: {0}.", "de": "Das letzte: {0}.", "es": "El último: {0}."}
+{"hu": "Ezen a napon nincs realizált eredmény.", "en": "No realised result on this day.", "de": "An diesem Tag gibt es kein realisiertes Ergebnis.", "es": "No hay resultado realizado este día."}
+{"hu": "Nem befektetési tanács. A % a nap eredménye a számla-méret ({0}) százalékában; az R a kötés kockázatához mért eredmény.", "en": "Not financial advice. The % is the day's result as a percentage of the account size ({0}); R is the result relative to the trade's risk.", "de": "Keine Anlageberatung. Das % ist das Tagesergebnis in Prozent der Kontogröße ({0}); R ist das Ergebnis im Verhältnis zum Risiko des Trades.", "es": "No es asesoramiento financiero. El % es el resultado del día en porcentaje del tamaño de la cuenta ({0}); R es el resultado respecto al riesgo de la operación."}

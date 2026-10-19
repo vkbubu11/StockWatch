@@ -1754,6 +1754,38 @@ LOGIN_MESSAGES = {
 PUBLIC_PATHS = ("/login", "/style.css", "/i18n.js")   # bejelentkezes nelkul is elerheto (+ /i18n/<nyelv>.json)
 
 
+# Kereskedesi naptar (pnl_calendar.py, #22) - csak olvas, a mentett allapotfajlokbol
+def calendar_query(query: str) -> dict:
+    from . import pnl_calendar
+
+    q = parse_qs(query)
+    one = lambda k: (q.get(k, [""])[0] or "").strip()                                 # noqa: E731
+    symbol = one("symbol").upper() or None
+    if symbol and not SYMBOL_RE.match(symbol):
+        raise ValueError("Ervenytelen ticker")
+    run = one("run") or None
+    strategy = one("strategy") or None
+    if strategy and not re.fullmatch(r"[a-z_]{1,20}", strategy):
+        raise ValueError("Ervenytelen strategia")
+    return {"sources": pnl_calendar.parse_sources(one("sources") or None), "strategy": strategy, "symbol": symbol,
+            "run_id": run}
+
+
+def calendar_payload(query: str) -> dict:
+    from . import pnl_calendar
+    from .backtest_page import runs
+
+    q = parse_qs(query)
+    today = datetime.now()
+    year = int((q.get("year", [""])[0] or today.year))
+    mon = int((q.get("month", [""])[0] or today.month))
+    args = calendar_query(query)
+    out = pnl_calendar.month(load_settings(), year, mon, **args)
+    out["runs"] = [{"id": r["id"], "symbol": r["symbol"], "strategy_label": r.get("strategy_label"),
+                    "start": r.get("start"), "end": r.get("end")} for r in runs.listing()[:50]]
+    return out
+
+
 def make_handler(app: AppState, auth: webauth.Auth | None = None):
     auth = auth or webauth.Auth()
 
@@ -1937,6 +1969,25 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                         return self._error(400, "Ervenytelen nap")
                     payload = digest_payload(day)
                     return self._json(payload) if payload["record"] else self._error(404, "Nincs ilyen osszefoglalo")
+                if path in ("/api/calendar", "/api/calendar/year", "/api/calendar.csv") or path.startswith("/api/calendar/day/"):
+                    from . import pnl_calendar
+
+                    try:
+                        if path == "/api/calendar":
+                            return self._json(calendar_payload(url.query))
+                        args = calendar_query(url.query)
+                        if path == "/api/calendar/year":
+                            year = int(parse_qs(url.query).get("year", [str(datetime.now().year)])[0])
+                            return self._json(pnl_calendar.year_view(load_settings(), year, **args))
+                        if path == "/api/calendar.csv":
+                            return self._send(200, pnl_calendar.to_csv(load_settings(), **args).encode("utf-8"),
+                                              "text/csv; charset=utf-8")
+                        day = path.rsplit("/", 1)[-1]
+                        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+                            return self._error(400, "Ervenytelen nap")
+                        return self._json(pnl_calendar.day_detail(load_settings(), day, **args))
+                    except ValueError as exc:
+                        return self._error(400, str(exc))
                 if path == "/api/practice":
                     return self._json(practice_payload())
                 m = PRACTICE_SESSION_RE.fullmatch(path)
