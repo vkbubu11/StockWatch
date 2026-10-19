@@ -893,7 +893,7 @@ async function pageHoldings() {
     ${open.length ? `<div class="holdings">${open.map((h) => holdingCard(h, true)).join("")}</div>`
       : `<section class="card"><div class="card-body empty">Még nincs felvett pozíció. Add meg fent a tickert, a belépő árat és a darabszámot.</div></section>`}
 
-    ${data.closed.length ? `<section class="card" style="margin-top:20px"><h2>Lezárt saját pozíciók</h2><div class="table-wrap"><table>
+    ${data.closed.length ? `<section class="card" style="margin-top:20px"><h2>Lezárt saját pozíciók</h2><div class="table-wrap"><table class="cards-on-phone">
       <thead><tr><th>Ticker</th><th>Belépés</th><th class="num">Belépő</th><th>Zárás</th><th class="num">Záró ár</th><th class="num">Db</th><th class="num">Eredmény</th><th></th></tr></thead>
       <tbody>${data.closed.map((h) => `<tr>
         <td class="ticker"><a href="#/p/${esc(h.symbol)}">${esc(h.symbol)}</a></td><td>${esc(h.entry_date)}</td><td class="num">${fmt(h.entry_price)}</td>
@@ -1086,7 +1086,7 @@ async function pagePositions() {
 }
 
 function positionsTable(list, withTicker) {
-  return `<div class="table-wrap"><table><thead><tr>${withTicker ? "<th>Ticker</th>" : ""}<th>Stratégia</th><th>Jelzés</th><th>Alakzat</th><th>Állapot</th>
+  return `<div class="table-wrap"><table class="cards-on-phone"><thead><tr>${withTicker ? "<th>Ticker</th>" : ""}<th>Stratégia</th><th>Jelzés</th><th>Alakzat</th><th>Állapot</th>
     <th class="num">Belépő</th><th class="num">Aktuális stop</th><th class="num">½ eladás</th><th class="num">Cél</th><th class="num">Nap</th><th class="num">Eredmény</th><th>Megjegyzés</th></tr></thead><tbody>
     ${list.map((p) => {
       const [cls, label] = posStatus(p);
@@ -2140,8 +2140,12 @@ async function pageSettings() {
 // ---------------------------------------------------------------------------
 async function route() {
   const hash = location.hash || "#/";
-  const tab = hash.startsWith("#/ledger") || hash.startsWith("#/signal/") ? "ledger" : hash.startsWith("#/broker") ? "broker" : hash.startsWith("#/holdings") ? "holdings" : hash.startsWith("#/positions") ? "positions" : hash.startsWith("#/alerts") ? "alerts" : hash.startsWith("#/settings") ? "settings" : hash.startsWith("#/lab") ? "lab" : hash.startsWith("#/strategies") ? "strategies" : hash.startsWith("#/sandbox") ? "sandbox" : hash.startsWith("#/backtest") ? "backtest" : hash.startsWith("#/info") ? "info" : hash.startsWith("#/digest") ? "digest" : hash.startsWith("#/agent") ? "agent" : hash.startsWith("#/events") ? "events" : hash.startsWith("#/practice") ? "practice" : "overview";
-  document.querySelectorAll(".tabs a, #info-link").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
+  const tab = hash.startsWith("#/ledger") || hash.startsWith("#/signal/") ? "ledger" : hash.startsWith("#/broker") ? "broker" : hash.startsWith("#/holdings") ? "holdings" : hash.startsWith("#/positions") ? "positions" : hash.startsWith("#/alerts") ? "alerts" : hash.startsWith("#/settings") ? "settings" : hash.startsWith("#/lab") ? "lab" : hash.startsWith("#/strategies") ? "strategies" : hash.startsWith("#/sandbox") ? "sandbox" : hash.startsWith("#/backtest") ? "backtest" : hash.startsWith("#/info") ? "info" : hash.startsWith("#/digest") ? "digest" : hash.startsWith("#/agent") ? "agent" : hash.startsWith("#/events") ? "events" : hash.startsWith("#/practice") ? "practice" : hash.startsWith("#/calendar") ? "calendar" : "overview";
+  document.querySelectorAll(".tabs a, #info-link, .bottom-nav a, .more-list a").forEach((a) => {
+    a.classList.toggle("active", a.dataset.tab === tab);
+    if (a.dataset.tab === tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  });
+  closeMoreSheet();
   tooltip.hidden = true;
   try {
     const m = hash.match(/^#\/p\/([A-Za-z0-9.\-^]+)$/);
@@ -2162,6 +2166,7 @@ async function route() {
       const em = hash.match(/^#\/events\/(\d{8}-[0-9a-f]{8})$/);
       if (em) await pageEventStudy(em[1]); else await pageEvents();
     }
+    else if (tab === "calendar") await pageCalendar();
     else if (tab === "practice") {
       const pm = hash.match(/^#\/practice\/([a-z]{12})$/);
       if (pm) await pagePracticeSession(pm[1]); else await pagePractice();
@@ -3666,6 +3671,221 @@ function renderPracticeSummary(p) {
         <td class="num ${rCls(t.reference_r)}">${signed(t.reference_r, 2, " R")}</td><td class="num ${rCls(t.baseline_r)}">${signed(t.baseline_r, 2, " R")}</td></tr>`).join("")}
     </tbody></table></div></div></section>`;
 }
+
+// ---------------------------------------------------------------------------
+// Kereskedesi naptar (#22): a napi realizalt eredmeny havi naptarban (pnl_calendar.py) - csak olvas
+// ---------------------------------------------------------------------------
+const STRATEGY_NAMES = { ...Object.fromEntries(Object.entries(STRAT).map(([k, v]) => [k, v[1]])), own: "Saját" };
+const CAL_SOURCES = { virtual: "Virtuális követés", paper: "Paper", holdings: "Saját pozíciók", backtest: "Backteszt-futtatás" };
+// honap- es napnevek a felulet nyelven (Intl) - nem kell hozzajuk katalogus
+const calMonthName = (y, m, opt = { month: "long" }) => new Date(y, m - 1, 1).toLocaleDateString(LOCALE, opt);
+const CAL_DOW = [5, 6, 7, 8, 9].map((d) => new Date(2026, 0, d).toLocaleDateString(LOCALE, { weekday: "short" }));   // 2026-01-05 hetfo
+const calState = (() => {
+  const now = new Date();
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem("sw-calendar") || "{}"); } catch (_) { /* nem baj */ }
+  return { year: now.getFullYear(), month: now.getMonth() + 1, view: "month", unit: saved.unit || "usd",
+    sources: saved.sources || ["virtual", "paper", "holdings"], strategy: "", symbol: "", run: "", day: null };
+})();
+
+function calSave() {
+  try { localStorage.setItem("sw-calendar", JSON.stringify({ unit: calState.unit, sources: calState.sources })); } catch (_) { /* nem baj */ }
+}
+
+function calQuery(extra = {}) {
+  const q = new URLSearchParams({ sources: calState.sources.join(","), ...extra });
+  if (calState.strategy) q.set("strategy", calState.strategy);
+  if (calState.symbol) q.set("symbol", calState.symbol);
+  if (calState.run && calState.sources.includes("backtest")) q.set("run", calState.run);
+  return q.toString();
+}
+
+function calValue(v) {
+  if (!v) return null;
+  return calState.unit === "pct" ? v.pct : calState.unit === "r" ? v.r : v.pnl;
+}
+
+function calFmt(x) {
+  if (x == null) return "–";
+  return calState.unit === "pct" ? pct(x, 2) : calState.unit === "r" ? signed(x, 2, " R") : `${x > 0 ? "+" : ""}${fmt(x, 0)} $`;
+}
+
+// a szin intenzitasa az osszeggel aranyos (a honap legnagyobb abszolut napi ertekehez); szin + elojel + szam
+function calShade(x, max) {
+  if (x == null || x === 0 || !max) return "";
+  const a = Math.round(12 + 48 * Math.min(1, Math.abs(x) / max));
+  return `background: color-mix(in srgb, var(${x > 0 ? "--up" : "--down"}) ${a}%, var(--surface));`;
+}
+
+async function pageCalendar() {
+  const s = calState;
+  const yearView = s.view === "year";
+  const data = yearView ? await api(`/api/calendar/year?${calQuery({ year: s.year })}`)
+    : await api(`/api/calendar?${calQuery({ year: s.year, month: s.month })}`);
+  const meta = yearView ? (await api(`/api/calendar?${calQuery({ year: s.year, month: s.month })}`)) : data;
+  const seg = (key, value, label) => `<button type="button" class="seg ${s[key] === value ? "on" : ""}" data-cal-${key}="${value}" aria-pressed="${s[key] === value}">${label}</button>`;
+  const sources = Object.entries(CAL_SOURCES).map(([k, label]) => `<label class="cal-check"><input type="checkbox" data-cal-source="${k}" ${s.sources.includes(k) ? "checked" : ""}>
+    <span>${esc(label)}</span>${meta.available[k] ? ` <span class="muted small">(${meta.available[k]})</span>` : ""}</label>`).join("");
+  const title = yearView ? `${s.year}` : calMonthName(s.year, s.month, { year: "numeric", month: "long" });
+  view.innerHTML = `
+    <div class="page-head"><h1>Kereskedési naptár</h1>
+      <span class="muted">A napi realizált eredmény: a lezárt kötések (és a részleges kilépések) a teljesülés napján. A virtuális és a paper eredmény szimulált; a Saját pozíciók a valódi kötéseid.</span></div>
+    <section class="card"><div class="card-body cal-controls">
+      <div class="cal-nav"><button class="btn" type="button" id="cal-prev" aria-label="Előző">‹</button>
+        <strong class="cal-title">${esc(title)}</strong>
+        <button class="btn" type="button" id="cal-next" aria-label="Következő">›</button>
+        <button class="btn" type="button" id="cal-today">Ma</button></div>
+      <div class="segmented" role="group" aria-label="Nézet">${seg("view", "month", "Hónap")}${seg("view", "year", "Év")}</div>
+      <div class="segmented" role="group" aria-label="Mértékegység">${seg("unit", "usd", "$")}${seg("unit", "pct", "%")}${seg("unit", "r", "R")}</div>
+      <div class="cal-sources">${sources}</div>
+      <label class="cal-field">Stratégia<select id="cal-strategy"><option value="">mind</option>${meta.strategies.map((x) => `<option value="${esc(x)}" ${x === s.strategy ? "selected" : ""}>${esc(STRATEGY_NAMES[x] || x)}</option>`).join("")}</select></label>
+      <label class="cal-field">Papír<input id="cal-symbol" value="${esc(s.symbol)}" placeholder="pl. AAPL" autocomplete="off" inputmode="text"></label>
+      ${s.sources.includes("backtest") ? `<label class="cal-field">Backteszt-futtatás<select id="cal-run"><option value="">válassz…</option>${(meta.runs || []).map((r) => `<option value="${esc(r.id)}" ${r.id === s.run ? "selected" : ""}>${esc(r.symbol)} · ${esc(r.strategy_label || "")} · ${esc(r.start)}–${esc(r.end)}</option>`).join("")}</select></label>` : ""}
+      <a class="btn" href="/api/calendar.csv?${calQuery()}" download="kereskedesi-naptar.csv">CSV</a>
+    </div></section>
+    ${yearView ? calYearHtml(data) : calMonthHtml(data)}
+    <div id="cal-day"></div>
+    <p class="muted small">Nem befektetési tanács. A % a nap eredménye a számla-méret (${money(meta.account)}) százalékában; az R a kötés kockázatához mért eredmény.</p>`;
+  const go = async () => { calSave(); await pageCalendar(); };
+  $("#cal-prev").addEventListener("click", () => { if (yearView) s.year -= 1; else if (s.month === 1) { s.month = 12; s.year -= 1; } else s.month -= 1; go(); });
+  $("#cal-next").addEventListener("click", () => { if (yearView) s.year += 1; else if (s.month === 12) { s.month = 1; s.year += 1; } else s.month += 1; go(); });
+  $("#cal-today").addEventListener("click", () => { const n = new Date(); s.year = n.getFullYear(); s.month = n.getMonth() + 1; go(); });
+  view.querySelectorAll("[data-cal-view]").forEach((b) => b.addEventListener("click", () => { s.view = b.dataset.calView; go(); }));
+  view.querySelectorAll("[data-cal-unit]").forEach((b) => b.addEventListener("click", () => { s.unit = b.dataset.calUnit; go(); }));
+  view.querySelectorAll("[data-cal-source]").forEach((c) => c.addEventListener("change", () => {
+    s.sources = [...view.querySelectorAll("[data-cal-source]:checked")].map((x) => x.dataset.calSource);
+    if (!s.sources.length) { c.checked = true; s.sources = [c.dataset.calSource]; }
+    go();
+  }));
+  $("#cal-strategy").addEventListener("change", (e) => { s.strategy = e.target.value; go(); });
+  $("#cal-symbol").addEventListener("change", (e) => { s.symbol = e.target.value.trim().toUpperCase(); go(); });
+  const run = $("#cal-run");
+  if (run) run.addEventListener("change", (e) => { s.run = e.target.value; go(); });
+  view.querySelectorAll("[data-cal-date]").forEach((el) => el.addEventListener("click", () => calDay(el.dataset.calDate)));
+  view.querySelectorAll("[data-cal-month]").forEach((el) => el.addEventListener("click", () => { s.view = "month"; s.month = Number(el.dataset.calMonth); go(); }));
+  if (s.day && !yearView && s.day.startsWith(`${s.year}-${String(s.month).padStart(2, "0")}`)) calDay(s.day);
+}
+
+function calMonthHtml(m) {
+  const vals = m.weeks.flatMap((w) => w.days.filter((c) => c.in_month).map((c) => calValue(c.value))).filter((x) => x != null);
+  const max = Math.max(0, ...vals.map(Math.abs));
+  const t = m.total;
+  const cell = (c) => {
+    if (!c.in_month) return `<div class="cal-cell out" aria-hidden="true"></div>`;
+    const x = calValue(c.value);
+    const cls = c.holiday ? "holiday" : x == null ? "" : x > 0 ? "up-day" : x < 0 ? "down-day" : "";
+    const sign = x == null ? "" : x > 0 ? "▲" : x < 0 ? "▼" : "";
+    return `<button type="button" class="cal-cell ${cls}" style="${calShade(x, max)}" data-cal-date="${c.date}" ${c.value ? "" : "disabled"}
+        aria-label="${esc(c.date)}${c.value ? `: ${esc(calFmt(x))}` : ""}">
+      <span class="cal-dnum">${c.day}</span>
+      ${c.value ? `<span class="cal-val"><span aria-hidden="true">${sign}</span> ${esc(calFmt(x))}</span><span class="cal-n muted">${c.value.trades} zárás${c.value.n > c.value.trades ? ` · ${c.value.n - c.value.trades} rész` : ""}</span>`
+        : c.holiday ? `<span class="cal-n muted">ünnepnap</span>` : ""}
+    </button>`;
+  };
+  const weeks = m.weeks.map((w) => `<div class="cal-row">${w.days.map(cell).join("")}
+    <div class="cal-week ${rCls(calValue(w.total))}"><span class="muted small">hét</span><strong>${w.total.n ? esc(calFmt(calValue(w.total))) : "–"}</strong></div></div>`).join("");
+  return `<div class="kpis">
+      <div class="kpi"><div class="label">A hónap eredménye</div><div class="value ${rCls(calValue(t))}">${t.n ? esc(calFmt(calValue(t))) : "–"}</div>
+        <div class="sub">${t.trades} lezárt kötés${t.n > t.trades ? `, ${t.n - t.trades} részleges kilépés` : ""}${m.simulated ? " · szimulált is" : ""}</div></div>
+      <div class="kpi"><div class="label">Nyerő / vesztes nap</div><div class="value">${t.days_up} / ${t.days_down}</div><div class="sub">dollárban számolva</div></div>
+      <div class="kpi"><div class="label">Legjobb nap</div><div class="value up">${t.best ? esc(`${t.best.pnl > 0 ? "+" : ""}${fmt(t.best.pnl, 0)} $`) : "–"}</div><div class="sub">${t.best ? esc(t.best.date) : ""}</div></div>
+      <div class="kpi"><div class="label">Legrosszabb nap</div><div class="value down">${t.worst ? esc(`${t.worst.pnl > 0 ? "+" : ""}${fmt(t.worst.pnl, 0)} $`) : "–"}</div><div class="sub">${t.worst ? esc(t.worst.date) : ""}</div></div>
+    </div>
+    <section class="card"><div class="card-body">
+      <div class="cal-grid" role="grid" aria-label="Kereskedési naptár">
+        <div class="cal-row cal-head">${CAL_DOW.map((d) => `<div translate="no">${esc(d)}</div>`).join("")}<div>Hét</div></div>
+        ${weeks}
+      </div>
+      ${t.n ? "" : `<p class="muted">Ebben a hónapban nincs realizált eredmény a kiválasztott forrásokból.${m.last ? ` Az utolsó: ${esc(m.last)}.` : ""}</p>`}
+    </div></section>`;
+}
+
+function calYearHtml(y) {
+  const vals = y.months.flatMap((mo) => mo.days.map((d) => (calState.unit === "r" ? d.r : calState.unit === "pct" ? (d.pnl == null ? null : d.pnl / y.account * 100) : d.pnl))).filter((x) => x != null);
+  const max = Math.max(0, ...vals.map(Math.abs));
+  const val = (d) => (calState.unit === "r" ? d.r : calState.unit === "pct" ? (d.pnl == null ? null : d.pnl / y.account * 100) : d.pnl);
+  const months = y.months.map((mo) => {
+    const lead = mo.days.length ? mo.days[0].dow : 0;
+    const blanks = Array.from({ length: lead }, () => `<span class="cal-sq out"></span>`).join("");
+    const sq = mo.days.map((d) => { const x = val(d); return `<span class="cal-sq ${d.trading ? "" : "holiday"}" style="${calShade(x, max)}" title="${esc(d.date)}${x != null ? `: ${esc(calFmt(x))}` : ""}"></span>`; }).join("");
+    return `<button type="button" class="cal-mini" data-cal-month="${mo.month}"><span class="cal-mini-head"><strong>${esc(calMonthName(y.year, mo.month))}</strong>
+      <span class="${rCls(calValue(mo.total))}">${mo.total.n ? esc(calFmt(calValue(mo.total))) : "–"}</span></span><span class="cal-mini-grid">${blanks}${sq}</span></button>`;
+  }).join("");
+  return `<div class="kpis"><div class="kpi"><div class="label">Az év eredménye</div><div class="value ${rCls(calValue(y.total))}">${y.total.n ? esc(calFmt(calValue(y.total))) : "–"}</div>
+    <div class="sub">${y.total.trades} lezárt kötés</div></div></div>
+    <section class="card"><div class="card-body"><div class="cal-year">${months}</div></div></section>`;
+}
+
+async function calDay(day) {
+  calState.day = day;
+  view.querySelectorAll(".cal-cell.selected").forEach((x) => x.classList.remove("selected"));
+  const el = view.querySelector(`[data-cal-date="${day}"]`);
+  if (el) el.classList.add("selected");
+  const d = await api(`/api/calendar/day/${day}?${calQuery()}`);
+  const box = $("#cal-day");
+  box.innerHTML = `<section class="card"><h2>${esc(day)} – lezárt kötések</h2><div class="card-body">
+    ${d.entries.length ? `<div class="table-scroll"><table class="table cards-on-phone"><thead><tr><th>Papír</th><th>Forrás</th><th>Stratégia</th><th>Belépő</th><th>Kilépő</th><th>Ok</th><th>Rész</th><th>Eredmény</th><th>R</th><th></th></tr></thead><tbody>
+      ${d.entries.map((e) => `<tr><td class="ticker" data-label="Papír"><a href="#/p/${esc(e.symbol)}">${esc(e.symbol)}</a></td>
+        <td data-label="Forrás">${esc(CAL_SOURCES[e.source] || e.source)}${e.simulated ? ` <span class="pill plain info">virtuális</span>` : ""}</td>
+        <td data-label="Stratégia">${esc(STRATEGY_NAMES[e.strategy] || e.strategy)}</td>
+        <td class="num" data-label="Belépő">${e.entry != null ? fmt(e.entry, 2) : "–"}</td><td class="num" data-label="Kilépő">${e.exit != null ? fmt(e.exit, 2) : "–"}</td>
+        <td data-label="Ok">${esc(e.reason || "")}</td><td data-label="Rész">${e.kind === "partial" ? `részleges${e.fraction ? ` (${fmt(e.fraction * 100, 0)}%)` : ""}` : "zárás"}</td>
+        <td class="num ${rCls(e.pnl)}" data-label="Eredmény">${e.pnl != null ? `${e.pnl > 0 ? "+" : ""}${fmt(e.pnl, 2)} $` : "–"}</td>
+        <td class="num ${rCls(e.r)}" data-label="R">${signed(e.r, 2, " R")}</td>
+        <td>${e.signal_id ? `<a class="small" href="#/signal/${esc(e.signal_id)}">életút →</a>` : ""}</td></tr>`).join("")}
+    </tbody></table></div>` : `<div class="muted">Ezen a napon nincs realizált eredmény.</div>`}</div></section>`;
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// ---------------------------------------------------------------------------
+// Reszponziv felulet (#23): "Tovabbiak" menu telefonon, tablak gorgetheto / kartyas nezete
+// ---------------------------------------------------------------------------
+function closeMoreSheet() {
+  const sheet = $("#more-sheet");
+  if (!sheet || sheet.hidden) return;
+  sheet.hidden = true;
+  $("#more-btn").setAttribute("aria-expanded", "false");
+}
+
+(function setupMoreSheet() {
+  const list = $(".more-list");
+  const btn = $("#more-btn");
+  if (!list || !btn) return;
+  // a teljes menu a fo navigaciobol (egy forras), plusz az Informacio
+  list.innerHTML = [...document.querySelectorAll(".tabs a"), $("#info-link")].filter(Boolean)
+    .map((a) => `<a href="${esc(a.getAttribute("href"))}" data-tab="${esc(a.dataset.tab)}">${esc(a.textContent.trim())}</a>`).join("");
+  btn.addEventListener("click", () => {
+    const sheet = $("#more-sheet");
+    sheet.hidden = !sheet.hidden;
+    btn.setAttribute("aria-expanded", String(!sheet.hidden));
+    if (!sheet.hidden) { const first = sheet.querySelector("a.active") || sheet.querySelector("a"); if (first) first.focus(); }
+  });
+  $("#more-sheet").addEventListener("click", (e) => { if (e.target.id === "more-sheet") closeMoreSheet(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMoreSheet(); });
+})();
+
+// minden tablazat gorgetheto tartoba kerul (az oldal soha nem gorog oldalra); a .cards-on-phone tablak
+// telefonon kartyakent jelennek meg - a cimkek a fejlecbol
+function adaptTables(root) {
+  root.querySelectorAll("table").forEach((table) => {
+    const parent = table.parentElement;
+    if (table.classList.contains("best-plan") || parent.closest(".table-wrap, .table-scroll")) {
+      // mar gorgetheto tartoban van
+    } else {
+      const wrap = document.createElement("div");
+      wrap.className = "table-scroll";
+      parent.insertBefore(wrap, table);
+      wrap.appendChild(table);
+    }
+    if (table.classList.contains("cards-on-phone")) {
+      const heads = [...table.querySelectorAll("thead th")].map((th) => th.textContent.trim());
+      table.querySelectorAll("tbody tr").forEach((tr) => [...tr.children].forEach((td, i) => {
+        if (!td.dataset.label && heads[i]) td.dataset.label = heads[i];
+      }));
+    }
+  });
+}
+new MutationObserver(() => adaptTables(view)).observe(view, { childList: true, subtree: true });
 
 // Az elso utvonal-kezeles a fajl VEGEN: a kesobb deklaralt let/const-ok (pl. practiceTimer, NEWS_LABEL) csak itt
 // inicializaltak - kozvetlen betolteskor (#/practice, #/events) kulonben "before initialization" hiba jonne.

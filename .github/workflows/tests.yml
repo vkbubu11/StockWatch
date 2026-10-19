@@ -10,7 +10,7 @@ permissions:
 jobs:
   pytest:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,5 +19,19 @@ jobs:
           cache: pip
       - name: Fuggosegek
         run: pip install -r requirements.txt
+      - name: Bongeszo a reszponziv tesztekhez (Playwright + Chromium)
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
       - name: Tesztek
+        env:
+          SCREENSHOT_DIR: ${{ runner.temp }}/screens
         run: pytest -q
+      - name: Kepernyokepek (minden nezet, 360-1280 px, vilagos / sotet)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/screens
+          if-no-files-found: ignore
+          retention-days: 14

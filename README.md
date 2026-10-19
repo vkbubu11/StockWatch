@@ -1000,7 +1000,18 @@ python cli.py web          # megnyitja: http://127.0.0.1:8765
 ```
 
 Sima HTML/CSS/JS, a Python beépített webszerverével: **nincs új függőség, nincs CDN**,
-internet nélkül is fut (csak a Frissítés gomb tölt le adatot). Világos és sötét téma, mobilon is használható.
+internet nélkül is fut (csak a Frissítés gomb tölt le adatot). Világos és sötét téma.
+
+**Telefonon és tableten (#23):** három töréspont – telefon (≤ 600 px), tablet (601–1024 px), asztal.
+- Telefonon alsó sáv a leggyakoribb nézetekkel (Áttekintés, Összefoglaló, Jelzett trade-ek, Naptár), a többi a
+  „Továbbiak” menüben: minden nézet legfeljebb két koppintás. Tableten a fő menü két sorba törik.
+- A táblák görgethető tartóban vannak (az oldal soha nem görög oldalra), telefonon rögzített első oszloppal; a fő
+  listák (Jelzett trade-ek, lezárt Saját pozíciók, a naptár napi kötései) telefonon kártyaként jelennek meg.
+- Érintésre legalább 44 × 44 px-es gombok és mezők, 16 px-es beviteli betű (iOS nem nagyít rá).
+- Ellenőrzés: `tests/test_responsive.py` (Playwright) minden nézetet megnyit 360, 390, 768, 1024 és 1280 px-en,
+  világos és sötét témában – vízszintes görgetés és 44 px alatti érintési felület nem lehet. A CI a képernyőképeket
+  artefaktként menti. Helyben: `pip install playwright && python -m playwright install chromium`, majd
+  `SCREENSHOT_DIR=screens pytest tests/test_responsive.py`.
 
 | Oldal | Mit mutat |
 |---|---|
@@ -1009,6 +1020,7 @@ internet nélkül is fut (csak a Frissítés gomb tölt le adatot). Világos és
 | **Saját pozíciók** | a kézzel felvett pozícióid kiértékelése, felvétel / szerkesztés / lezárás |
 | **Paper trading** | Alpaca paper számla: **eddigi eredmény** (a számla a nyitás óta + a rendszer trade-jei realizált / nyitott bontásban), equity-görbe táblázattal, mai beküldhető jelzések, a rendszer paper trade-jei lábanként, Alpaca pozíciók és megbízások |
 | **Jelzett trade-ek** | a követett trade-ek állapota (belépésre vár / nyitott / lezárt / kimaradt) és az élő eredménynapló R-ben |
+| **Naptár** | kereskedési naptár (#22): a napi realizált eredmény (+ / −) havi naptárban, $ / % / R nézetben; heti és havi összeg, nyerő / vesztes napok, legjobb és legrosszabb nap; egy napra kattintva az aznap lezárt kötések (onnan a jelzés életútja); éves hőtérkép; szűrés forrás (virtuális követés, paper, Saját pozíciók, egy mentett backteszt-futtatás), stratégia és papír szerint; CSV export. A részleges kilépés (pl. a fele +1R-nél) a saját napján számít; a költség levonva; a virtuális / szimulált eredmény jelölve; hétvége nincs a rácsban, a tőzsdei ünnepnap halvány. Csak olvas, megbízást nem küld (`pnl_calendar.py`) |
 | **Értesítések** | minden, amit a monitor kiküldött, utólag kiértékelve: jelzéskori és mostani ár, irányhelyes változás, profit ($ / R), minősítés (jó / rossz / folyamatban); jelerősség (belépési pont vagy alakzat-minőség, gyenge / közepes / erős) és találati arány erősség szerint; szűrés irány, minősítés és erősség szerint; a típusokra és oszlopokra húzott egér magyarázatot mutat |
 | **Gyakorlás** | rejtett, múltbeli chart-helyzetek: döntés (kihagyás / long / short stoppal), felfedés, ítélet és lépésenkénti levezetés, összevetés a stratégiákkal és egy véletlen alapvonallal, kör-statisztika (lásd: Gyakorló mód) |
 | **Beállítások** | számlaméret, kockázat, belépési és kilépési szabályok, kötési díj, értesítések nyelve, paper trading és Alpaca kulcsok, Discord webhook, watchlist, a `settings.yaml` kommentjeit megtartva |

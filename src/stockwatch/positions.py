@@ -94,6 +94,7 @@ class TrackedPosition:
     submitted_at: str = ""         # a paper megbizas bekuldese (ISO UTC)
     entry_at: str = ""             # a paper belepes teljesulese (ISO UTC, az Alpaca szerint)
     exit_signal_date: str = ""     # Momentum: a kilepest kijelolo havi rebalansz napja (masnap nyitaskor zar)
+    legs: list[dict] = field(default_factory=list)   # realizalt reszek: {date, fraction, r} (Kereskedesi naptar, #22)
 
     @property
     def is_active(self) -> bool:
@@ -327,11 +328,17 @@ class PositionTracker:
                 out.append((position, "pos_entered"))
                 first = True
 
+            before = (state.realised_r, state.remaining)
             for event in state.step(o, h, l, first=first):
                 out.append((position, f"pos_{event}"))
             if not state.closed and state.bars_held >= max_hold(position.horizon, position.exit_mode):
                 state.timeout(c)
                 out.append((position, "pos_timeout"))
+            if (state.realised_r, state.remaining) != before:
+                # a nap realizalt resze (pl. a fele +1R-nel): a naptar a sajat napjan konyveli
+                position.legs = position.legs + [{"date": f"{date:%Y-%m-%d}",
+                                                  "fraction": round(before[1] - state.remaining, 6),
+                                                  "r": round(state.realised_r - before[0], 6)}]
 
             position.last_date = f"{date:%Y-%m-%d}"
             position.state = state.to_dict()
