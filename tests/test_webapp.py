@@ -1,40 +1,24 @@
-"""A helyi webes felulet tesztjei: YAML-szerkesztes, JSON, HTTP-vedelmek."""
+"""Az oktatasi webes felulet tesztjei: JSON, HTTP-vedelmek, a fiok-folyam urlapjai (regisztracio -> level ->
+ellenorzes -> belepes -> suti), kijelentkezes, adatbazis nelkuli hibak."""
 from __future__ import annotations
 
+import http.client
 import json
 import math
+import re
 import threading
-import urllib.error
-import urllib.request
 from http.server import ThreadingHTTPServer
+from urllib.parse import urlencode
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from stockwatch import webapp, webauth
+from stockwatch import db, webapp, webauth
 
+from .conftest import make_user
 
-def test_set_yaml_key_keeps_comments_and_sections():
-    lines = [
-        "alerts:",
-        "  pattern_events: false",
-        "entry:",
-        "  min_score: 50             # 0-100; a pontszam",
-        "  account_size: 10000",
-        "",
-        "# --- kovetkezo ---",
-        "other:",
-        "  min_score: 1",
-    ]
-    lines = webapp._set_yaml_key(lines, "entry", "min_score", "65")
-    lines = webapp._set_yaml_key(lines, "entry", "exit_mode", "trail")
-    lines = webapp._set_yaml_key(lines, "alerts", "pattern_events", "true")
-    text = "\n".join(lines)
-    assert "  min_score: 65" in text and "# 0-100; a pontszam" in text
-    assert "  min_score: 1" in text                       # a masik szekcio erintetlen
-    assert text.index("exit_mode: trail") < text.index("# --- kovetkezo ---")
-    assert "pattern_events: true" in text
+PW = "helyes-lo-elem-tuzfal"
 
 
 def test_clean_handles_pandas_and_nan():
@@ -44,99 +28,146 @@ def test_clean_handles_pandas_and_nan():
     json.dumps(out)
 
 
-def test_update_settings_rejects_unknown_and_invalid():
-    with pytest.raises(ValueError):
-        webapp.update_settings({"telegram_token": "x"})
-    with pytest.raises(ValueError):
-        webapp.update_settings({"risk_per_trade_pct": 50})
-
-
-def test_watchlist_validation():
-    with pytest.raises(ValueError):
-        webapp.update_watchlist(["AAPL", "<script>"])
-    with pytest.raises(ValueError):
-        webapp.update_watchlist([])
-
-
 @pytest.fixture()
-def server():
-    no_password = webauth.Auth(password_hash=lambda: None)
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), webapp.make_handler(webapp.AppState(), no_password))
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-    thread.start()
-    yield f"http://127.0.0.1:{httpd.server_address[1]}"
+def port():
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), webapp.make_handler(trust_proxy=True))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield httpd.server_address[1]
     httpd.shutdown()
     httpd.server_close()
 
 
-def _status(url, method="GET", headers=None, data=None):
-    req = urllib.request.Request(url, method=method, headers=headers or {}, data=data)
-    try:
-        with urllib.request.urlopen(req, timeout=10) as res:
-            return res.status, res.headers
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.headers
+def _req(port, method, path, body=None, headers=None):
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=20)
+    conn.request(method, path, body=body, headers=headers or {})
+    res = conn.getresponse()
+    res.text = res.read().decode("utf-8", "replace")
+    conn.close()
+    return res
 
 
-def test_http_security(server):
-    status, headers = _status(server + "/")
-    assert status == 200 and "frame-ancestors 'none'" in headers["Content-Security-Policy"]
-    # POST egyedi fejlec nelkul: tiltva (CSRF ellen)
-    assert _status(server + "/api/refresh", "POST", data=b"{}")[0] == 403
-    # ervenytelen ticker, utvonal-bejaras
-    assert _status(server + "/api/symbol/..%2F..%2Fetc")[0] == 400
-    assert _status(server + "/%2e%2e/config/settings.yaml")[0] == 404
-    assert _status(server + "/nincs-ilyen.js")[0] == 404
+def _form(port, path, fields, headers=None):
+    return _req(port, "POST", path, urlencode(fields), {"Content-Type": "application/x-www-form-urlencoded",
+                                                        "X-Forwarded-For": "203.0.113.9", **(headers or {})})
 
 
-# ---------------------------------------------------------------------------
-# Indexszkenneles: bekapcsolaskor azonnal, utana minden zaras utan
-# ---------------------------------------------------------------------------
-from stockwatch.config import ScanSettings, Settings  # noqa: E402
+def test_http_security_without_login(port):
+    res = _req(port, "GET", "/")                                       # nyilvanos kezdooldal (#39)
+    assert res.status == 200 and 'href="/register"' in res.text and "app.js" not in res.text
+    assert _req(port, "GET", "/app.js").status == 303                  # a tobbi oldal nem nyilvanos
+    assert _req(port, "GET", "/index.html").status == 303
+    assert _req(port, "GET", "/api/practice").status == 401
+    login = _req(port, "GET", "/login")
+    assert login.status == 200 and "frame-ancestors 'none'" in login.getheader("Content-Security-Policy")
+    for public in ("/register", "/forgot", "/style.css", "/i18n.js", "/i18n/en.json"):
+        assert _req(port, "GET", public).status == 200, public
+    assert _req(port, "GET", "/i18n/xx.json").status == 404
+    assert _req(port, "GET", "/auth.html").status == 303                # a sablon nem fajl, bejelentkezve sem
+    # POST egyedi fejlec nelkul tiltva (CSRF ellen), fejleccel is csak bejelentkezve
+    assert _req(port, "POST", "/api/practice/session", b"{}").status == 403
+    assert _req(port, "POST", "/api/practice/session", b"{}", {"X-StockWatch": "1"}).status == 401
 
 
-def _ny(text: str) -> pd.Timestamp:
-    return pd.Timestamp(text, tz="America/New_York")
+def test_database_outage_is_a_clean_503(port):
+    # a teszt adatbazis nelkul fut (conftest): a valasz altalanos, kapcsolati adat es nyomkovetes nelkul
+    db.close()                                                         # egy korabbi teszt poolja ne szoljon bele
+    res = _req(port, "GET", "/api/practice", headers={"Cookie": f"{webauth.COOKIE}=valami"})
+    assert res.status == 503 and "adatbazis" in res.text and "Traceback" not in res.text
 
 
-@pytest.fixture()
-def scan_settings(tmp_path, monkeypatch):
-    s = Settings(scan=ScanSettings(sp500=True))
-    monkeypatch.setattr(type(s), "index_scan_path", property(lambda self: tmp_path / "index_scan.json"))
-    return s
+def test_account_flow_over_http(neon, outbox, port):
+    res = _form(port, "/register", {"email": "Anna@Example.com", "password": PW, "terms": "1", "age": "1"})
+    assert res.status == 303 and res.getheader("Location") == "/login?e=sent"
+    link = re.search(r"/verify\?token=[\w-]+", outbox[-1][2]).group(0)
+    assert outbox[-1][2].startswith("A regisztráció") and "http://127.0.0.1:" in outbox[-1][2]
+    early = _form(port, "/login", {"email": "anna@example.com", "password": PW})
+    assert early.status == 400 and "erősítsd meg" in early.text and early.getheader("Set-Cookie") is None
+    assert _req(port, "GET", link).getheader("Location") == "/login?e=verified"
+    assert _req(port, "GET", link).getheader("Location") == "/login?e=badlink"
+    bad = _form(port, "/login", {"email": "anna@example.com", "password": "rossz-jelszo-123"})
+    assert bad.status == 400 and "Hibás e-mail-cím vagy jelszó" in bad.text
+    ok = _form(port, "/login", {"email": "anna@example.com", "password": PW}, {"X-Forwarded-Proto": "https"})
+    cookie = ok.getheader("Set-Cookie")
+    assert ok.status == 303 and ok.getheader("Location") == "/"
+    for flag in ("HttpOnly", "SameSite=Strict", "Secure"):
+        assert flag in cookie
+    session = {"Cookie": cookie.split(";", 1)[0]}
+    app = _req(port, "GET", "/", headers=session)
+    assert app.status == 200 and "app.js" in app.text                  # bejelentkezve a felulet
+    me = _req(port, "GET", "/api/session", headers=session)
+    assert json.loads(me.text) == {"email": "anna@example.com", "onboarded": False}   # elso belepes: bevezeto
+    assert _req(port, "POST", "/api/onboarded", b"{}", {**session, "X-StockWatch": "1"}).status == 200
+    assert json.loads(_req(port, "GET", "/api/session", headers=session).text)["onboarded"] is True
+    out = _req(port, "POST", "/logout", b"{}", {**session, "X-StockWatch": "1"})
+    assert out.status == 200 and "Max-Age=0" in out.getheader("Set-Cookie")
+    assert _req(port, "GET", "/api/session", headers=session).status == 401
 
 
-def test_close_scan_due_only_after_close_on_weekdays(scan_settings):
-    assert webapp.index_scan_due(scan_settings, _ny("2026-10-12 16:25"))          # hetfo zaras utan
-    assert not webapp.index_scan_due(scan_settings, _ny("2026-10-12 15:59"))      # meg nyitva
-    assert not webapp.index_scan_due(scan_settings, _ny("2026-10-11 17:00"))      # vasarnap
-    off = scan_settings.model_copy(update={"scan": ScanSettings()})
-    assert not webapp.index_scan_due(off, _ny("2026-10-12 16:25"))                # nincs index
+def test_forms_reject_foreign_origin_and_bad_input(neon, outbox, port):
+    make_user()
+    foreign = _form(port, "/login", {"email": "anna@example.com", "password": PW}, {"Origin": "https://evil.example"})
+    assert foreign.status == 400 and foreign.getheader("Set-Cookie") is None
+    weak = _form(port, "/register", {"email": "uj@example.com", "password": "1234567890", "terms": "1", "age": "1"})
+    assert weak.status == 400 and "kiszivárgott" in weak.text and outbox == []
+    echoed = _form(port, "/login", {"email": "<script>x</script>", "password": "a"}).text
+    assert "<script>x" not in echoed and "&lt;script&gt;x" in echoed
 
 
-def test_close_scan_not_repeated_after_todays_run(scan_settings):
-    path = scan_settings.index_scan_path
-    path.write_text(json.dumps({"computed_at": "2026-10-12T20:17:00+00:00"}))      # 16:17 NY: a monitor mar futott
-    assert not webapp.index_scan_due(scan_settings, _ny("2026-10-12 16:25"))
-    path.write_text(json.dumps({"computed_at": "2026-10-09T20:17:00+00:00"}))      # pentek: elavult
-    assert webapp.index_scan_due(scan_settings, _ny("2026-10-12 16:25"))
+def test_password_reset_over_http(neon, outbox, port):
+    make_user()
+    assert _form(port, "/forgot", {"email": "anna@example.com"}).getheader("Location") == "/login?e=resetsent"
+    token = re.search(r"token=([\w-]+)", outbox[-1][2]).group(1)
+    page = _req(port, "GET", f"/reset?token={token}")
+    assert page.status == 200 and f'value="{token}"' in page.text and page.getheader("Referrer-Policy") == "no-referrer"
+    done = _form(port, "/reset", {"token": token, "password": "uj-hosszu-jelszo-42"})
+    assert done.getheader("Location") == "/login?e=reset"
+    again = _form(port, "/reset", {"token": token, "password": "masik-hosszu-jelszo"})
+    assert again.getheader("Location") == "/forgot?e=badlink"
 
 
-def test_enabling_an_index_starts_scan_immediately(monkeypatch):
-    state = {"scan": ScanSettings()}
-    monkeypatch.setattr(webapp, "load_settings", lambda: Settings(scan=state["scan"]))
+def test_logout_everywhere(neon, port):
+    make_user()
+    cookies = [_form(port, "/login", {"email": "anna@example.com", "password": PW}).getheader("Set-Cookie").split(";")[0]
+               for _ in range(2)]
+    assert _req(port, "POST", "/api/logout-all", b"{}", {"Cookie": cookies[0], "X-StockWatch": "1"}).status == 200
+    assert all(_req(port, "GET", "/api/session", headers={"Cookie": c}).status == 401 for c in cookies)
 
-    def fake_update(values):
-        state["scan"] = ScanSettings(**{**state["scan"].model_dump(), **values})
-        return {"values": values}
 
-    started = []
-    monkeypatch.setattr(webapp, "update_settings", fake_update)
-    app = webapp.AppState()
-    monkeypatch.setattr(app, "start_index_scan", lambda alerts=False: started.append(alerts) or True)
+DISCLAIMER = "Nem befektetési tanács"
 
-    assert "index_scan_started" not in webapp.apply_settings(app, {"index_setups": True})
-    res = webapp.apply_settings(app, {"sp500": True})
-    assert res["index_scan_started"] and started == [True]                       # riasztassal
-    webapp.apply_settings(app, {"sp500": True})                                   # mar be volt kapcsolva
-    assert started == [True]
+
+def test_legal_pages_are_public_and_every_page_has_the_disclaimer(neon, port):
+    for path in ("/aszf", "/adatkezeles", "/sutik", "/", "/login", "/register", "/forgot"):
+        res = _req(port, "GET", path)
+        assert res.status == 200 and DISCLAIMER in res.text, path
+    assert "16" in _req(port, "GET", "/aszf").text and "NAIH" in _req(port, "GET", "/adatkezeles").text
+    make_user()
+    cookie = _form(port, "/login", {"email": "anna@example.com", "password": PW}).getheader("Set-Cookie").split(";")[0]
+    assert DISCLAIMER in _req(port, "GET", "/", headers={"Cookie": cookie}).text            # a felulet is
+
+
+def test_export_and_delete_over_http(neon, port):
+    make_user()
+    cookie = _form(port, "/login", {"email": "anna@example.com", "password": PW}).getheader("Set-Cookie").split(";")[0]
+    session = {"Cookie": cookie, "X-StockWatch": "1"}
+    export = _req(port, "GET", "/api/account/export", headers=session)
+    assert export.status == 200 and "attachment" in export.getheader("Content-Disposition")
+    assert json.loads(export.text)["account"]["email"] == "anna@example.com"
+    assert _req(port, "POST", "/api/account/delete", json.dumps({"password": "rossz-jelszo-123"}), session).status == 400
+    done = _req(port, "POST", "/api/account/delete", json.dumps({"password": PW}), session)
+    assert done.status == 200 and "Max-Age=0" in done.getheader("Set-Cookie")
+    assert _req(port, "GET", "/api/session", headers=session).status == 401
+    assert _form(port, "/login", {"email": "anna@example.com", "password": PW}).status == 400
+
+
+def test_lessons_over_http(neon, port):
+    make_user()
+    cookie = _form(port, "/login", {"email": "anna@example.com", "password": PW}).getheader("Set-Cookie").split(";")[0]
+    session = {"Cookie": cookie, "X-StockWatch": "1"}
+    levels = json.loads(_req(port, "GET", "/api/lessons", headers=session).text)
+    assert len(levels) == 10 and levels[0]["unlocked"] and not levels[1]["unlocked"]
+    first = json.loads(_req(port, "GET", "/api/lessons/1", headers=session).text)
+    assert first["title"] and len(first["figure"]["bars"]) == 120
+    assert _req(port, "GET", "/api/lessons/2", headers=session).status == 403            # zarolt
+    assert _req(port, "POST", "/api/lessons/2/start", b"{}", session).status == 400
+    assert _req(port, "GET", "/api/lessons/11", headers=session).status == 404

@@ -12,11 +12,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from stockwatch import entry, indicators, market, positions
-from stockwatch.alerts.base import Alert
-from stockwatch.alerts.webhook import WebhookChannel
+from stockwatch import entry, indicators, market
 from stockwatch.config import EntrySettings, Settings
-from stockwatch.forecast import Forecast
 from stockwatch.patterns.base import PatternMatch
 
 
@@ -334,30 +331,6 @@ def test_entry_state_cooldown(tmp_path, monkeypatch):
     assert not entry.EntryState(settings).should_alert(signal)
 
 
-def test_alert_text_contains_plan_and_disclaimer():
-    df = enrich(uptrend())
-    signal = _signal(df, lenient())
-    body = entry.format_body(signal)
-    assert "Stop:" in body and "Cel:" in body and "Meret:" in body
-    assert "Nem befektetesi tanacs" in body
-    assert "meg nem zart le" in entry.format_body(signal, final_bar=False)
-    assert entry.format_title(signal).startswith("TEST: Bull zaszlo")
-
-
-def test_webhook_payload_formats():
-    df = enrich(uptrend())
-    signal = _signal(df, lenient())
-    forecast = Forecast(symbol="TEST", as_of=df.index[-1], price=signal.price, score=0.5, label="x")
-    alert = Alert("TEST", entry.format_title(signal), entry.format_body(signal), forecast,
-                  "entry_breakout", extra=signal.to_dict())
-    s = Settings()
-    assert "text" in WebhookChannel(s, url="https://chat.googleapis.com/v1/x").payload(alert)
-    discord = WebhookChannel(s, url="https://discord.com/api/webhooks/1/abc").payload(alert)
-    assert "content" in discord and len(discord["content"]) <= 2000
-    assert not WebhookChannel(s, url="").enabled
-    assert alert.is_entry and alert.bullish
-
-
 def test_market_regime_and_relative_strength():
     up = uptrend(bars=260)
     down = uptrend(bars=260, drift=-0.003, seed=3)
@@ -382,75 +355,6 @@ def test_plan_contains_partial_exit():
     assert plan.horizon > 0
     body = entry.format_body(signal)
     assert "Kilepesi terv" in body and "stopot huzd a belepore" in body
-
-
-def _tracker(tmp_path, monkeypatch):
-    settings = settings_with(lenient())
-    monkeypatch.setattr(type(settings), "positions_path", property(lambda self: tmp_path / "pos.json"))
-    return settings, positions.PositionTracker(settings)
-
-
-def _future(df, rows):
-    """Uj gyertyak a jelzes utan (open, high, low, close)."""
-    index = pd.bdate_range(df.index[-1] + pd.offsets.BDay(1), periods=len(rows))
-    extra = pd.DataFrame(rows, columns=["open", "high", "low", "close"], index=index)
-    extra["volume"] = 1e6
-    return pd.concat([df[["open", "high", "low", "close", "volume"]], extra])
-
-
-def test_tracker_partial_then_breakeven(tmp_path, monkeypatch):
-    settings, tracker = _tracker(tmp_path, monkeypatch)
-    df = enrich(uptrend())
-    cfg = lenient()
-    cfg.exit_mode = "partial"
-    signal = _signal(df, cfg)
-    pos = tracker.register(signal)
-    close, risk = signal.price, signal.plan.risk_per_share
-
-    e = close * 1.002                                        # masnapi nyito a limit alatt
-    later = _future(df, [
-        (e, e * 1.003, e * 0.998, e * 1.001),                # belepes
-        (e, e + risk * 1.2, e * 0.999, e + risk),            # +1R -> fele el
-        (e + risk, e + risk, e - 0.1, e - 0.05),             # vissza a belepo ala -> nullszaldo
-    ])
-    events = [ev for _, ev in tracker.update("TEST", later)]
-    assert events == ["pos_entered", "pos_partial", "pos_breakeven"]
-    assert pos.status == "closed" and pos.result_r == pytest.approx(0.5, abs=0.01)
-
-    tracker.save()
-    reloaded = positions.PositionTracker(settings)
-    assert reloaded.positions[pos.id].status == "closed"
-    assert reloaded.closed_stats()["win"] == 1.0
-    # ujrafuttatas nem general ujabb esemenyt
-    assert tracker.update("TEST", later) == []
-
-
-def test_tracker_skips_gap_above_limit(tmp_path, monkeypatch):
-    _, tracker = _tracker(tmp_path, monkeypatch)
-    df = enrich(uptrend())
-    signal = _signal(df, lenient())
-    pos = tracker.register(signal)
-    g = signal.plan.entry_limit * 1.02
-    events = tracker.update("TEST", _future(df, [(g, g * 1.01, g * 0.99, g)]))
-    assert [ev for _, ev in events] == ["pos_skipped"] and pos.status == "skipped"
-    title, body = positions.format_event(pos, "pos_skipped")
-    assert "ervenytelen" in body
-
-
-def test_tracker_stop_and_setup_not_tracked(tmp_path, monkeypatch):
-    _, tracker = _tracker(tmp_path, monkeypatch)
-    df = enrich(uptrend())
-    signal = _signal(df, lenient())
-    pos = tracker.register(signal)
-    e, stop = signal.price, signal.plan.stop
-    later = _future(df, [(e, e * 1.002, e * 0.998, e), (e * 0.99, e * 0.99, stop * 0.99, stop * 0.995)])
-    events = [ev for _, ev in tracker.update("TEST", later)]
-    assert events == ["pos_entered", "pos_stop"]
-    assert pos.result_r == pytest.approx(-1.0, abs=0.05)
-
-    close, atr = float(df["close"].iloc[-1]), float(df["atr"].iloc[-1])
-    setup = _signal(df, lenient(), make_match(df, trigger=close + 0.5 * atr, status="forming"))
-    assert tracker.register(setup) is None
 
 
 def test_benchmark_follows_scanned_index():

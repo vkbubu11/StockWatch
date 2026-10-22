@@ -1,11 +1,11 @@
 """Feladatkeszlet es seedelt mintavetel.
 
-KESZLET (labor-munkasor vagy CLI, adat-ujjlenyomatonkent egyszer; a webes keres soha nem epit):
+KESZLET (CLI: python cli.py practice-pool, adat-ujjlenyomatonkent egyszer; a webes keres soha nem epit):
   * forras: a Backteszt oldal tara (elsobbseggel) es az elo univerzum-cache, a holdout elotti napon vagva
   * jelolt dontesi pont `t`: legalabb WARMUP_BARS bemelegito gyertya, es a t + FUTURE_BARS gyertya is a
     holdout ELOTT van; a lathato es a jovobeli ablakban nincs gyanus (split nelkuli) ugras es nulla volumen
   * kategoriak: "strategy" (a Visszahuzas-csalad setup-ja ugyanazzal a motorral, mint elesben, vagy a labor
-    kitores-cache-enek kitorese), "pattern" (pont-idoben, csak az addigi adatbol felismert, formalodo bikas
+    kitores-cache-enek kitorese, lasd breakouts.py), "pattern" (pont-idoben, csak az addigi adatbol felismert, formalodo bikas
     alakzat), "short" (short-gyanus: zaro < SMA200 es EMA50 < EMA200, lehetoleg formalodo vagy letort medves
     alakzattal - a megerositett pivotokbol), "nothing" (egyik sem). Az irany a feladat tipusabol nem talalhato
     ki: a kategoria csak a felfedeskor latszik, es mindegyikben lehet long, short vagy kihagyas a jo valasz.
@@ -24,16 +24,18 @@ from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
+import yaml
 
-from .. import indicators, market, meanrev, usage, workspace
+from .. import indicators, market, meanrev
 from .. import meanrev_research as mr
-from ..config import Settings, load_settings
+from ..config import CONFIG_DIR, Settings, load_settings, yaml_tickers
 from ..entry_research import HOLDOUT_START
-from . import store
+from . import breakouts, store, synthetic
 
 log = logging.getLogger(__name__)
 
-POOL_VERSION = 2
+POOL_VERSION = 3                               # 3: a Kitores-osszevetes a keszletben
+UNIVERSE_PATH = CONFIG_DIR / "universe.yaml"
 VISIBLE_END = HOLDOUT_START - pd.Timedelta(days=1)
 WARMUP_BARS = 250
 VISIBLE_BARS = 120
@@ -54,8 +56,12 @@ CODE_ALPHABET = store.ID_ALPHABET
 # Adat
 # ---------------------------------------------------------------------------
 def load_prices(symbol: str, settings: Settings) -> pd.DataFrame | None:
-    """A papir gyertyai a holdout elotti napig: a Backteszt oldal tara elsobbseggel, kulonben az univerzum-cache."""
+    """A papir gyertyai a holdout elotti napig: szintetikus papirnal a generator, kulonben a Backteszt oldal tara
+    elsobbseggel, vegul az univerzum-cache."""
     from ..backtest_page import data as bt_data
+
+    if synthetic.is_synthetic(symbol):
+        return synthetic.frame(symbol).loc[:VISIBLE_END]
 
     try:
         df = bt_data.load(symbol)
@@ -88,9 +94,14 @@ def universe(settings: Settings) -> list[str]:
     from .. import indexes
     from ..backtest_page import data as bt_data
 
+    if settings.practice.source == "synthetic":
+        return synthetic.symbols(settings.practice.synthetic_symbols)
+
     members = indexes.IndexMembers(settings)
     symbols = {s for name in ("nasdaq100", "sp500") for s in members.members(name, allow_network=False)}
     symbols |= {m["symbol"] for m in bt_data.stored_symbols() if m.get("symbol")}
+    raw = yaml.safe_load(UNIVERSE_PATH.read_text(encoding="utf-8")) if UNIVERSE_PATH.exists() else None
+    symbols |= set(yaml_tickers((raw or {}).get("symbols", [])))          # friss szerveren: fetch-universe
     return sorted(symbols - set(bt_data.BENCHES))
 
 
@@ -130,15 +141,6 @@ def pullback_positions(symbol: str, df: pd.DataFrame, settings: Settings, mctx: 
     return np.array(out, dtype=int)
 
 
-def breakout_positions(symbol: str, df: pd.DataFrame) -> np.ndarray:
-    """A labor kitores-cache-enek kitoresi napjai (a Kitores-strategia jelzesei)."""
-    from .. import lab
-
-    cache = lab.load_cache(symbol) or {}
-    days = {pd.Timestamp(e[0]) for e in cache.get("events", [])}
-    return np.array(sorted(int(df.index.get_loc(d)) for d in days if d in df.index), dtype=int)
-
-
 def forming_pattern(symbol: str, enriched: pd.DataFrame, i: int, settings: Settings) -> str | None:
     """Formalodo bikas alakzat a t=i napon, CSAK az addigi adatbol (megerositett pivotok)."""
     from .. import patterns
@@ -170,14 +172,17 @@ def bearish_pattern(symbol: str, enriched: pd.DataFrame, i: int, settings: Setti
     return None
 
 
-def symbol_entries(symbol: str, df: pd.DataFrame, settings: Settings, mctx, earnings_dates) -> dict[str, list]:
+def symbol_entries(symbol: str, df: pd.DataFrame, settings: Settings, mctx, earnings_dates,
+                   lab_results: dict | None = None) -> dict[str, list]:
+    """Kategoriankent [papir, nap, forras], es "breakouts": "PAPIR|nap" -> a Kitores-osszevetes (ahol jelzett)."""
     ok = eligible(df)
-    out: dict[str, list] = {c: [] for c in CATEGORIES}
+    out: dict = {c: [] for c in CATEGORIES} | {"breakouts": {}}
     if not ok.any():
         return out
     rng = _rng(symbol)
     pull = pullback_positions(symbol, df, settings, mctx, earnings_dates)
-    brk = breakout_positions(symbol, df)
+    brk_days = breakouts.days(symbol)
+    brk = np.array(sorted(int(df.index.get_loc(d)) for d in brk_days if d in df.index), dtype=int)
     signal = np.zeros(len(df), dtype=bool)
     signal[pull] = True
     signal[brk] = True
@@ -201,6 +206,11 @@ def symbol_entries(symbol: str, df: pd.DataFrame, settings: Settings, mctx, earn
         (found if name else plain).append((i, name or "downtrend"))
     picked = (found + plain)[: PER_SYMBOL["short"]]
     out["short"] = [[symbol, day(i), name] for i, name in sorted(picked)]
+    for c in CATEGORIES:
+        for _, d, _ in out[c]:
+            cmp = breakouts.compare(symbol, df, int(df.index.get_loc(pd.Timestamp(d))), brk_days, lab_results or {})
+            if cmp["signaled"]:
+                out["breakouts"][f"{symbol}|{d}"] = cmp
     return out
 
 
@@ -239,7 +249,9 @@ def build(settings: Settings | None = None, symbols: list[str] | None = None, pr
 
     mctx = market.load_context(settings, refresh=False, allow_network=False)
     hist = market.HistoricalEarnings(settings, allow_network=False)
+    lab_results = breakouts.live_results()
     entries: dict[str, list] = {c: [] for c in CATEGORIES}
+    found: dict[str, dict] = {}
     started, partial = time.monotonic(), False
     for n, (symbol, df) in enumerate(sorted(frames.items()), 1):
         if max_seconds is not None and time.monotonic() - started > max_seconds:
@@ -249,12 +261,13 @@ def build(settings: Settings | None = None, symbols: list[str] | None = None, pr
         if n % 25 == 1:
             say(f"helyzetek: {n}/{len(frames)} ({symbol})")
         try:
-            got = symbol_entries(symbol, df, settings, mctx, hist.dates(symbol))
+            got = symbol_entries(symbol, df, settings, mctx, hist.dates(symbol), lab_results)
         except Exception:
             log.exception("Gyakorlo keszlet: %s kimarad", symbol)
             continue
         for c in CATEGORIES:
             entries[c] += got[c]
+        found |= got["breakouts"]
     for c in CATEGORIES:
         if len(entries[c]) > CAP[c]:
             keep = _pick(_rng("cap", c), np.arange(len(entries[c])), CAP[c])
@@ -262,7 +275,9 @@ def build(settings: Settings | None = None, symbols: list[str] | None = None, pr
     pool = {"version": POOL_VERSION, "fingerprint": fingerprint, "config_key": config_key(settings),
             "created": datetime.now(timezone.utc).isoformat(timespec="seconds"), "symbols": len(frames),
             "partial": partial, "visible_end": f"{VISIBLE_END:%Y-%m-%d}",
-            "counts": {c: len(entries[c]) for c in CATEGORIES}, "entries": entries}
+            "counts": {c: len(entries[c]) for c in CATEGORIES}, "entries": entries,
+            # kulon kulcsban: a [papir, nap, forras] bejegyzesek formaja valtozatlan (a fo StockWatch is olvassa)
+            "breakouts": {k: found[k] for c in CATEGORIES for s, d, _ in entries[c] if (k := f"{s}|{d}") in found}}
     pool["bytes"] = store.save_pool(pool)
     say(f"kesz: {pool['counts']}")
     return pool
@@ -287,12 +302,17 @@ def normalize_mix(mix: dict | None) -> dict[str, float]:
     return {c: v / total for c, v in mix.items()}
 
 
-def sample(pool: dict, seed: int, rounds: int = 20, mix: dict | None = None) -> list[dict]:
-    """`rounds` helyzet a keszletbol, determinisztikusan (seed). Egy papir lehetoleg csak egyszer (kis keszletnel masik napon ismetlodhet)."""
+def sample(pool: dict, seed: int, rounds: int = 20, mix: dict | None = None,
+           only: dict[str, list[str] | None] | None = None) -> list[dict]:
+    """`rounds` helyzet a keszletbol, determinisztikusan (seed). Egy papir lehetoleg csak egyszer (kis keszletnel masik napon ismetlodhet).
+    `only` (a tanulasi ut celzott feladataihoz): kategoria -> megengedett forrasok (None: barmelyik); mas nem jon."""
     if not 1 <= rounds <= MAX_ROUNDS:
         raise ValueError(f"rounds: 1 es {MAX_ROUNDS} kozott")
+    if only is not None:
+        mix = mix or {c: 1 for c in only}
     weights = normalize_mix(mix)
-    lists = {c: list(pool["entries"].get(c) or []) for c in CATEGORIES}
+    lists = {c: [e for e in pool["entries"].get(c) or []
+                 if only is None or (c in only and (only[c] is None or e[2] in only[c]))] for c in CATEGORIES}
     rng = np.random.default_rng(seed)
     order = {c: list(rng.permutation(len(lists[c]))) for c in CATEGORIES}
     used_symbols: set[str] = set()
@@ -314,7 +334,8 @@ def sample(pool: dict, seed: int, rounds: int = 20, mix: dict | None = None) -> 
             continue
         used_symbols.add(symbol)
         used_points.add((symbol, day))
-        out.append({"symbol": symbol, "date": day, "category": cat, "source": source})
+        out.append({"symbol": symbol, "date": day, "category": cat, "source": source,
+                    "breakout": (pool.get("breakouts") or {}).get(f"{symbol}|{day}")})
     if len(out) < rounds:
         raise ValueError(f"A keszletben csak {len(out)} helyzet van.")
     return out
@@ -356,26 +377,3 @@ def parse_code(code: str) -> tuple[int, int, int]:
     if seed >= SEED_MAX or not 1 <= rounds <= MAX_ROUNDS:
         raise ValueError("Ervenytelen megosztasi kod.")
     return seed, fp, rounds
-
-
-# ---------------------------------------------------------------------------
-# Munkasor
-# ---------------------------------------------------------------------------
-def submit(ws: str = workspace.DEFAULT, force: bool = False) -> dict:
-    from .. import labqueue
-
-    if any(j["status"] in ("queued", "running") for j in labqueue.jobs(ws, "practice_pool")):
-        raise ValueError("A feladatkeszlet mar sorban all / epul.")
-    return labqueue.submit(ws, "practice_pool", {"force": bool(force)})
-
-
-def run_job(job: dict, settings: Settings) -> dict:
-    from .. import labqueue
-
-    with usage.meter(job["workspace"], "practice"):
-        pool = build(settings, force=bool(job["payload"].get("force")),
-                     progress=lambda msg: labqueue.update(job, message=msg[:200]))
-    if pool.get("unchanged"):
-        return {"message": "valtozatlan: a keszlet mar erre az adatra keszult"}
-    return {"message": f"kesz: {sum(pool['counts'].values())} helyzet, {pool['symbols']} papir",
-            "fingerprint": pool["fingerprint"]}

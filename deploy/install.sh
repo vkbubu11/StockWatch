@@ -1,23 +1,28 @@
 #!/usr/bin/env bash
-# StockWatch telepito / frissito - Ubuntu 22.04+ vagy Debian 12+ szerverre, rootkent.
+# StockWatch Gyakorlas (oktatasi kiadas) telepito / frissito - Ubuntu 22.04+ vagy Debian 12+ szerverre, rootkent.
 #
-#   sudo bash deploy/install.sh --domain stockwatch.pelda.hu    # HTTPS-sel (Caddy, Let's Encrypt)
-#   sudo bash deploy/install.sh                                 # csak SSH-alagutas eleres
+#   sudo bash deploy/install.sh --domain gyakorlas.pelda.hu    # HTTPS-sel (Caddy, Let's Encrypt)
+#   sudo bash deploy/install.sh                                # csak SSH-alagutas eleres
 #
-# Ujrafuttathato. Frissiteskor csak a kodot es a fuggosegeket csereli; a szerveren levo
-# data/, config/ es a titokfajl (/etc/stockwatch/stockwatch.env) erintetlen marad.
+# A korabbi StockWatch MELLETT fut ugyanazon a gepen (Oracle): sajat konyvtar, felhasznalo, titokfajl,
+# szolgaltatas (stockwatch-learn) es port (8766). A Caddy-ba csak egy sajat oldalblokkot illeszt be
+# (import) - a meglevo StockWatch-oldalt nem irja felul. Ujrafuttathato; frissiteskor csak a kodot es a
+# fuggosegeket csereli, a szerveren levo data/, config/ es titokfajl erintetlen marad.
 #
-#   /opt/stockwatch                  kod (root, irasvedett) + .venv
-#   /opt/stockwatch/{data,config,logs}   a szolgaltatas irhatja
-#   /etc/stockwatch/stockwatch.env   titkok, 0600, csak a stockwatch felhasznalo olvassa
-#   /var/lib/stockwatch              a szolgaltatas HOME-ja (yfinance cache)
+#   /opt/stockwatch-learn                        kod (root, irasvedett) + .venv
+#   /opt/stockwatch-learn/{data,config,logs}     a szolgaltatas irhatja
+#   /etc/stockwatch-learn/stockwatch-learn.env   titkok (DATABASE_URL, SMTP...), 0600
+#   /var/lib/stockwatch-learn                    a szolgaltatas HOME-ja
 set -euo pipefail
 
-APP_DIR=/opt/stockwatch
-ENV_DIR=/etc/stockwatch
-ENV_FILE=$ENV_DIR/stockwatch.env
-STATE_DIR=/var/lib/stockwatch
-SVC_USER=stockwatch
+NAME=stockwatch-learn
+APP_DIR=/opt/$NAME
+ENV_DIR=/etc/$NAME
+ENV_FILE=$ENV_DIR/$NAME.env
+STATE_DIR=/var/lib/$NAME
+SVC_USER=$NAME
+PORT=8766                                       # a korabbi StockWatch a 8765-on fut
+SITE_FILE=/etc/caddy/$NAME.caddy
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOMAIN=""
 
@@ -28,7 +33,7 @@ die()  { printf '\033[1;31mHIBA: %s\033[0m\n' "$*" >&2; exit 1; }
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --domain) DOMAIN="${2:-}"; shift 2 ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
     *) die "Ismeretlen kapcsolo: $1" ;;
   esac
 done
@@ -43,13 +48,8 @@ say "Rendszercsomagok"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get install -y -q python3 python3-venv python3-pip rsync ca-certificates
-# Headless Chrome a Telegram chart-kepekhez (kaleido). Ha nem sikerul, a riasztas kep nelkul megy.
-apt-get install -y -q --no-install-recommends libnss3 libatk-bridge2.0-0 libcups2 libxcomposite1 \
-  libxdamage1 libxfixes3 libxrandr2 libgbm1 libxkbcommon0 libpango-1.0-0 libcairo2 >/dev/null 2>&1 \
-  || warn "A Chrome-fuggosegek egy resze nem telepult (chart-kepek nelkul is mukodik)."
-apt-get install -y -q libasound2t64 >/dev/null 2>&1 || apt-get install -y -q libasound2 >/dev/null 2>&1 || true
 
-# Kis memoriaju (1 GB-os, ingyenes) gepen a pip telepites es a chart-rendereles swap nelkul elfogyhat
+# Kis memoriaju (1 GB-os, ingyenes) gepen a pip telepites swap nelkul elfogyhat
 MEM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
 if [[ $MEM_KB -lt 2000000 ]] && ! swapon --noheadings | grep -q .; then
   say "Keves a memoria ($((MEM_KB / 1024)) MB): 2 GB swapfajl"
@@ -78,27 +78,19 @@ rsync -a --delete --chown=root:root \
   --exclude '/.env' --exclude '/.env.*.tmp' --exclude '__pycache__/' --exclude '.pytest_cache/' \
   --exclude '*.pyc' --exclude '/start.bat' \
   "$SRC_DIR/" "$APP_DIR/"
-
 if [[ $FIRST_INSTALL -eq 1 ]]; then
-  say "Elso telepites: config/ es data/ atvetele a feltoltott csomagbol"
+  say "Elso telepites: config/ atvetele a csomagbol"
   cp -a "$SRC_DIR/config" "$APP_DIR/config"
-  if [[ -d "$SRC_DIR/data" ]]; then
-    rsync -a --exclude '/research/' --exclude '/universe/' "$SRC_DIR/data/" "$APP_DIR/data/"
-  fi
 fi
 install -d "$APP_DIR/data" "$APP_DIR/logs"
 chown -R "$SVC_USER:$SVC_USER" "$APP_DIR/data" "$APP_DIR/config" "$APP_DIR/logs"
 chmod 700 "$APP_DIR/data" "$APP_DIR/config" "$APP_DIR/logs"
 
 # --- 4. Titkok ----------------------------------------------------------------
+# a titkok soha nem jonnek a feltoltott csomagbol (a helyi .env a fo StockWatch kulcsait is tartalmazza)
 if [[ ! -f "$ENV_FILE" ]]; then
-  if [[ -f "$SRC_DIR/.env" ]]; then
-    say "Titkok atvetele a feltoltott .env-bol -> $ENV_FILE"
-    sed 's/\r$//' "$SRC_DIR/.env" > "$ENV_FILE"
-  else
-    say "Ures titokfajl a minta alapjan -> $ENV_FILE"
-    sed 's/\r$//' "$SRC_DIR/.env.example" > "$ENV_FILE"
-  fi
+  say "Ures titokfajl a minta alapjan -> $ENV_FILE"
+  sed 's/\r$//' "$SRC_DIR/.env.example" > "$ENV_FILE"
 fi
 chown "$SVC_USER:$SVC_USER" "$ENV_FILE"
 chmod 600 "$ENV_FILE"
@@ -109,118 +101,88 @@ say "Python fuggosegek (elso alkalommal par perc)"
 "$APP_DIR/.venv/bin/pip" install -q --upgrade pip
 "$APP_DIR/.venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
 "$APP_DIR/.venv/bin/python" -m compileall -q "$APP_DIR/src" "$APP_DIR/cli.py" >/dev/null || true
-# ARM gepen (pl. Oracle Ampere) a Chrome for Testing-nek nincs linux-arm64 valtozata: a Playwright
-# projekt arm64-es Chromium headless shell-je kerul a /opt/chromium-ba, "chromium" neven a PATH-ra
-# (a kaleido ezen a neven is keresi). Fix meret (~280 MB), nem no.
-if [[ "$(uname -m)" == "aarch64" ]] && ! command -v chromium >/dev/null; then
-  say "Chromium (headless shell) ARM-ra a chart-kepekhez"
-  PW_VENV=$(mktemp -d)
-  if python3 -m venv "$PW_VENV" && "$PW_VENV/bin/pip" install -q playwright \
-     && PLAYWRIGHT_BROWSERS_PATH=/opt/chromium "$PW_VENV/bin/playwright" install --with-deps --only-shell chromium >/dev/null; then
-    ln -sf "$(ls /opt/chromium/chromium_headless_shell-*/chrome-headless-shell-linux*/chrome-headless-shell | tail -1)" \
-      /usr/local/bin/chromium
-  else
-    warn "A Chromium telepitese nem sikerult."
-  fi
-  rm -rf "$PW_VENV"
-fi
-# a Chrome a futtato felhasznalo HOME-jaba kerul - ezert a szolgaltatas neveben toltjuk le
-if [[ -x "$APP_DIR/.venv/bin/plotly_get_chrome" && "$(uname -m)" != "aarch64" ]]; then
-  as_svc "$APP_DIR/.venv/bin/plotly_get_chrome" -y >/dev/null 2>&1 || true
-fi
-CHART_TEST='import plotly.graph_objects as go; go.Figure().to_image(format="png", width=50, height=50)'
-as_svc timeout 120 "$APP_DIR/.venv/bin/python" -c "$CHART_TEST" >/dev/null 2>&1 \
-  && echo "Chart-kep rendereles: rendben" \
-  || warn "A chart-kep rendereles nem mukodik - a Telegram-riasztas kep nelkul megy (minden mas rendben)."
 
 # --- 6. Naplo-plafon (minden irt fajlnak legyen felso korlatja) ---------------
 install -d /etc/systemd/journald.conf.d
-cat > /etc/systemd/journald.conf.d/stockwatch.conf <<'EOF'
-# StockWatch telepito: a rendszernaplo ne nojon korlatlanul
+cat > /etc/systemd/journald.conf.d/$NAME.conf <<'EOF'
+# StockWatch Gyakorlas telepito: a rendszernaplo ne nojon korlatlanul
 [Journal]
 SystemMaxUse=200M
 EOF
 systemctl restart systemd-journald
 
-# --- 7. Webes jelszo ------------------------------------------------------------
-if ! grep -qE '^STOCKWATCH_WEB_PASSWORD_HASH=.+' "$ENV_FILE"; then
-  say "A webes felulet jelszava (min. 12 karakter)"
-  if [[ -t 0 && -t 1 ]]; then
-    as_svc "$APP_DIR/.venv/bin/python" "$APP_DIR/cli.py" web-password \
-      || warn "Nem lett jelszo beallitva. Kesobb: sudo stockwatch-password"
-  else
-    warn "Nincs terminal - a jelszot kesobb allitsd be: sudo stockwatch-password"
-  fi
+# --- 7. Adatbazis es levelezes -------------------------------------------------
+# DATABASE_URL (Neon), SMTP_HOST / MAIL_FROM (ellenorzo levelek), PUBLIC_URL (a levelek linkje) a titokfajlban
+for key in DATABASE_URL SMTP_HOST MAIL_FROM PUBLIC_URL; do
+  grep -qE "^$key=.+" "$ENV_FILE" || warn "$key nincs beallitva: sudo -u $SVC_USER nano $ENV_FILE (lasd README)"
+done
+if grep -qE '^DATABASE_URL=.+' "$ENV_FILE"; then
+  say "Adatbazis-migraciok"
+  as_svc "$APP_DIR/.venv/bin/python" cli.py db migrate || warn "A migracio nem sikerult (sudo $NAME-cli db migrate)"
 fi
-cat > /usr/local/sbin/stockwatch-password <<EOF
+cat > /usr/local/sbin/$NAME-cli <<EOF
 #!/bin/sh
-# A StockWatch webes jelszo beallitasa / csereje
-runuser -u $SVC_USER -- env STOCKWATCH_ENV_FILE=$ENV_FILE HOME=$STATE_DIR $APP_DIR/.venv/bin/python $APP_DIR/cli.py web-password "\$@" \
-  && systemctl restart stockwatch-web && echo "A webes felulet fut."
-EOF
-chmod 755 /usr/local/sbin/stockwatch-password
-cat > /usr/local/sbin/stockwatch-cli <<EOF
-#!/bin/sh
-# Barmely cli.py parancs a szolgaltatas felhasznalojakent, pl.: sudo stockwatch-cli discord
+# Barmely cli.py parancs a szolgaltatas felhasznalojakent, pl.: sudo $NAME-cli practice-pool
 cd $APP_DIR && exec runuser -u $SVC_USER -- env STOCKWATCH_ENV_FILE=$ENV_FILE HOME=$STATE_DIR $APP_DIR/.venv/bin/python $APP_DIR/cli.py "\$@"
 EOF
-chmod 755 /usr/local/sbin/stockwatch-cli
+chmod 755 /usr/local/sbin/$NAME-cli
 
 # --- 8. Kezdo adat ------------------------------------------------------------
-if [[ $FIRST_INSTALL -eq 1 ]] && ! compgen -G "$APP_DIR/data/ohlcv/*.csv" >/dev/null; then
-  say "Arfolyamadat letoltese (nincs feltoltott data/)"
-  as_svc "$APP_DIR/.venv/bin/python" cli.py fetch --symbols all \
-    || warn "A letoltes nem sikerult; a monitor a kovetkezo ciklusban ujraprobalja."
+if [[ ! -f "$APP_DIR/data/practice/pool.json.gz" ]]; then
+  say "Feladatkeszlet (szintetikus, ~1-2 perc)"
+  as_svc "$APP_DIR/.venv/bin/python" cli.py practice-pool \
+    || warn "A feladatkeszlet nem keszult el; kesobb: sudo $NAME-cli practice-pool"
 fi
 
-# --- 9. Szolgaltatasok ----------------------------------------------------------
-say "systemd szolgaltatasok"
-install -m 644 "$APP_DIR/deploy/stockwatch-monitor.service" /etc/systemd/system/
-install -m 644 "$APP_DIR/deploy/stockwatch-web.service" /etc/systemd/system/
-install -m 644 "$APP_DIR/deploy/stockwatch-lab.service" /etc/systemd/system/
+# --- 9. Szolgaltatas -------------------------------------------------------------
+say "systemd szolgaltatas: $NAME"
+install -m 644 "$APP_DIR/deploy/$NAME.service" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable stockwatch-monitor stockwatch-web stockwatch-lab >/dev/null
-systemctl restart stockwatch-monitor stockwatch-lab
-if grep -qE '^STOCKWATCH_WEB_PASSWORD_HASH=.+' "$ENV_FILE"; then
-  systemctl restart stockwatch-web
+systemctl enable "$NAME" >/dev/null
+if grep -qE '^DATABASE_URL=.+' "$ENV_FILE"; then
+  systemctl restart "$NAME"
 else
-  # jelszo nelkul a felulet nem indulhat - ne porogjon feleslegesen ujrainditasban
-  systemctl stop stockwatch-web
-  warn "A webes felulet jelszo nelkul nem indul. Beallitas: sudo stockwatch-password (utana magatol elindul)"
+  # adatbazis nelkul a felulet nem indulhat - ne porogjon feleslegesen ujrainditasban
+  systemctl stop "$NAME"
+  warn "A felulet DATABASE_URL nelkul nem indul. Beallitas utan: sudo $NAME-cli db migrate && sudo systemctl restart $NAME"
 fi
 
 # --- 10. HTTPS (Caddy) ------------------------------------------------------------
 if [[ -n "$DOMAIN" ]]; then
   say "Caddy HTTPS: https://$DOMAIN"
-  if ! apt-get install -y -q caddy; then
-    # a disztribucio tarolojaban nincs (pl. Ubuntu 22.04): a Caddy hivatalos tarolojabol
-    apt-get install -y -q debian-keyring debian-archive-keyring apt-transport-https curl gpg
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-      | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-      > /etc/apt/sources.list.d/caddy-stable.list
-    apt-get update -q && apt-get install -y -q caddy
+  if ! command -v caddy >/dev/null; then
+    if ! apt-get install -y -q caddy; then
+      # a disztribucio tarolojaban nincs (pl. Ubuntu 22.04): a Caddy hivatalos tarolojabol
+      apt-get install -y -q debian-keyring debian-archive-keyring apt-transport-https curl gpg
+      curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+        | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+      curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+        > /etc/apt/sources.list.d/caddy-stable.list
+      apt-get update -q && apt-get install -y -q caddy
+    fi
   fi
-  if [[ -f /etc/caddy/Caddyfile ]] && ! grep -q '# StockWatch' /etc/caddy/Caddyfile; then
-    cp /etc/caddy/Caddyfile "/etc/caddy/Caddyfile.bak.$(date +%Y%m%d%H%M%S)"
-  fi
-  cat > /etc/caddy/Caddyfile <<EOF
-# StockWatch - a deploy/install.sh irta. Tanusitvany: automatikusan (Let's Encrypt).
+  # sajat oldalblokk kulon fajlban; a fo Caddyfile-ba csak egy import sor kerul (a tobbi oldal erintetlen)
+  cat > "$SITE_FILE" <<EOF
+# StockWatch Gyakorlas - a deploy/install.sh irta. Tanusitvany: automatikusan (Let's Encrypt).
 $DOMAIN {
 	encode gzip
-	reverse_proxy 127.0.0.1:8765
+	reverse_proxy 127.0.0.1:$PORT
 	header {
 		-Server
-		X-Robots-Tag "noindex, nofollow"
 	}
 	log {
-		output file /var/log/caddy/stockwatch.log {
+		output file /var/log/caddy/$NAME.log {
 			roll_size 10MiB
 			roll_keep 3
 		}
 	}
 }
 EOF
+  touch /etc/caddy/Caddyfile
+  if ! grep -qxF "import $SITE_FILE" /etc/caddy/Caddyfile; then
+    cp /etc/caddy/Caddyfile "/etc/caddy/Caddyfile.bak.$(date +%Y%m%d%H%M%S)"
+    printf '\nimport %s\n' "$SITE_FILE" >> /etc/caddy/Caddyfile
+  fi
   # Oracle Cloud Ubuntu kepei iptables-szaballyal mindent eldobnak a 22-es porton kivul
   if iptables -S INPUT 2>/dev/null | grep -q -- '-j REJECT'; then
     for port in 80 443; do
@@ -228,7 +190,7 @@ EOF
         || iptables -I INPUT 5 -m state --state NEW -p tcp --dport $port -j ACCEPT
     done
     command -v netfilter-persistent >/dev/null && netfilter-persistent save >/dev/null 2>&1 || true
-    warn "Oracle Cloud: a VCN Security List-ben is nyisd meg a 80-as es 443-as portot (Ingress, 0.0.0.0/0)."
+    warn "Oracle Cloud: a VCN Security List-ben is legyen nyitva a 80-as es 443-as port (Ingress, 0.0.0.0/0)."
   fi
   caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
   systemctl enable caddy >/dev/null
@@ -238,20 +200,18 @@ fi
 # --- Osszegzes ------------------------------------------------------------------
 sleep 3
 say "Kesz"
-systemctl --no-pager --lines=0 status stockwatch-monitor stockwatch-web stockwatch-lab | grep -E '●|Active:' || true
+systemctl --no-pager --lines=0 status "$NAME" | grep -E '●|Active:' || true
 cat <<EOF
 
-  Naplo:          journalctl -u stockwatch-monitor -f      (es: $APP_DIR/logs/app.log)
-  Labor:          sudo stockwatch-cli lab status           (naplo: journalctl -u stockwatch-lab -f)
-  Ujrainditas:    sudo systemctl restart stockwatch-monitor stockwatch-web
-  Jelszocsere:    sudo stockwatch-password
-  Discord:        a feluleten (Beallitasok -> Discord ertesitesek) vagy: sudo stockwatch-cli discord
-  CLI parancs:    sudo stockwatch-cli <parancs>   (pl. positions, broker, test-alert)
+  Naplo:          journalctl -u $NAME -f      (es: $APP_DIR/logs/app.log)
+  Ujrainditas:    sudo systemctl restart $NAME
+  Migracio:       sudo $NAME-cli db migrate
+  CLI parancs:    sudo $NAME-cli <parancs>   (pl. practice-pool, data-usage)
   Titkok:         sudo -u $SVC_USER nano $ENV_FILE   (utana: ujrainditas)
 EOF
 if [[ -n "$DOMAIN" ]]; then
   echo "  Felulet:        https://$DOMAIN   (a domain A rekordja erre a szerverre mutasson, 80/443 nyitva)"
 else
-  echo "  Felulet:        a sajat gepeden: ssh -L 8765:127.0.0.1:8765 <felhasznalo>@<szerver>"
-  echo "                  majd bongeszoben: http://127.0.0.1:8765"
+  echo "  Felulet:        a sajat gepeden: ssh -L $PORT:127.0.0.1:$PORT <felhasznalo>@<szerver>"
+  echo "                  majd bongeszoben: http://127.0.0.1:$PORT"
 fi

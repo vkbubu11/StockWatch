@@ -264,37 +264,3 @@ def evaluate(symbol: str, df: pd.DataFrame, settings: Settings, params: Pullback
         if check.passed is None:
             signal.warnings.append(f"Nem ellenorizheto - {check.name}: {check.detail}")
     return signal
-
-
-def rank_key(signal) -> tuple:
-    """A napi rangsor: a legalacsonyabb RSI(2) elol, egyenlonel a nagyobb NATR (ugyanaz, mint a kutatasban)."""
-    extras = signal.pattern.extras or {}
-    return (extras.get("rsi2", 100.0), -extras.get("natr", 0.0), signal.symbol)
-
-
-def format_title(signal) -> str:
-    return f"{signal.symbol}: VISSZAHUZAS - veteli limit holnapra {signal.plan.entry_limit:.2f} $"
-
-
-def format_body(signal, params: PullbackParams) -> str:
-    plan, extras = signal.plan, signal.pattern.extras or {}
-    lines = [
-        f"Jelzes napja: {signal.as_of:%Y-%m-%d}  |  zaro {signal.price:.2f} $",
-        f"VETELI LIMIT holnapra (egynapos): {plan.entry_limit:.2f} $  (-{params.limit_pct:g}%)",
-        f"Stop: {plan.stop:.2f} $  ({params.stop_atr:g} x ATR)  |  darab: {plan.shares}",
-        f"Kilepes: ha a zaro ConnorsRSI {params.exit_crsi:g} fole megy"
-        + (f" vagy a zaro az SMA{params.exit_sma} fole er" if params.exit_sma else "")
-        + f" -> masnap NYITASKOR; legkesobb {params.time_stop} nap utan.",
-        f"Most: RSI(2) {extras.get('rsi2')}, ConnorsRSI {extras.get('crsi')}, NATR {extras.get('natr')}%",
-        "",
-        "Ha a limit holnap nem teljesul, a jelzes ervenyet veszti (ne vegyel utana).",
-    ]
-    news = getattr(signal, "news", None)
-    if news:
-        from .sentiment.service import summary
-
-        lines.append(f"Hirek (tajekoztato, nem dont): {summary(news)}")
-    for w in signal.warnings:
-        lines.append(f"Figyelem: {w}")
-    lines += ["", "Nem befektetesi tanacs."]
-    return "\n".join(lines)

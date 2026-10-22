@@ -10,7 +10,6 @@ rossz tipus mar indulaskor kiderul, nem fel ora futas utan.
 from __future__ import annotations
 
 import os
-import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -96,53 +95,6 @@ class BacktestSettings(BaseModel):
     quality_buckets: list[float] = Field(default_factory=lambda: [0.55, 0.7, 0.85])
 
 
-class AlertSettings(BaseModel):
-    console: bool = True
-    jsonl: bool = True
-    telegram: bool = True
-    discord: bool = True          # csak akkor aktiv, ha DISCORD_WEBHOOK_URL be van allitva
-    webhook: bool = True          # csak akkor aktiv, ha ALERT_WEBHOOK_URL be van allitva
-    send_chart: bool = True
-    heartbeat: bool = True        # napi eletjel zaras utan + uzenet a monitor indulasakor
-    quiet_hours: list[str] = Field(default_factory=list)
-    min_seconds_between: float = 5
-    # A regi, minden formacioallapotra kuldott riasztas (bearish is).
-    # A swing long belepesi jelzesektol fuggetlen.
-    pattern_events: bool = True
-    # Milyen iranyu jelzesek menjenek ki:
-    #   long  - csak a swing long belepesi jelzesek (alap)
-    #   short - csak a medves alakzatok lefele torese (nincs short belepesi motor)
-    #   both  - mindketto
-    # A poziciokovetes, a sajat poziciok es a paper trading ertesitesei mindig mennek.
-    direction: str = "long"
-    # Az ertesitesek (Discord, Telegram, webhook, konzol) nyelve: hu, en, de, es. A jelzesnaplo (jsonl)
-    # mindig magyar marad; a felulet a sajat, bongeszonkenti nyelvvalasztoja szerint jeleniti meg.
-    language: str = "hu"
-
-    @field_validator("direction")
-    @classmethod
-    def _direction(cls, value: str) -> str:
-        if value not in ("long", "short", "both"):
-            raise ValueError(f"direction: {value} - lehetseges: long, short, both")
-        return value
-
-    @field_validator("language")
-    @classmethod
-    def _language(cls, value: str) -> str:
-        value = value.strip().lower()
-        if value not in LANGUAGES:
-            raise ValueError(f"language: {value} - lehetseges: {', '.join(LANGUAGES)}")
-        return value
-
-    @property
-    def want_long(self) -> bool:
-        return self.direction in ("long", "both")
-
-    @property
-    def want_short(self) -> bool:
-        return self.direction in ("short", "both")
-
-
 class EntrySettings(BaseModel):
     """A swing LONG belepesi motor szabalyai (entry.py).
 
@@ -213,7 +165,7 @@ class EntrySettings(BaseModel):
     # --- vegrehajtas modellezese a backtestben ---
     entry_max_gap_pct: float = 1.0          # masnapi nyito ennyivel lehet a zaro folott
     slippage_bps: float = 5.0               # oldalankent
-    commission_bps: float = 0.0             # kotesi dij oldalankent - a broker.commission_pct-bol (Settings tolti)
+    commission_bps: float = 0.0             # kotesi dij oldalankent (az oktatasi kiadasban nincs)
 
     @property
     def total_cost_bps(self) -> float:
@@ -226,22 +178,6 @@ class EntrySettings(BaseModel):
         allowed = ("target", "partial", "trail", "partial_trail")
         if value not in allowed:
             raise ValueError(f"exit_mode: {value} - lehetseges: {', '.join(allowed)}")
-        return value
-
-
-class LabSettings(BaseModel):
-    """Strategia-labor (lab.py) es a gepi tanulas arnyek-uzeme (shadow.py)."""
-
-    # auto: csak ha a legutobbi walk-forward jelentes szerint a modell mintan kivul jobb a mostani
-    #       szuroknel ("better") | on: ha van mentett modell | off: soha
-    # Az arnyek-uzemben a modell becslese a jelzesek melle kerul es naplozodik - de SEMMIROL nem dont.
-    shadow: str = "auto"
-
-    @field_validator("shadow")
-    @classmethod
-    def _shadow(cls, value: str) -> str:
-        if value not in ("auto", "on", "off"):
-            raise ValueError(f"lab.shadow: {value} - lehetseges: auto, on, off")
         return value
 
 
@@ -261,39 +197,6 @@ class ScanSettings(BaseModel):
         if value not in ("watchlist", "nasdaq100", "sp500", "indexes", "all"):
             raise ValueError(f"scan.best_list: {value} - lehetseges: watchlist, nasdaq100, sp500, indexes, all")
         return value
-
-
-class BrokerSettings(BaseModel):
-    """Alpaca PAPER kereskedes (broker.py). A kulcsok a .env-ben vannak, nem itt."""
-
-    auto_trade: bool = False        # a monitor maga kuldi-e be a belepesi jelzeseket
-    size_from_account: bool = True  # darabszam a paper szamla toke-jebol (kulonben entry.account_size)
-    max_open_trades: int = 5        # egyszerre ennyi nyitott + fuggo broker-trade (a fuggo limit is helyet foglal)
-    # Kitores: a belepo csak a NYITASKOR teljesulhet (mint a backtestben). Ha a nyitas utan ennyi perccel
-    # sem teljesult (a nyito a limit folott volt), visszavonjuk. 0 = ki (a limit egesz nap el).
-    entry_window_min: int = 5
-    # Eles kereskedes elotti kapu (stratégiankent, a lezart paper trade-ekbol)
-    live_gate_min_trades: int = 50  # ennyi lezart paper trade kell a donteshez
-    live_gate_win: float = 0.70     # nyeresi arany legalabb
-    live_gate_pf: float = 1.3       # profit-faktor legalabb
-    # Kotesi dij a kotes ertekenek %-aban, oldalankent (vetelkor es eladaskor is). Minden stratégia
-    # (eles kovetes, backteszt, kutatas) a sajat csuszas-koltsegen FELUL ezzel szamol, es a paper trade-ek
-    # eredmenyebol is levonodik. Az Alpaca jutalekmentes: 0.
-    commission_pct: float = 0.0
-
-    @property
-    def commission_bps(self) -> float:
-        return self.commission_pct * 100
-
-    @model_validator(mode="after")
-    def _check(self) -> "BrokerSettings":
-        if not 0 <= self.entry_window_min <= 390:
-            raise ValueError("broker.entry_window_min: 0 es 390 perc kozott")
-        if not 0 <= self.commission_pct <= 2:
-            raise ValueError("broker.commission_pct: 0 es 2% kozott")
-        if not 0 < self.live_gate_win < 1 or self.live_gate_min_trades < 1 or self.live_gate_pf <= 0:
-            raise ValueError("broker.live_gate_*: ervenytelen kuszob")
-        return self
 
 
 class PullbackParams(BaseModel):
@@ -316,7 +219,7 @@ class PullbackParams(BaseModel):
     max_signals_per_day: int = 0            # naponta legfeljebb ennyi jelzes (rangsor: legalacsonyabb RSI2)
     max_open: int = 0                       # egyszerre legfeljebb ennyi nyitott / fuggo kotes (0 = korlat nelkul)
     cost_bps: float = 5.0                   # oldalankent (csuszas + spread) - a netto eredmenyhez
-    commission_bps: float = 0.0             # kotesi dij oldalankent - a broker.commission_pct-bol (Settings tolti)
+    commission_bps: float = 0.0             # kotesi dij oldalankent (az oktatasi kiadasban nincs)
 
     @property
     def total_cost_bps(self) -> float:
@@ -347,7 +250,6 @@ class PullbackParams(BaseModel):
 
 class StrategySwitch(BaseModel):
     enabled: bool = True
-    alerts: bool = True             # Discord / Telegram ertesites (a naploba mindig bekerul)
 
 
 class PullbackStrategy(StrategySwitch):
@@ -454,7 +356,7 @@ class MomentumParams(BaseModel):
     min_price: float = 5.0
     min_dollar_volume: float = 20_000_000   # 20 napos atlagos dollarforgalom
     cost_bps: float = 5.0                   # oldalankent (csuszas + spread)
-    commission_bps: float = 0.0             # kotesi dij oldalankent - a broker.commission_pct-bol (Settings tolti)
+    commission_bps: float = 0.0             # kotesi dij oldalankent (az oktatasi kiadasban nincs)
 
     @property
     def total_cost_bps(self) -> float:
@@ -514,86 +416,6 @@ def benchmark_for(scan: "ScanSettings") -> str:
     return "SPY" if scan.sp500 else "QQQ"
 
 
-class SentimentSettings(BaseModel):
-    """Hir- es hangulatelemzes (sentiment) - ARNYEK-UZEM: a jelzes melle irja a hir-jellemzoket, nem dont.
-    Terv: docs/SENTIMENT-DESIGN.md."""
-
-    enabled: bool = True
-    sources: list[str] = Field(default_factory=lambda: ["edgar", "yahoo", "alpaca"])
-    history_days: int = 120          # elo frissiteskor ennyi napra visszamenoleg (EDGAR, Alpaca)
-    cache_minutes: int = 60          # forrasonkent legfeljebb ilyen gyakran kerdezzuk ujra ugyanazt a papirt
-    max_symbols_per_cycle: int = 30  # egy monitor-korben legfeljebb ennyi papir hireit frissitjuk
-
-    @field_validator("sources")
-    @classmethod
-    def _sources(cls, value: list[str]) -> list[str]:
-        unknown = set(value) - {"edgar", "yahoo", "alpaca"}
-        if unknown:
-            raise ValueError(f"sentiment.sources: ismeretlen forras: {', '.join(sorted(unknown))}")
-        return list(dict.fromkeys(value))
-
-
-class DigestWeights(BaseModel):
-    """A reggeli osszefoglalo esemenyeinek alapsulya (digest/score.py) - szabalyalapu fontossag."""
-
-    regime_change: float = 5.0          # QQQ / S&P 500 a 200 napos atlag folott / alatt
-    pattern_triggered: float = 5.0      # formacio triggerszintje atlepve
-    level_break: float = 4.0            # rezisztencia folott / support alatt zart
-    earnings_soon: float = 4.0          # gyorsjelentes kuszobon belul
-    candidate_in: float = 4.0           # bekerult egy strategia jeloltjei koze
-    material_news: float = 4.0          # lenyeges negativ hir (sentiment)
-    near_trigger: float = 3.0           # a trigger kozeleben (ATR-ben)
-    pattern_new: float = 3.0
-    filing_8k: float = 3.0              # uj 8-K (lenyeges tetelnel x2)
-    own_trend: float = 3.0              # a papir zaroja a sajat 200 napos atlaga folott / alatt
-    candidate_out: float = 2.0
-    pattern_gone: float = 2.0
-    sentiment_flip: float = 2.0         # a hirhangulat elojelet valtott
-
-    @model_validator(mode="after")
-    def _check(self) -> "DigestWeights":
-        if any(not 0 <= v <= 100 for v in self.model_dump().values()):
-            raise ValueError("digest.weights: 0 es 100 kozott")
-        return self
-
-
-class DigestSettings(BaseModel):
-    """Reggeli osszefoglalo (digest/): a watchlist es a Sajat poziciok valtozasai nyitas elott."""
-
-    enabled: bool = True
-    send_discord: bool = False          # Discordra is (a meglevo ertesitesi retegen); a web mindig mutatja
-    time: str = "06:30"                 # Europe/Budapest - 07:00-ra kesz
-    max_items: int = 15                 # osszesen legfeljebb ennyi tetel
-    per_symbol: int = 3                 # papironkent legfeljebb ennyi sor
-    near_trigger_atr: float = 1.0       # ennyi ATR-en belul a triggerhez: "kozel"
-    earnings_days: list[int] = Field(default_factory=lambda: [7, 3, 1])   # ezeknel a kuszoboknel szol
-    sentiment_deadband: float = 0.1    # a hangulat-atlag ennyin belul semleges
-    holding_mult: float = 1.5           # a Sajat poziciok esemenyei ennyivel fontosabbak
-    keep_days: int = 90                 # az archivum megorzese
-    weights: DigestWeights = Field(default_factory=DigestWeights)
-
-    @field_validator("time")
-    @classmethod
-    def _time(cls, value: str) -> str:
-        m = re.fullmatch(r"(\d{1,2}):(\d{2})", str(value).strip())
-        if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
-            raise ValueError(f"digest.time: {value} - formatum: OO:PP")
-        return f"{int(m.group(1)):02d}:{m.group(2)}"
-
-    @model_validator(mode="after")
-    def _check(self) -> "DigestSettings":
-        if not 1 <= self.max_items <= 50 or not 1 <= self.per_symbol <= 5:
-            raise ValueError("digest: max_items 1-50, per_symbol 1-5")
-        if not 0.1 <= self.near_trigger_atr <= 5 or not 0 <= self.sentiment_deadband <= 1:
-            raise ValueError("digest: near_trigger_atr 0,1-5, sentiment_deadband 0-1")
-        if not self.earnings_days or any(not 0 <= d <= 60 for d in self.earnings_days):
-            raise ValueError("digest.earnings_days: 0-60 napos kuszobok")
-        if not 1 <= self.holding_mult <= 5 or not 7 <= self.keep_days <= 365:
-            raise ValueError("digest: holding_mult 1-5, keep_days 7-365")
-        self.earnings_days = sorted(set(self.earnings_days), reverse=True)
-        return self
-
-
 class PracticeSettings(BaseModel):
     """Gyakorlo mod (practice/): a short kotes kolcsonzesi dija es a dontes-itelet kuszobei."""
 
@@ -602,9 +424,17 @@ class PracticeSettings(BaseModel):
     tight_stop_atr: float = 1.0         # ennel szorosabb stop: "tul szoros" jelzes
     min_rr: float = 1.0                 # ennel kisebb cel/kockazat arany: jelzes
     better_r: float = 0.5               # a "jobb stop" osszevetes csak legalabb ennyi R javulasnal jelenik meg
+    # a feladatok forrasa: synthetic (practice/synthetic.py, adatlicenc nelkul) | real (letoltott arfolyam -
+    # nyilvanos szolgaltatasban csak licencelt forrasbol)
+    source: str = "synthetic"
+    synthetic_symbols: int = 300        # ennyi szintetikus papir a keszletben
 
     @model_validator(mode="after")
     def _check(self) -> "PracticeSettings":
+        if self.source not in ("synthetic", "real"):
+            raise ValueError("practice.source: synthetic vagy real")
+        if not 10 <= self.synthetic_symbols <= 2000:
+            raise ValueError("practice.synthetic_symbols: 10 es 2000 kozott")
         if not 0 <= self.borrow_bps_day <= 100:
             raise ValueError("practice.borrow_bps_day: 0 es 100 kozott")
         if not 0 < self.good_r <= 10 or not 0 < self.tight_stop_atr <= 5:
@@ -622,14 +452,9 @@ class Settings(BaseModel):
     patterns: PatternSettings = Field(default_factory=PatternSettings)
     forecast: ForecastSettings = Field(default_factory=ForecastSettings)
     backtest: BacktestSettings = Field(default_factory=BacktestSettings)
-    alerts: AlertSettings = Field(default_factory=AlertSettings)
     entry: EntrySettings = Field(default_factory=EntrySettings)
-    broker: BrokerSettings = Field(default_factory=BrokerSettings)
     scan: ScanSettings = Field(default_factory=ScanSettings)
-    lab: LabSettings = Field(default_factory=LabSettings)
     strategies: StrategiesSettings = Field(default_factory=StrategiesSettings)
-    sentiment: SentimentSettings = Field(default_factory=SentimentSettings)
-    digest: DigestSettings = Field(default_factory=DigestSettings)
     practice: PracticeSettings = Field(default_factory=PracticeSettings)
 
     @model_validator(mode="after")
@@ -640,18 +465,6 @@ class Settings(BaseModel):
             self.entry.benchmark = benchmark_for(self.scan)
         else:
             self.entry.benchmark = self.entry.benchmark.strip().upper()
-        return self
-
-    @model_validator(mode="after")
-    def _apply_commission(self) -> "Settings":
-        """A kotesi dij egy helyen allithato (broker.commission_pct); innen kerul minden motor parametereibe.
-        A strategies.yaml-ba nem irodik (save_strategies kiszuri), igy nem szamolodik ketszer."""
-        bps = self.broker.commission_bps
-        self.entry.commission_bps = bps
-        for sid in STRATEGY_IDS:
-            params = getattr(getattr(self.strategies, sid), "params", None)
-            if params is not None and hasattr(params, "commission_bps"):
-                params.commission_bps = bps
         return self
 
     def sandbox_breakout(self) -> "Settings | None":
@@ -668,28 +481,12 @@ class Settings(BaseModel):
         return DATA_DIR / "entry_state.json"
 
     @property
-    def positions_path(self) -> Path:
-        return DATA_DIR / "positions.json"
-
-    @property
     def index_members_path(self) -> Path:
         return DATA_DIR / "index_members.json"
 
     @property
     def index_scan_path(self) -> Path:
         return DATA_DIR / "index_scan.json"
-
-    @property
-    def broker_path(self) -> Path:
-        return DATA_DIR / "broker.json"
-
-    @property
-    def momentum_state_path(self) -> Path:
-        return DATA_DIR / "momentum_state.json"
-
-    @property
-    def holdings_path(self) -> Path:
-        return DATA_DIR / "holdings.json"
 
     @property
     def earnings_path(self) -> Path:
@@ -753,21 +550,6 @@ def load_settings() -> Settings:
     return Settings(**raw)
 
 
-def save_strategies(strategies: StrategiesSettings) -> None:
-    """A strategiak beallitasanak mentese (validalt modellbol, atomikusan)."""
-    STRATEGIES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = STRATEGIES_PATH.with_suffix(".yaml.tmp")
-    with tmp.open("w", encoding="utf-8") as fh:
-        fh.write("# A feluletrol irt strategia-beallitasok (Strategiak ful). Kezzel is szerkesztheto.\n")
-        data = strategies.model_dump()
-        for value in data.values():                      # a kotesi dij a settings.yaml-bol jon (broker)
-            if isinstance(value, dict) and isinstance(value.get("params"), dict):
-                value["params"].pop("commission_bps", None)
-        yaml.safe_dump(data, fh, allow_unicode=True, sort_keys=False)
-    tmp.replace(STRATEGIES_PATH)
-    load_settings.cache_clear()
-
-
 def yaml_tickers(values) -> list[str]:
     """Tickerlista YAML-bol. A YAML 1.1 az idezojel nelkuli ON / YES / NO / Y szavakat
     logikai erteknek olvassa - ezeket nem talalgatjuk, hanem jelezzuk (idezojel kell)."""
@@ -788,67 +570,6 @@ def yaml_tickers(values) -> list[str]:
 def load_watchlist() -> Watchlist:
     raw = _read_yaml(CONFIG_DIR / "watchlist.yaml")
     return Watchlist(**raw) if raw else Watchlist(symbols=["AAPL"])
-
-
-def save_watchlist(symbols: list[str]) -> None:
-    """A dashboard oldalsavja ezen keresztul irja vissza a listat."""
-    watchlist = Watchlist(symbols=symbols)
-    path = CONFIG_DIR / "watchlist.yaml"
-    with path.open("w", encoding="utf-8") as fh:
-        yaml.safe_dump({"symbols": watchlist.symbols}, fh, allow_unicode=True)
-    load_watchlist.cache_clear()
-
-
-def telegram_credentials() -> tuple[str | None, str | None]:
-    """A titkok kizarolag kornyezeti valtozobol jonnek, soha nem a YAML-bol."""
-    load_dotenv(ENV_PATH)
-    return os.getenv("TELEGRAM_BOT_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
-
-
-def webhook_url() -> str | None:
-    """Google Chat / Slack / Discord incoming webhook - kizarolag a .env-bol."""
-    load_dotenv(ENV_PATH)
-    return os.getenv("ALERT_WEBHOOK_URL") or None
-
-
-def discord_webhook_url() -> str | None:
-    """Discord webhook - kizarolag a titokfajlbol. A regi ALERT_WEBHOOK_URL-ben megadott
-    Discord cimet is ez a csatorna viszi (kartyaval, keppel)."""
-    url = env_value("DISCORD_WEBHOOK_URL")
-    if url:
-        return url
-    legacy = webhook_url() or ""
-    return legacy if "/api/webhooks/" in legacy and "discord" in legacy else None
-
-
-ALPACA_KEYS = ("ALPACA_ENDPOINT", "ALPACA_KEY_ID", "ALPACA_SECRET_KEY")
-
-
-def alpaca_credentials() -> tuple[str | None, str | None, str | None]:
-    """(endpoint, key, secret) - mindig frissen a .env-bol, mert a feluletrol
-    futas kozben is valtozhat (a kornyezeti valtozo ilyenkor elavult lenne)."""
-    values = dotenv_values(ENV_PATH) if ENV_PATH.exists() else {}
-    return tuple((values.get(k) or os.getenv(k) or None) for k in ALPACA_KEYS)  # type: ignore[return-value]
-
-
-def save_env(updates: dict[str, str]) -> None:
-    """Kulcsok beirasa / csereje a .env-ben; a tobbi sor (es komment) erintetlen."""
-    for key, value in updates.items():
-        if not key.isidentifier() or any(c in str(value) for c in "\r\n"):
-            raise ValueError(f"Ervenytelen .env ertek: {key}")
-    lines = ENV_PATH.read_text(encoding="utf-8").splitlines() if ENV_PATH.exists() else []
-    pending = dict(updates)
-    for i, line in enumerate(lines):
-        key = line.split("=", 1)[0].strip()
-        if key in pending:
-            lines[i] = f"{key}={pending.pop(key)}"
-    lines += [f"{k}={v}" for k, v in pending.items()]
-    # atomi csere; a titokfajl csak a tulajdonosanak olvashato (0600)
-    tmp = ENV_PATH.with_name(ENV_PATH.name + ".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("\n".join(lines) + "\n")
-    os.replace(tmp, ENV_PATH)
 
 
 def env_value(key: str) -> str | None:

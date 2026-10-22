@@ -1,15 +1,13 @@
-"""Backteszt oldal: adatgyujtes, adatminoseg, a kotesek egyezese a kutatassal, holdout-zar, mutatok, API."""
+"""A feladatkeszlet adatforrasa (a korabbi Backteszt oldal tara): adatgyujtes, adatminoseg, bemenet-ellenorzes."""
 from __future__ import annotations
 
-import json
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from stockwatch import entry_research, market, meanrev, performance, webapp
-from stockwatch import meanrev_research as mr
-from stockwatch.backtest_page import data, runner, runs
+from stockwatch import market
+from stockwatch.backtest_page import data
 from stockwatch.config import Settings
 
 
@@ -45,8 +43,6 @@ class FakeProvider:
 @pytest.fixture()
 def store(tmp_path, monkeypatch):
     monkeypatch.setattr(data, "BT_DIR", tmp_path / "backtest")
-    monkeypatch.setattr(runs, "RUNS_DIR", tmp_path / "backtest" / "runs")
-    monkeypatch.setattr(entry_research, "HOLDOUT_LOG", tmp_path / "holdout_log.jsonl")
     monkeypatch.setattr(market, "load_context", lambda *a, **k: market.MarketContext({}, frozenset(), frozenset()))
     frames = {"TEST": synthetic(), "^GSPC": synthetic(seed=5), "QQQ": synthetic(seed=6), "SPY": synthetic(seed=7)}
     provider = FakeProvider(frames)
@@ -90,140 +86,6 @@ def test_input_validation():
         data.clean_symbol("rossz ticker!")
     with pytest.raises(ValueError):
         data.parse_start("1900-01-01")
-    s = Settings()
-    with pytest.raises(ValueError, match="Ismeretlen parameter"):
-        runner.resolve_params(s, "etf", {"nincs_ilyen": 1}, None)
-    with pytest.raises(ValueError):
-        runner.resolve_params(s, "etf", {"stop_atr": 99}, None)              # a PullbackParams validacioja
-    with pytest.raises(ValueError, match="Kitores"):
-        runner.resolve_params(s, "breakout", {}, None)
-    p = runner.resolve_params(s, "etf", {"rsi2_max": "5", "regime_filter": "false"}, 7)
-    assert p.rsi2_max == 5.0 and p.regime_filter is False and p.cost_bps == 7.0
-
-
-def test_commission_from_settings_reaches_every_engine(tmp_path, monkeypatch):
-    s = Settings(broker={"commission_pct": 0.1})
-    assert s.entry.commission_bps == 10 and s.entry.total_cost_bps == s.entry.slippage_bps + 10
-    for sid in ("pullback", "deep", "etf", "momentum", "sandbox"):
-        p = s.strategies.get(sid).params
-        assert p.commission_bps == 10 and p.total_cost_bps == p.cost_bps + 10
-    assert meanrev.net_return(100, 110, 10)[1] < meanrev.net_return(100, 110, 0)[1]
-    with pytest.raises(ValueError):
-        Settings(broker={"commission_pct": 5})
-    # a strategies.yaml-ba nem irodik (kulonben ketszer szamolodna)
-    from stockwatch import config
-    monkeypatch.setattr(config, "STRATEGIES_PATH", tmp_path / "strategies.yaml")
-    config.save_strategies(s.strategies)
-    assert "commission_bps" not in (tmp_path / "strategies.yaml").read_text(encoding="utf-8")
-
-
-def test_commission_lowers_backtest_result(store):
-    plain = runner.run("TEST", "etf", Settings(), start="2012-01-02")
-    costly = runner.run("TEST", "etf", Settings(broker={"commission_pct": 0.2}), start="2012-01-02")
-    assert costly["params"]["commission_bps"] == 20
-    assert costly["periods"]["all"]["ev"] < plain["periods"]["all"]["ev"]
-
-
-def test_trades_match_research_engine(store):
-    """Egyetlen igazsagforras: azonos adatra es parameterre ugyanazok a kotesek, mint a kutatasban."""
-    s = Settings()
-    result = runner.run("TEST", "etf", s, start="2012-01-02")
-    params = s.strategies.etf.params
-    df = data.load("TEST")
-    df = df[df.index <= entry_research.HOLDOUT_START - pd.Timedelta(days=1)]
-    feat = meanrev.features(df, params)
-    sd = mr.SymbolData(feat, meanrev.regime_series(feat, df), [])
-    orders, _ = mr.portfolio(mr.candidates({"TEST": sd}, params), params)
-    expected = sorted((t.to_dict() for t in orders), key=lambda d: d["signal_date"])
-    got = [{k: v for k, v in t.items() if k != "r"} for t in result["trades"]]
-    assert len(got) >= 20 and got == expected
-    assert result["periods"]["all"]["n"] == sum(1 for t in orders if t.status == "closed")
-
-
-def test_holdout_hidden_by_default_and_logged_when_opened(store):
-    s = Settings()
-    hidden = runner.run("TEST", "etf", s, start="2020-01-02")
-    assert hidden["end"] == "2025-03-31" and not hidden["holdout"] and "holdout" not in hidden["periods"]
-    assert all(t["signal_date"] < "2025-04-01" for t in hidden["trades"])
-    assert hidden["equity"]["t"][-1] <= "2025-03-31" and hidden["price"]["t"][-1] <= "2025-03-31"
-    assert not entry_research.HOLDOUT_LOG.exists()
-    opened = runner.run("TEST", "etf", s, start="2020-01-02", include_holdout=True)
-    assert opened["holdout"] and "holdout" in opened["periods"]
-    assert any(t["signal_date"] >= "2025-04-01" for t in opened["trades"])
-    log = [json.loads(line) for line in entry_research.HOLDOUT_LOG.read_text().splitlines()]
-    assert log[-1]["study"] == "backtest-page"
-
-
-def test_overrides_change_result_and_small_sample_warns(store):
-    s = Settings()
-    base = runner.run("TEST", "etf", s, start="2012-01-02")
-    strict = runner.run("TEST", "etf", s, start="2012-01-02", overrides={"rsi2_max": 2})
-    assert strict["periods"]["all"]["n"] < base["periods"]["all"]["n"]
-    assert strict["overrides"] == {"rsi2_max": 2}
-    assert any("kis minta" in w for w in strict["warnings"])
-
-
-def test_equity_curve_follows_trades_and_buy_hold(store):
-    s = Settings()
-    r = runner.run("TEST", "etf", s, start="2012-01-02", capital=10_000, alloc_pct=50)
-    assert r["equity"]["v"][0] == pytest.approx(10_000, rel=0.02)
-    df = data.load("TEST")
-    df = df[(df.index >= "2012-01-02") & (df.index <= "2025-03-31")]
-    assert r["buy_hold"]["v"][-1] == pytest.approx(10_000 * df["close"].iloc[-1] / df["close"].iloc[0], rel=1e-3)
-    assert 0 < r["strategy_metrics"]["exposure"] < 50                    # csak kotesben van piacon
-    assert r["years"][0]["year"] == 2012
-
-
-def test_performance_metrics_known_values():
-    idx = pd.bdate_range("2020-01-01", periods=253)
-    eq = pd.Series(np.linspace(100, 110, 253), index=idx)
-    m = performance.metrics(eq)
-    assert m["total"] == pytest.approx(10.0) and m["max_dd"] == 0 and m["calmar"] is None
-    dd = pd.Series([100, 120, 90, 130], index=pd.bdate_range("2020-01-01", periods=4))
-    assert performance.metrics(dd)["max_dd"] == pytest.approx(-25.0)
-    assert len(performance.downsample(pd.Series(range(5000)), 1000)) <= 1001
-
-
-def test_runs_saved_listed_and_capped(store, monkeypatch):
-    monkeypatch.setattr(runs, "MAX_RUNS", 2)
-    s = Settings()
-    ids = [runs.save(runner.run("TEST", "etf", s, start="2015-01-02")) for _ in range(3)]
-    listed = [x["id"] for x in runs.listing()]
-    assert len(listed) == 2 and ids[0] not in listed
-    assert runs.load(ids[-1])["symbol"] == "TEST"
-    assert runs.delete(ids[-1]) and runs.load(ids[-1]) is None
-    with pytest.raises(ValueError):
-        runs.load("../../etc")
-
-
-def _wait_job(timeout=30.0):
-    import time
-
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        job = webapp.backtest_jobs().snapshot()
-        if job["state"] != "running":
-            return job
-        time.sleep(0.05)
-    raise AssertionError("a backteszt-feladat nem fejezodott be")
-
-
-def test_web_run_fetches_data_first(store, monkeypatch):
-    """A Futtatas maga gyujti az adatot (kulon gomb nelkul), a tozsdere lepes elotti kezdodatumot igazitja."""
-    from stockwatch import feed
-
-    monkeypatch.setattr(webapp, "_BT_JOBS", None)
-    monkeypatch.setattr(feed, "get_provider", lambda settings: store)
-    store.frames["NEW"] = synthetic("2014-03-03", seed=9)
-    store.first_trade_date = lambda s: pd.Timestamp("2014-03-03") if s == "NEW" else None
-    assert data.load("NEW").empty
-    webapp.backtest_action("run", {"symbol": "NEW", "strategy": "etf", "start": "2000-01-01"})
-    job = _wait_job()
-    assert job["state"] == "done" and job["run_id"], job
-    assert data.meta("NEW")["first"] == "2014-03-03" and runs.load(job["run_id"])["start"] >= "2014-03-03"
-    webapp.backtest_action("run", {"symbol": "NOPE", "strategy": "etf", "start": "2012-01-02"})
-    job = _wait_job()
-    assert job["state"] == "error" and "Nincs elerheto adat" in job["message"]
 
 
 def test_listing_date_cached_and_bounds_start(store):
@@ -238,22 +100,3 @@ def test_listing_date_cached_and_bounds_start(store):
     assert data.earliest_start("XYZ", Settings(), store) == (data.MIN_START, None)
 
 
-def test_web_actions_validate_before_starting(store):
-    with pytest.raises(ValueError, match="Ervenytelen ticker"):
-        webapp.backtest_action("run", {"symbol": "rossz ticker!", "strategy": "etf"})
-    with pytest.raises(ValueError, match="Ismeretlen parameter"):
-        webapp.backtest_action("run", {"symbol": "TEST", "strategy": "etf", "params": {"x": 1}})
-    with pytest.raises(ValueError):
-        webapp.backtest_action("run", {"symbol": "TEST", "strategy": "etf", "start": "1900-01-01"})
-    with pytest.raises(ValueError):
-        webapp.backtest_action("data", {"symbol": "TEST", "start": "1900-01-01"})
-    payload = webapp.backtest_payload()
-    assert [x["symbol"] for x in payload["symbols"]] == ["TEST"]
-    assert {x["id"]: x["available"] for x in payload["strategies"]}["breakout"] is False
-
-
-def test_warns_when_split_adjusted_prices_hide_signals(store):
-    s = Settings()
-    r = runner.run("TEST", "etf", s, start="2012-01-02", overrides={"min_price": 150})
-    assert any("split-korrekcio" in w for w in r["warnings"])
-    assert not any("split-korrekcio" in w for w in runner.run("TEST", "etf", s, start="2012-01-02")["warnings"])

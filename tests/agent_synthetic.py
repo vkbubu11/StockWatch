@@ -1,6 +1,6 @@
-"""Szintetikus univerzum a kutatougynok tesztjeihez: emelkedo trend, idonkent mely, rovid visszahuzodassal
+"""Szintetikus arfolyamok a gyakorlo mod tesztjeihez: emelkedo trend, idonkent mely, rovid visszahuzodassal
 (RSI(2) melyrepules), hogy a Visszahuzas-motor jelezzen. Az adat a holdouton TUL is tart, igy a vagas
-ellenorizheto. Halozat nelkul, a meglevo betoltok (meanrev_research.load_raw, market.load_context) helyett."""
+ellenorizheto. Halozat nelkul."""
 from __future__ import annotations
 
 import numpy as np
@@ -27,13 +27,6 @@ def frame(seed: int, drift: float = 0.0009, vol: float = 0.011, price: float = 5
                          "volume": rng.uniform(2e6, 4e6, len(idx))}, index=idx)
 
 
-def universe(n: int = 24) -> dict[str, pd.DataFrame]:
-    out = {f"S{i:02d}": frame(100 + i) for i in range(n)}
-    out["QQQ"] = frame(7, drift=0.0009, vol=0.005, price=150)
-    out["^GSPC"] = frame(8, drift=0.0008, vol=0.005, price=2200)
-    return out
-
-
 class NoEarnings:
     def __init__(self, *a, **k):
         pass
@@ -46,15 +39,3 @@ class NoEarnings:
 
     def save(self):
         pass
-
-
-def install(monkeypatch, frames: dict[str, pd.DataFrame], symbols: list[str]) -> None:
-    from stockwatch import market
-    from stockwatch import meanrev_research as mr
-    from stockwatch.research_agent import search
-
-    monkeypatch.setattr(mr, "load_raw", lambda symbol, settings: frames.get(symbol, pd.DataFrame()).copy())
-    ctx = market.MarketContext({"QQQ": frames["QQQ"], "^GSPC": frames["^GSPC"]}, frozenset(symbols), frozenset())
-    monkeypatch.setattr(market, "load_context", lambda settings, refresh=True, allow_network=None: ctx)
-    monkeypatch.setattr(market, "HistoricalEarnings", NoEarnings)
-    monkeypatch.setattr(search, "universe_symbols", lambda brief, settings, ws="admin": list(symbols))

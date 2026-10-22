@@ -118,7 +118,7 @@ def test_long_practice_simulation_unchanged_by_the_side_parameter():
 
 def test_pool_has_short_type_points_before_the_holdout(env):
     pool = env["pool"]
-    assert pool["version"] == sampler.POOL_VERSION == 2 and pool["counts"]["short"] > 0
+    assert pool["version"] == sampler.POOL_VERSION == 3 and pool["counts"]["short"] > 0
     for symbol, day, source in pool["entries"]["short"]:
         df = env["frames"][symbol].loc[:sampler.VISIBLE_END]
         i = df.index.get_loc(pd.Timestamp(day))
@@ -217,9 +217,9 @@ def test_verdict_flags():
 
 
 def _decide(env, seed: int, k: int, body_for) -> dict:
-    created = session.create(env["settings"], seed=seed, rounds=max(k + 1, 3))
-    atr = session.task_payload(created["id"], k)["chart"]["atr"]
-    return session.decide(created["id"], k, body_for(atr))["reveal"]
+    created = session.create(env["user"], env["settings"], seed=seed, rounds=max(k + 1, 3))
+    atr = session.task_payload(env["user"], created["id"], k)["chart"]["atr"]
+    return session.decide(env["user"], created["id"], k, body_for(atr))["reveal"]
 
 
 BODIES = {
@@ -318,11 +318,11 @@ def test_better_stop_only_from_the_fixed_grid():
 
 
 def test_summary_counts_sides_and_verdicts_and_old_decisions(env):
-    created = session.create(env["settings"], seed=88, rounds=5)
+    created = session.create(env["user"], env["settings"], seed=88, rounds=5)
     for k, name in enumerate(["long_open", "short_open", "skip", "short_limit", "long_limit"]):
-        atr = session.task_payload(created["id"], k)["chart"]["atr"]
-        session.decide(created["id"], k, BODIES[name](atr))
-    out = session.summary_payload(created["id"])
+        atr = session.task_payload(env["user"], created["id"], k)["chart"]["atr"]
+        session.decide(env["user"], created["id"], k, BODIES[name](atr))
+    out = session.summary_payload(env["user"], created["id"])
     s = out["summary"]
     assert s["sides"]["long"]["entered"] == 2 and s["sides"]["short"]["entered"] == 2 and s["skipped"] == 1
     assert sum(s["verdicts"].values()) == s["reviewed"] == 5
@@ -330,7 +330,7 @@ def test_summary_counts_sides_and_verdicts_and_old_decisions(env):
     assert {"sides", "verdicts"} <= keys
     assert [t["action"] for t in out["tasks"]] == ["long", "short", "skip", "short", "long"]
     # regi (itelet nelkuli, "enter") dontesek is osszegezhetok
-    stored = store.load_session(created["id"])
+    stored = store.load_session(created["id"], env["user"])
     for t in stored["tasks"]:
         t["result"].pop("review", None)
         if t["decision"]["action"] == "long":

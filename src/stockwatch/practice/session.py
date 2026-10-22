@@ -16,10 +16,9 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from .. import indicators, market, usage, workspace
+from .. import indicators, market
 from ..config import Settings, load_settings
-from ..locks import file_lock
-from . import sampler, scoring, store
+from . import sampler, scoring, store, synthetic
 from .templates import STRATEGY_LABELS, Line
 
 FEW = 10
@@ -111,11 +110,14 @@ def public(session: dict) -> dict:
     return {"id": session["id"], "created": session["created"], "rounds": len(session["tasks"]), "code": session["code"],
             "decided": decided, "done": decided == len(session["tasks"]), "warning": session.get("warning"),
             "next": next((k for k, t in enumerate(session["tasks"]) if not t.get("decision")), None),
-            "mean_r": session.get("summary", {}).get("mean_r") if decided == len(session["tasks"]) else None}
+            "mean_r": session.get("summary", {}).get("mean_r") if decided == len(session["tasks"]) else None,
+            "lesson": session.get("lesson")}
 
 
-def create(settings: Settings | None = None, ws: str = workspace.DEFAULT, seed: int | None = None,
-           rounds: int = 20, mix: dict | None = None, code: str | None = None) -> dict:
+def create(user_id: int, settings: Settings | None = None, seed: int | None = None,
+           rounds: int = 20, mix: dict | None = None, code: str | None = None,
+           only: dict | None = None, lesson: int | None = None) -> dict:
+    """Uj kor. `only` es `lesson`: a tanulasi ut (#33) celzott feladatsora (learning.py)."""
     settings = settings or load_settings()
     pool = store.load_pool()
     if not pool:
@@ -129,18 +131,17 @@ def create(settings: Settings | None = None, ws: str = workspace.DEFAULT, seed: 
         seed = secrets.randbelow(sampler.SEED_MAX)
     if not 0 <= int(seed) < sampler.SEED_MAX:
         raise ValueError("seed: 0 es 2^31 kozott")
-    with usage.meter(ws, "practice"):
-        picks = sampler.sample(pool, int(seed), int(rounds), mix)
-        session = {"id": store.new_id(), "created": _now(), "seed": int(seed), "rounds": int(rounds),
-                   "mix": sampler.normalize_mix(mix), "pool_fingerprint": pool["fingerprint"],
-                   "code": sampler.share_code(int(seed), pool["fingerprint"], int(rounds)), "warning": warning,
-                   "tasks": [p | {"task_id": store.new_id(10), "decision": None, "result": None} for p in picks]}
-        store.save_session(session, ws)
+    picks = sampler.sample(pool, int(seed), int(rounds), mix, only)
+    session = {"id": store.new_id(), "created": _now(), "seed": int(seed), "rounds": int(rounds),
+               "mix": sampler.normalize_mix(mix), "pool_fingerprint": pool["fingerprint"],
+               "code": sampler.share_code(int(seed), pool["fingerprint"], int(rounds)), "warning": warning, "lesson": lesson,
+               "tasks": [p | {"task_id": store.new_id(10), "decision": None, "result": None} for p in picks]}
+    store.create_session(session, user_id)
     return public(session)
 
 
-def _load(session_id: str, ws: str) -> dict:
-    session = store.load_session(session_id, ws)
+def _load(session_id: str, user_id: int) -> dict:
+    session = store.load_session(session_id, user_id)
     if session is None:
         raise LookupError("Nincs ilyen munkamenet.")
     return session
@@ -163,13 +164,18 @@ def _frame(task: dict, settings: Settings) -> tuple[pd.DataFrame, int]:
     return df, i
 
 
+def shown(symbol: str, day: str) -> dict:
+    """A felfedett papir es nap - szintetikus helyzetnel nincs valodi papir es datum."""
+    return {"symbol": "Szintetikus helyzet", "date": None} if synthetic.is_synthetic(symbol) else {"symbol": symbol, "date": day}
+
+
 def reveal(task: dict) -> dict:
-    return task["result"] | {"category": task["category"], "source": task["source"], "decision": task["decision"]}
+    return task["result"] | {"category": task["category"], "source": task["source"], "decision": task["decision"]}         | shown(task["symbol"], task["date"])
 
 
-def task_payload(session_id: str, k: int, settings: Settings | None = None, ws: str = workspace.DEFAULT) -> dict:
+def task_payload(user_id: int, session_id: str, k: int, settings: Settings | None = None) -> dict:
     settings = settings or load_settings()
-    session = _load(session_id, ws)
+    session = _load(session_id, user_id)
     task = _task(session, k)
     df, i = _frame(task, settings)
     out = {"session": session["id"], "k": k, "rounds": len(session["tasks"]), "task_id": task["task_id"],
@@ -179,25 +185,33 @@ def task_payload(session_id: str, k: int, settings: Settings | None = None, ws: 
     return out
 
 
-def decide(session_id: str, k: int, body: dict, settings: Settings | None = None,
-           ws: str = workspace.DEFAULT) -> dict:
+def decide(user_id: int, session_id: str, k: int, body: dict, settings: Settings | None = None) -> dict:
     settings = settings or load_settings()
     decision = Decision(**(body or {}))
-    with file_lock(store.session_path(session_id, ws)), usage.meter(ws, "practice"):
-        session = _load(session_id, ws)
+    session = _load(session_id, user_id)
+    task = _task(session, k)
+    if task.get("decision") is not None:
+        raise ValueError("A dontes mar rogzitve - nem modosithato.")
+    # a (masodpercekig tarto) ertekeles zar nelkul fut; zar alatt csak az ujraellenorzes es a mentes
+    df, i = _frame(task, settings)
+    mctx = market.load_context(settings, refresh=False, allow_network=False)
+    dates = market.HistoricalEarnings(settings, allow_network=False).dates(task["symbol"])
+    result = scoring.evaluate(task["symbol"], df, i, decision.model_dump(), settings, seed=session["seed"] * 100 + k,
+                              mctx=mctx, earnings_dates=dates, breakout=task.get("breakout"))
+    with store.editing(session_id, user_id) as (session, save):
         task = _task(session, k)
         if task.get("decision") is not None:
             raise ValueError("A dontes mar rogzitve - nem modosithato.")
-        df, i = _frame(task, settings)
-        mctx = market.load_context(settings, refresh=False, allow_network=False)
-        dates = market.HistoricalEarnings(settings, allow_network=False).dates(task["symbol"])
-        task["result"] = scoring.evaluate(task["symbol"], df, i, decision.model_dump(), settings,
-                                          seed=session["seed"] * 100 + k, mctx=mctx, earnings_dates=dates)
+        task["result"] = result
         task["decision"] = decision.model_dump()
         task["decided_at"] = _now()
         if all(t.get("decision") for t in session["tasks"]):
             session["summary"] = scoring.summary(session["tasks"])
-        store.save_session(session, ws)
+        save(k)
+    if session.get("lesson") and session.get("summary"):
+        from .. import learning                      # a tanulasi ut (#33) szintje teljesult-e
+
+        learning.record(user_id, session)
     return {"session": public(session), "k": k, "reveal": reveal(task)}
 
 
@@ -247,11 +261,11 @@ def lines(s: dict) -> list[dict]:
     return [ln.to_dict() for ln in out]
 
 
-def summary_payload(session_id: str, ws: str = workspace.DEFAULT) -> dict:
-    session = _load(session_id, ws)
+def summary_payload(user_id: int, session_id: str) -> dict:
+    session = _load(session_id, user_id)
     s = scoring.summary(session["tasks"])
     tasks = [{"k": k, "decided": t.get("decision") is not None} | (
-        {"symbol": t["symbol"], "date": t["date"], "category": t["category"], "source": t["source"],
+        shown(t["symbol"], t["date"]) | {"category": t["category"], "source": t["source"],
          "action": scoring.side_of(t["decision"]) or "skip", "r": (t["result"].get("user") or {}).get("r"),
          "verdict": ((t["result"].get("review") or {}).get("verdict") or {}).get("category"),
          "status": (t["result"].get("user") or {}).get("status"),
@@ -259,12 +273,15 @@ def summary_payload(session_id: str, ws: str = workspace.DEFAULT) -> dict:
                         for x in t["result"]["strategies"] if x.get("signaled")],
          "reference_r": t["result"]["reference"].get("r"), "baseline_r": t["result"]["baseline"].get("mean_r")}
         if t.get("decision") else {}) for k, t in enumerate(session["tasks"])]
-    return {"session": public(session), "summary": s, "lines": lines(s), "tasks": tasks}
+    from .. import learning
+
+    return {"session": public(session), "summary": s, "lines": lines(s), "tasks": tasks,
+            "lesson": learning.record(user_id, session) if session.get("lesson") else None}
 
 
-def listing(ws: str = workspace.DEFAULT) -> list[dict]:
+def listing(user_id: int) -> list[dict]:
     out = []
-    for session in store.sessions(ws):
+    for session in store.sessions(user_id):
         try:
             out.append(public(session))
         except (KeyError, TypeError):
@@ -272,5 +289,5 @@ def listing(ws: str = workspace.DEFAULT) -> list[dict]:
     return out
 
 
-def delete(session_id: str, ws: str = workspace.DEFAULT) -> bool:
-    return store.delete_session(session_id, ws)
+def delete(user_id: int, session_id: str) -> bool:
+    return store.delete_session(session_id, user_id)

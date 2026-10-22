@@ -1,0 +1,243 @@
+"""Felhasznaloi fiokok (#31): regisztracio e-maillel es jelszoval, kotelezo e-mail-ellenorzes, belepes,
+munkamenet, jelszo-visszaallitas; a fiok torlese es az adatexport (#40).
+
+  * az adatbazisban a jelszonak csak a scrypt hash-e, a munkamenet- es e-mail-tokennek csak a sha256 hash-e van
+  * a regisztracio, a belepes es a visszaallitas valasza nem arulja el, letezik-e a fiok (nincs fiok-felsorolas)
+  * ellenorizetlen e-maillel nincs belepes (es igy gyakorlas sem); a visszaallito link az e-mailt is igazolja
+  * jelszocserenel minden munkamenet zarul
+  * a lejart munkamenetek es tokenek a kovetkezo belepeskor / token-kereskor torlodnek (nincs korlatlan noves)
+"""
+from __future__ import annotations
+
+import hashlib
+import re
+import secrets
+from datetime import timedelta
+
+from . import db, mailer, webauth
+
+TERMS_VERSION = "2026-10-22"                    # az ASZF es az adatkezelesi tajekoztato verzioja (#40)
+SESSION_TTL = timedelta(days=30)
+VERIFY_TTL = timedelta(hours=24)
+RESET_TTL = timedelta(hours=1)
+UNVERIFIED_TTL = timedelta(days=30)             # ennyi ido utan a meg nem erositett regisztracio torlodik
+MAX_SESSIONS_PER_USER = 20
+EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,189}\.[^@\s.]{2,}$")
+# gyakori, kiszivargott jelszavak (a 10 karakteres minimumon felul) - rovid tiltolista, kisbetuvel
+LEAKED = frozenset({
+    "1234567890", "0123456789", "12345678910", "123456789a", "1234567890a", "qwertyuiop", "qwertyuiop1",
+    "1q2w3e4r5t", "1q2w3e4r5t6y", "password12", "password123", "password1234", "passw0rd123", "qwerty1234",
+    "qwerty123456", "iloveyou123", "abcdefghij", "1111111111", "0000000000", "asdfghjkl1", "zxcvbnm123",
+    "jelszo1234", "jelszo12345", "jelszavam123", "aaaaaaaaaa", "123123123123", "abc1234567", "admin12345",
+})
+
+IP_LOGIN = webauth.RateLimit(20, 15 * 60)       # IP-nkent 20 belepesi kiserlet / 15 perc
+ACCOUNT_LOGIN = webauth.RateLimit(5, 15 * 60)   # fiokonkent 5 kiserlet / 15 perc (sikeres belepes torli)
+IP_REGISTER = webauth.RateLimit(5, 60 * 60)     # IP-nkent 5 regisztracio / ora
+IP_RESET = webauth.RateLimit(5, 60 * 60)        # IP-nkent 5 visszaallitasi keres / ora
+ACCOUNT_RESET = webauth.RateLimit(3, 60 * 60)   # cimenkent 3 visszaallito level / ora
+
+_DUMMY_HASH: list[str] = []                     # ismeretlen e-mailnel is fusson egy scrypt (idozites)
+
+
+class AccountError(ValueError):
+    """A felhasznalonak szolo hiba (magyar szoveg)."""
+
+
+class RateLimited(AccountError):
+    pass
+
+
+def _h(token: str) -> bytes:
+    return hashlib.sha256(token.encode("utf-8")).digest()
+
+
+def normalize_email(email: str) -> str:
+    email = (email or "").strip().lower()
+    if len(email) > 254 or not EMAIL_RE.match(email):
+        raise AccountError("Érvénytelen e-mail-cím.")
+    return email
+
+
+def check_password(password: str) -> None:
+    if len(password or "") < webauth.MIN_PASSWORD:
+        raise AccountError(f"A jelszó legalább {webauth.MIN_PASSWORD} karakter legyen.")
+    if len(password) > webauth.MAX_PASSWORD:
+        raise AccountError("Túl hosszú jelszó.")
+    if password.lower() in LEAKED:
+        raise AccountError("Ez a jelszó szerepel a kiszivárgott jelszavak listáján – válassz másikat.")
+
+
+def _new_token(conn, user_id: int, purpose: str, ttl: timedelta) -> str:
+    conn.execute("DELETE FROM email_tokens WHERE expires_at < now() OR used_at IS NOT NULL")
+    conn.execute("DELETE FROM email_tokens WHERE user_id = %s AND purpose = %s", (user_id, purpose))
+    token = secrets.token_urlsafe(32)
+    conn.execute("INSERT INTO email_tokens (token_hash, user_id, purpose, expires_at) VALUES (%s, %s, %s, now() + %s)",
+                 (_h(token), user_id, purpose, ttl))
+    return token
+
+
+def _verify_mail(email: str, token: str, base_url: str) -> None:
+    mailer.send(email, "StockWatch – erősítsd meg az e-mail-címedet",
+                f"A regisztráció befejezéséhez nyisd meg ezt a linket (24 óráig érvényes, egyszer használható):\n\n"
+                f"{base_url}/verify?token={token}\n\nHa nem te regisztráltál, hagyd figyelmen kívül ezt a levelet.\n")
+
+
+# ---------------------------------------------------------------------------
+# Regisztracio, ellenorzes
+# ---------------------------------------------------------------------------
+def register(email: str, password: str, accepted_terms: bool, age_ok: bool, ip: str, base_url: str) -> None:
+    """Uj fiok + ellenorzo level. Letezo, ellenorizetlen cimre uj ellenorzo levelet kuld, letezo ellenorzottre
+    semmit - a valasz minden esetben ugyanaz."""
+    if not IP_REGISTER.hit(ip):
+        raise RateLimited("Túl sok regisztráció erről a címről. Próbáld újra később.")
+    email = normalize_email(email)
+    check_password(password)
+    if not accepted_terms:
+        raise AccountError("A regisztrációhoz el kell fogadnod az ÁSZF-et és az adatkezelési tájékoztatót.")
+    if not age_ok:
+        raise AccountError("A szolgáltatás 16 éven felülieknek szól.")
+    password_hash = webauth.hash_password(password)
+    with db.connection() as conn:
+        # adattakarekossag (#40): a 30 napja meg nem erositett regisztraciok torlodnek
+        conn.execute("DELETE FROM users WHERE email_verified_at IS NULL AND created_at < now() - %s", (UNVERIFIED_TTL,))
+        row = conn.execute(
+            "INSERT INTO users (email, password_hash, terms_version, terms_accepted_at) VALUES (%s, %s, %s, now()) "
+            "ON CONFLICT ((lower(email))) DO NOTHING RETURNING id", (email, password_hash, TERMS_VERSION)).fetchone()
+        if row is None:
+            row = conn.execute("SELECT id FROM users WHERE lower(email) = %s AND email_verified_at IS NULL",
+                               (email,)).fetchone()
+        token = _new_token(conn, row[0], "verify", VERIFY_TTL) if row else None
+    if token:
+        _verify_mail(email, token, base_url)
+
+
+def verify_email(token: str) -> bool:
+    with db.connection() as conn:
+        row = conn.execute("UPDATE email_tokens SET used_at = now() WHERE token_hash = %s AND purpose = 'verify' "
+                           "AND used_at IS NULL AND expires_at > now() RETURNING user_id", (_h(token or ""),)).fetchone()
+        if row:
+            conn.execute("UPDATE users SET email_verified_at = coalesce(email_verified_at, now()) WHERE id = %s",
+                         (row[0],))
+    return row is not None
+
+
+# ---------------------------------------------------------------------------
+# Belepes, munkamenet
+# ---------------------------------------------------------------------------
+def login(email: str, password: str, ip: str, user_agent: str = "") -> str | None:
+    """Uj munkamenet-token, vagy None (rossz e-mail / jelszo). Ellenorizetlen fiok: AccountError."""
+    key = (email or "").strip().lower()
+    if not IP_LOGIN.hit(ip) or not ACCOUNT_LOGIN.hit(key):
+        raise RateLimited("Túl sok próbálkozás. Próbáld újra 15 perc múlva.")
+    with db.connection() as conn:
+        row = conn.execute("SELECT id, password_hash, email_verified_at FROM users WHERE lower(email) = %s",
+                           (key,)).fetchone()
+    if not _DUMMY_HASH:
+        _DUMMY_HASH.append(webauth.hash_password(secrets.token_urlsafe(16)))
+    ok = webauth.verify_password(password, row[1] if row else _DUMMY_HASH[0])
+    if not (row and ok):
+        return None
+    if row[2] is None:
+        raise AccountError("Előbb erősítsd meg az e-mail-címedet (a regisztrációkor küldött linkkel). "
+                           "Új linket a regisztráció ismétlésével kérhetsz.")
+    ACCOUNT_LOGIN.clear(key)
+    token = secrets.token_urlsafe(32)
+    with db.connection() as conn:
+        conn.execute("DELETE FROM sessions WHERE expires_at < now()")
+        conn.execute("INSERT INTO sessions (token_hash, user_id, expires_at, user_agent) VALUES (%s, %s, now() + %s, %s)",
+                     (_h(token), row[0], SESSION_TTL, (user_agent or "")[:200]))
+        conn.execute("DELETE FROM sessions WHERE user_id = %s AND token_hash NOT IN (SELECT token_hash FROM sessions "
+                     "WHERE user_id = %s ORDER BY created_at DESC LIMIT %s)", (row[0], row[0], MAX_SESSIONS_PER_USER))
+    return token
+
+
+def session_user(token: str | None) -> dict | None:
+    """A munkamenet felhasznaloja ({"id", "email", "onboarded"}), vagy None (nincs / lejart munkamenet)."""
+    if not token:
+        return None
+    with db.connection() as conn:
+        row = conn.execute("UPDATE sessions s SET last_used_at = now() FROM users u WHERE s.token_hash = %s "
+                           "AND s.expires_at > now() AND u.id = s.user_id "
+                           "RETURNING u.id, u.email, u.onboarded_at IS NOT NULL", (_h(token),)).fetchone()
+    return {"id": row[0], "email": row[1], "onboarded": row[2]} if row else None
+
+
+def mark_onboarded(user_id: int) -> None:
+    """Az elso belepeskori bevezeto (#39) vege - tobbe nem jelenik meg."""
+    with db.connection() as conn:
+        conn.execute("UPDATE users SET onboarded_at = coalesce(onboarded_at, now()) WHERE id = %s", (user_id,))
+
+
+def logout(token: str | None) -> None:
+    if token:
+        with db.connection() as conn:
+            conn.execute("DELETE FROM sessions WHERE token_hash = %s", (_h(token),))
+
+
+def logout_everywhere(user_id: int) -> None:
+    with db.connection() as conn:
+        conn.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
+
+
+# ---------------------------------------------------------------------------
+# Jelszo-visszaallitas
+# ---------------------------------------------------------------------------
+def request_reset(email: str, ip: str, base_url: str) -> None:
+    """Visszaallito level, ha van ilyen fiok - a valasz minden esetben ugyanaz."""
+    email = normalize_email(email)
+    if not IP_RESET.hit(ip) or not ACCOUNT_RESET.hit(email):
+        raise RateLimited("Túl sok kérés. Próbáld újra később.")
+    with db.connection() as conn:
+        row = conn.execute("SELECT id FROM users WHERE lower(email) = %s", (email,)).fetchone()
+        token = _new_token(conn, row[0], "reset", RESET_TTL) if row else None
+    if token:
+        mailer.send(email, "StockWatch – új jelszó beállítása",
+                    f"Új jelszót ezen a linken állíthatsz be (1 óráig érvényes, egyszer használható):\n\n"
+                    f"{base_url}/reset?token={token}\n\nHa nem te kérted, hagyd figyelmen kívül ezt a levelet – "
+                    f"a jelszavad nem változik.\n")
+
+
+def reset_password(token: str, password: str) -> bool:
+    """Uj jelszo a visszaallito tokennel; az e-mailt is igazolja, es minden munkamenetet zar."""
+    check_password(password)
+    password_hash = webauth.hash_password(password)
+    with db.connection() as conn:
+        row = conn.execute("UPDATE email_tokens SET used_at = now() WHERE token_hash = %s AND purpose = 'reset' "
+                           "AND used_at IS NULL AND expires_at > now() RETURNING user_id", (_h(token or ""),)).fetchone()
+        if row:
+            conn.execute("UPDATE users SET password_hash = %s, email_verified_at = coalesce(email_verified_at, now()) "
+                         "WHERE id = %s", (password_hash, row[0]))
+            conn.execute("DELETE FROM sessions WHERE user_id = %s", (row[0],))
+    return row is not None
+
+
+# ---------------------------------------------------------------------------
+# Fiok torlese, adatexport (#40)
+# ---------------------------------------------------------------------------
+def delete_account(user_id: int, password: str) -> bool:
+    """A fiok vegleges torlese a jelszo megerositesevel. A kaszkad viszi a munkameneteket, a tokeneket es a
+    gyakorlo koroket; a torles utan a felhasznalo adatai nem kerdezhetok le. Rossz jelszo: False."""
+    with db.connection() as conn:
+        row = conn.execute("SELECT password_hash FROM users WHERE id = %s", (user_id,)).fetchone()
+    if not row or not webauth.verify_password(password, row[0]):
+        return False
+    with db.connection() as conn:
+        conn.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    return True
+
+
+def export(user_id: int) -> dict:
+    """A felhasznalo minden tarolt adata gepi feldolgozasra alkalmas formaban (GDPR 20. cikk) - jelszo-hash es
+    token-hash nelkul."""
+    from .practice import store
+
+    with db.connection() as conn:
+        row = conn.execute("SELECT email, created_at, email_verified_at, terms_version, terms_accepted_at, onboarded_at "
+                           "FROM users WHERE id = %s", (user_id,)).fetchone()
+        sessions = conn.execute("SELECT created_at, last_used_at, expires_at, user_agent FROM sessions "
+                                "WHERE user_id = %s ORDER BY created_at", (user_id,)).fetchall()
+    keys = ("email", "created_at", "email_verified_at", "terms_version", "terms_accepted_at", "onboarded_at")
+    return {"account": dict(zip(keys, row)) if row else None,
+            "sessions": [dict(zip(("created_at", "last_used_at", "expires_at", "user_agent"), s)) for s in sessions],
+            "practice": [store.load_session(s["id"], user_id) for s in store.sessions(user_id, limit=store.MAX_SESSIONS)]}

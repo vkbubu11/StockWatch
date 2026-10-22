@@ -9,65 +9,41 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="#/">
+    <a class="brand" href="#/learn">
       <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22l6-7 5 4 9-11"/></svg>
       <span>StockWatch</span>
     </a>
     <nav class="tabs" aria-label="Fő navigáció">
-      <a href="#/" data-tab="overview">Áttekintés</a>
-      <a href="#/digest" data-tab="digest">Összefoglaló</a>
-      <a href="#/holdings" data-tab="holdings">Saját pozíciók</a>
-      <a href="#/positions" data-tab="positions">Jelzett trade-ek</a>
-      <a href="#/calendar" data-tab="calendar">Naptár</a>
-      <a href="#/broker" data-tab="broker">Paper trading</a>
-      <a href="#/alerts" data-tab="alerts">Értesítések</a>
-      <a href="#/ledger" data-tab="ledger">Jelzésnapló</a>
-      <a href="#/strategies" data-tab="strategies">Stratégiák</a>
-      <a href="#/sandbox" data-tab="sandbox">Kutatás</a>
-      <a href="#/agent" data-tab="agent">Ügynök</a>
-      <a href="#/events" data-tab="events">Események</a>
+      <a href="#/learn" data-tab="learn">Tanulás</a>
       <a href="#/practice" data-tab="practice">Gyakorlás</a>
-      <a href="#/backtest" data-tab="backtest">Backteszt</a>
-      <a href="#/lab" data-tab="lab">Labor</a>
-      <a href="#/settings" data-tab="settings">Beállítások</a>
+      <a href="#/profile" data-tab="profile">Profil</a>
+      <a href="#/info" data-tab="info">Információ</a>
     </nav>
     <div class="topbar-right">
-      <span id="regime" class="pill" title="Piaci rezsim">…</span>
-      <span id="lastbar" class="muted small"></span>
-      <button id="best" class="btn" type="button" title="A legjobb long és short belépő most, a Beállításokban választott listán">Legjobb belépő</button>
-      <button id="refresh" class="btn primary" type="button">Frissítés</button>
-      <a id="info-link" class="btn" href="#/info" data-tab="info" title="Információ és hibabejelentés">Információ</a>
       <button id="theme" class="btn icon" type="button" title="Világos / sötét téma" aria-label="Téma váltása">◐</button>
-      <button id="logout" class="btn" type="button" hidden>Kilépés</button>
+      <button id="logout" class="btn" type="button">Kilépés</button>
     </div>
   </header>
-
-  <div id="jobbar" class="jobbar" hidden></div>
-  <dialog id="best-dialog" class="best-dialog" aria-label="Legjobb belépő most"></dialog>
-  <dialog id="check-dialog" class="best-dialog" aria-label="Papír kiértékelése"></dialog>
 
   <main id="view" class="view" aria-live="polite">
     <div class="loading">Betöltés…</div>
   </main>
 
   <footer class="footer">
-    Technikai elemzés — <strong>nem befektetési tanács</strong>. Valódi pénzzel nem kereskedik (csak Alpaca paper számlán);
-    az értesítéseket a <code>python cli.py monitor</code> küldi.
+    Oktatási célú gyakorlás múltbeli / szimulált adaton. <strong>Nem befektetési tanács.</strong>
+    · <a href="/aszf" target="_blank">ÁSZF</a> · <a href="/adatkezeles" target="_blank">Adatkezelés</a> · <a href="/sutik" target="_blank">Sütik</a>
   </footer>
 
-  <!-- telefonon: also sav a leggyakoribb nezetekkel + "Tovabbiak" (a teljes menu); asztalon rejtett -->
+  <!-- telefonon: also sav; asztalon rejtett -->
   <nav class="bottom-nav" aria-label="Gyors navigáció">
-    <a href="#/" data-tab="overview"><span class="bn-icon" aria-hidden="true">⌂</span><span>Áttekintés</span></a>
-    <a href="#/digest" data-tab="digest"><span class="bn-icon" aria-hidden="true">☀</span><span>Összefoglaló</span></a>
-    <a href="#/positions" data-tab="positions"><span class="bn-icon" aria-hidden="true">↗</span><span>Jelzett trade-ek</span></a>
-    <a href="#/calendar" data-tab="calendar"><span class="bn-icon" aria-hidden="true">▦</span><span>Naptár</span></a>
+    <a href="#/learn" data-tab="learn"><span class="bn-icon" aria-hidden="true">★</span><span>Tanulás</span></a>
+    <a href="#/practice" data-tab="practice"><span class="bn-icon" aria-hidden="true">◎</span><span>Gyakorlás</span></a>
+    <a href="#/profile" data-tab="profile"><span class="bn-icon" aria-hidden="true">☺</span><span>Profil</span></a>
     <button type="button" id="more-btn" aria-expanded="false" aria-controls="more-sheet"><span class="bn-icon" aria-hidden="true">☰</span><span>Továbbiak</span></button>
   </nav>
   <div id="more-sheet" class="more-sheet" hidden><nav class="more-list" aria-label="Minden nézet"></nav></div>
   <div id="tooltip" class="tooltip" hidden></div>
-  <div id="guide" class="guide" role="tooltip" hidden></div>
   <script src="i18n.js"></script>
-  <script src="guide.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

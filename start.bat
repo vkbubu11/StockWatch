@@ -1,5 +1,5 @@
 @echo off
-rem StockWatch inditas: monitor (ertesitesek) kulon ablakban + webes felulet a bongeszoben.
+rem StockWatch oktatasi kiadas: webes felulet a bongeszoben (Gyakorlas).
 rem Dupla kattintassal indithato. Leallitas: a ket ablak bezarasa (vagy Ctrl+C).
 chcp 65001 >nul
 cd /d "%~dp0"
@@ -20,7 +20,6 @@ if not errorlevel 1 (
     exit /b 0
 )
 
-start "StockWatch monitor" "%PY%" cli.py monitor
 "%PY%" cli.py web
 
 if errorlevel 1 pause

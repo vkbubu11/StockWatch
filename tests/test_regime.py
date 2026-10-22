@@ -3,10 +3,9 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from stockwatch import entry_research as er
-from stockwatch import market, replay
+from stockwatch import market
 
 
 def _series(trend: float, n: int = 260) -> pd.DataFrame:
@@ -64,16 +63,6 @@ def test_research_uses_per_symbol_regime(monkeypatch):
                    {"AAPL": UP, "MOD": DOWN}, __import__("stockwatch.config", fromlist=["x"]).Settings(), c)
     assert seen["AAPL"][1] is c.benches["QQQ"]
     assert seen["MOD"][1] is DOWN and seen["MOD"][0] is c.benches["^GSPC"]
-
-
-@pytest.mark.parametrize("source,member", [("QQQ", "nasdaq"), ("^GSPC", "sp500"), ("self", None), (None, None)])
-def test_replay_context_matches_logged_source(source, member):
-    c = replay._replay_context("ABC", source, UP)
-    if source is None:
-        assert c is None
-        return
-    assert c.regime_source("ABC") == source
-    assert c.regime("ABC", DOWN, DOWN.index[-1]).ok is (source != "self")
 
 
 def test_index_refreshed_after_close(monkeypatch, tmp_path):

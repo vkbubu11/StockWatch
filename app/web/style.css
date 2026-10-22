@@ -402,7 +402,12 @@ th .help { display: inline-block; width: 14px; height: 14px; line-height: 14px; 
   width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow); padding: 28px 24px; display: flex; flex-direction: column; gap: 18px;
 }
-.login-card input[type="password"] {
+.login-card form { display: flex; flex-direction: column; gap: 6px; }
+.login-card label.check { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; margin: 4px 0; }
+.login-card .auth-title { font-size: 20px; margin: 0; }
+.login-card .auth-links { display: flex; flex-wrap: wrap; gap: 12px; font-size: 14px; }
+.login-info { margin: 0; padding: 9px 12px; border-radius: 8px; background: var(--up-soft); color: var(--up); font-weight: 600; }
+.login-card input[type="password"], .login-card input[type="email"] {
   font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
   border-radius: 8px; padding: 9px 11px; margin-bottom: 8px;
 }
@@ -708,3 +713,26 @@ pre, code { overflow-wrap: anywhere; }
   .segmented .seg { white-space: nowrap; flex: 0 0 auto; }
   .pr-sides .seg { flex: 1 1 0; }
 }
+
+/* Kezdooldal (#39) es bevezeto */
+.landing { max-width: 960px; }
+.landing-hero { padding: 24px 0 8px; }
+.landing-hero h1 { font-size: clamp(24px, 5vw, 34px); line-height: 1.2; margin: 0 0 12px; letter-spacing: -.01em; }
+.landing-hero p { font-size: 17px; max-width: 60ch; }
+.landing-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 16px 0; }
+.landing-steps .card { margin: 0; }
+.onboard { max-width: 640px; margin: 0 auto; }
+.onboard-dots { display: flex; gap: 8px; margin-bottom: 12px; }
+.onboard-dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
+.onboard-dots span.on { background: var(--accent); }
+
+.legal h2 { font-size: 18px; margin-top: 22px; }
+.legal p, .legal li { max-width: 75ch; }
+
+/* Tanulasi ut (#33) */
+.learn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.learn-card { display: block; color: inherit; text-decoration: none; margin: 0; }
+.learn-card h2 { font-size: 17px; margin: 4px 0 8px; }
+.learn-card.locked { opacity: .55; cursor: not-allowed; }
+.learn-level { font-size: 13px; color: var(--muted); }
+.lesson p { max-width: 75ch; }

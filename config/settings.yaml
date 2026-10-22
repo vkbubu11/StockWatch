@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
-# StockWatch beallitasok.  Minden ertek felulirhato; a kommentek megmondjak,
-# mire hat.  A titkok (Telegram token) NEM ide, hanem a .env fajlba mennek.
+# StockWatch oktatasi kiadas - beallitasok.  A motorok (alakzat, Visszahuzas, short) szabalyai
+# es a Gyakorlas kuszobei.  A titkok (jelszo-hash) NEM ide, hanem a .env fajlba mennek.
 # ---------------------------------------------------------------------------
 
 data:
@@ -62,28 +62,8 @@ backtest:
   max_horizon_bars: 120
   quality_buckets: [0.55, 0.7, 0.85]
 
-# --- Riasztasok (alerts/) ---
-alerts:
-  console: true
-  jsonl: true
-  telegram: false           # helyette Discord
-  discord: true             # csak ha DISCORD_WEBHOOK_URL a titokfajlban (python cli.py discord)
-  webhook: true             # Google Chat / Slack - csak ha ALERT_WEBHOOK_URL a .env-ben
-  send_chart: true          # chart kep csatolasa a Discord / Telegram uzenethez
-  heartbeat: true           # napi eletjel zaras utan (Discord) + uzenet a monitor indulasakor
-  quiet_hours: []           # pl. ["22:00-07:00"] helyi ido szerint
-  min_seconds_between: 5    # Telegram rate-limit vedelem
-  # A regi, formacio-allapotonkenti riasztasok (uj minta, kitores, cel, bukas -
-  # bearish mintakra is). Kikapcsolva, hogy CSAK a swing long belepesi jelzesek
-  # jojjenek. Ha ezeket is kered: true
-  pattern_events: false
-  direction: both
-  language: hu              # az ertesitesek nyelve: hu, en, de, es (a felulet nyelvet a fejlec valasztoja allitja)
-
 # --- Swing LONG belepesi motor (entry.py) ---
-# Riasztas csak zaras utan (lezart napi gyertyan), csak long iranyba,
-# es csak ha MINDEN kemeny szuro atment ES a pontszam >= min_score.
-# A program SEMMIT nem vasarol - csak ertesit.
+# A Gyakorlas a Kitores-osszevetest es a levezetest ezekkel a szabalyokkal szamolja.
 entry:
   enabled: true
   min_score: 50.0             # 0-100; a pontszam NEM valoszinuseg (rangsorolasra valo)
@@ -154,51 +134,11 @@ scan:
   nasdaq100: true
   sp500: true
   index_setups: false
-broker:
-  auto_trade: true
-  size_from_account: true
-  max_open_trades: 5
-  commission_pct: 0.0       # kotesi dij a kotes ertekenek %-aban, oldalankent (Alpaca: 0) - minden motor ezzel is szamol
-  entry_window_min: 5       # kitores: ha a nyitas utan ennyi perccel sem teljesult, visszavonja (0 = ki)
-  live_gate_min_trades: 50  # elesitesi kapu: lezart paper trade-ek szama
-  live_gate_win: 0.70       # elesitesi kapu: nyeresi arany
-  live_gate_pf: 1.3         # elesitesi kapu: profit-faktor
-
-# --- Strategia-labor / gepi tanulas arnyek-uzeme (shadow.py) ---
-lab:
-  # auto: csak ha a labor walk-forward tesztje szerint a modell mintan kivul jobb a mostani
-  #       szuroknel | on: mindig, ha van mentett modell | off: soha
-  # Arnyek-uzemben a becsles a jelzes melle kerul es naplozodik, de SEMMIROL nem dont.
-  shadow: auto
-
-# --- Hir- es hangulatelemzes (sentiment) - ARNYEK-UZEM: a jelzes melle irja, NEM dont ---
-# Terv: docs/SENTIMENT-DESIGN.md. A SEC kerese: .env-ben SEC_USER_AGENT="Nev e-mail@cim".
-sentiment:
-  enabled: true
-  sources: [edgar, yahoo, alpaca]   # alpaca: csak paper kulccsal es ha a fiok csomagja tartalmazza a hireket
-  history_days: 120                 # elo frissiteskor ennyi napra vissza (EDGAR, Alpaca)
-  cache_minutes: 60                 # forrasonkent ennyi ideig nem kerdezzuk ujra ugyanazt a papirt
-  max_symbols_per_cycle: 30         # egy monitor-korben legfeljebb ennyi papir hirei frissulnek
-
-# --- Reggeli osszefoglalo (digest/) - a watchlist es a Sajat poziciok valtozasai, nyitas elott ---
-# Tenyeket kozol (formacio, szint, gyorsjelentes, 8-K, hirhangulat, strategiai jelolt, rezsim), nem ajanl.
-# Kezzel: python cli.py digest --print
-digest:
-  enabled: true
-  send_discord: false       # Discordra is (a webes feluleten mindig megvan)
-  time: "06:30"             # Europe/Budapest (07:00-ra kesz)
-  max_items: 15             # osszesen legfeljebb ennyi tetel
-  per_symbol: 3             # papironkent legfeljebb ennyi sor
-  near_trigger_atr: 1.0     # ennyi ATR-en belul a formacio triggeretol: "kozel"
-  earnings_days: [7, 3, 1]  # ezeknel a kuszoboknel szol a kozeledo gyorsjelentesrol
-  holding_mult: 1.5         # a Sajat poziciok esemenyei ennyivel fontosabbak
-  keep_days: 90             # az archivum megorzese
-  # weights:                # esemenytipusonkenti suly (alap: lasd config.DigestWeights)
-  #   regime_change: 5
-  #   near_trigger: 3
 
 # --- Gyakorlo mod (Gyakorlas ful) ---
 practice:
+  source: synthetic         # synthetic: generalt arfolyam (adatlicenc nelkul) | real: letoltott (csak licencelt forrasbol!)
+  synthetic_symbols: 300    # ennyi szintetikus papir a feladatkeszletben
   borrow_bps_day: 0.0       # short: kolcsonzesi dij naponta (bps a belepo erteken); 0 = nincs
   good_r: 1.0               # kihagyasnal: ha valamelyik alternativa legalabb ennyi R lett volna, "kihagyott jo helyzet"
   tight_stop_atr: 1.0       # ennel szorosabb stop: jelzes az iteletben

@@ -1,4 +1,4 @@
-"""Tobbnyelvuseg: a katalogus epsege, a soronkenti forditas, az ertesitesek nyelve, a felulet vegpontja."""
+"""Tobbnyelvuseg: a katalogus epsege, a soronkenti forditas, a felulet vegpontja."""
 from __future__ import annotations
 
 import json
@@ -6,9 +6,8 @@ import re
 
 import pytest
 
-from stockwatch import i18n, webapp
-from stockwatch.alerts import Alert, AlertChannel, Dispatcher
-from stockwatch.config import LANGUAGES, Settings
+from stockwatch import i18n
+from stockwatch.config import LANGUAGES
 
 PH = re.compile(r"\{(\d+)(?::n)?\}")          # a kulcsban {1:n} = csak szamra illeszkedo helyorzo
 
@@ -46,34 +45,6 @@ def test_body_translates_line_by_line_and_keeps_unknown_text():
     assert out[3] == "valami ismeretlen sor"
     assert i18n.translate(body, "hu") == body
     assert i18n.translate(None, "en") is None
-
-
-class Recorder(AlertChannel):
-    def __init__(self, name):
-        self.name, self.got = name, []
-
-    def send(self, alert):
-        self.got.append(alert)
-        return True
-
-
-def test_dispatcher_localizes_outgoing_but_keeps_the_log_hungarian():
-    settings = Settings(alerts={"language": "de", "console": False, "jsonl": False, "telegram": False,
-                                "discord": False, "webhook": False})
-    d = Dispatcher(settings)
-    log, chat = Recorder("jsonl"), Recorder("discord")
-    d.channels = [log, chat]
-    d.dispatch(Alert(symbol="AAPL", title="AAPL: Bull zaszlo - KITORES", body="Nem befektetesi tanacs.",
-                     forecast=None, event="triggered"))
-    assert log.got[0].title == "AAPL: Bull zaszlo - KITORES" and log.got[0].body == "Nem befektetesi tanacs."
-    assert chat.got[0].title == "AAPL: Bullenflagge - AUSBRUCH" and chat.got[0].body == "Keine Anlageberatung."
-
-
-def test_language_setting_is_validated_and_editable():
-    assert Settings(alerts={"language": "EN"}).alerts.language == "en"
-    with pytest.raises(ValueError):
-        Settings(alerts={"language": "fr"})
-    assert webapp.EDITABLE["language"] == ("alerts", str)
 
 
 def test_ui_catalog_endpoint_payload():

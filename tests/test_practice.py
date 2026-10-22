@@ -1,10 +1,13 @@
 """Gyakorlo mod (practice/): szivargas (a felfedes elotti API-valasz nem arulja el a papirt, a datumot, a nyers
 arat es volument), a szimulacio egyezik a kozvetlen meanrev.simulate_trade hivassal, a napkozbeni cel
-szabalyai, az alapviselkedes valtozatlan, holdout, seed / megosztasi kod, osszegzes szovegezese, munkasor."""
+szabalyai, az alapviselkedes valtozatlan, holdout, seed / megosztasi kod, osszegzes szovegezese, a Kitores-osszevetes
+a keszletben (labor nelkul)."""
 from __future__ import annotations
 
+import gzip
 import json
 import math
+import pickle
 import re
 import threading
 import urllib.error
@@ -16,15 +19,17 @@ import pandas as pd
 import pytest
 
 from stockwatch import entry_research as er
-from stockwatch import i18n, lab, labqueue, market, meanrev, webapp, webauth
+from stockwatch import accounts, i18n, market, meanrev, webapp, webauth
 from stockwatch.config import PullbackParams, Settings
-from stockwatch.practice import sampler, scoring, session, store
+from stockwatch.practice import breakouts, sampler, scoring, session, store
 from stockwatch.practice.templates import TEMPLATES
 
 from . import agent_synthetic as syn
+from .conftest import make_user
 from .guards import advice_hits, unexplained_numbers
 
 TICKERS = ["ALFA", "BRVO", "CHRL", "DLTA", "ECHO", "FXTR"]
+PW = "helyes-lo-elem-tuzfal"                       # a conftest.make_user alapjelszava
 _FRAMES: dict = {}
 
 
@@ -39,7 +44,7 @@ def frames() -> dict[str, pd.DataFrame]:
 
 
 @pytest.fixture
-def env(monkeypatch):
+def env(monkeypatch, user):
     data = frames()
     monkeypatch.setattr(sampler, "load_prices",
                         lambda symbol, settings: data[symbol].loc[:sampler.VISIBLE_END].copy() if symbol in data else None)
@@ -47,29 +52,37 @@ def env(monkeypatch):
     ctx = market.MarketContext({"QQQ": data["QQQ"], "^GSPC": data["^GSPC"]}, frozenset(TICKERS), frozenset())
     monkeypatch.setattr(market, "load_context", lambda settings, refresh=True, allow_network=None: ctx)
     monkeypatch.setattr(market, "HistoricalEarnings", syn.NoEarnings)
-    monkeypatch.setattr(lab, "load_cache", lambda symbol: None)
     settings = Settings()
     monkeypatch.setattr(session, "load_settings", lambda: settings)
     monkeypatch.setattr(webapp, "load_settings", lambda: settings)
     pool = sampler.build(settings)
-    return {"frames": data, "settings": settings, "pool": pool}
+    return {"frames": data, "settings": settings, "pool": pool, "user": user}
+
+
+_COOKIE: dict[str, str] = {}                     # a `server` fixture bejelentkezett felhasznalojanak sutije
+
+
+def login_cookie(email: str = "anna@example.com") -> str:
+    return f"{webauth.COOKIE}={accounts.login(email, PW, '127.0.0.1')}"
 
 
 @pytest.fixture
 def server(env):
-    no_password = webauth.Auth(password_hash=lambda: None)
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), webapp.make_handler(webapp.AppState(), no_password))
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), webapp.make_handler())
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
+    _COOKIE["default"] = login_cookie()
     yield f"http://127.0.0.1:{httpd.server_address[1]}"
+    _COOKIE.clear()
     httpd.shutdown()
     httpd.server_close()
 
 
-def _call(url: str, body: dict | None = None) -> tuple[int, str]:
+def _call(url: str, body: dict | None = None, cookie: str | None = None) -> tuple[int, str]:
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method="POST" if body is not None else "GET",
-                                 headers={"X-StockWatch": "1", "Content-Type": "application/json"})
+                                 headers={"X-StockWatch": "1", "Content-Type": "application/json",
+                                          "Cookie": cookie or _COOKIE.get("default", "")})
     try:
         with urllib.request.urlopen(req, timeout=20) as res:
             return res.status, res.read().decode("utf-8")
@@ -150,14 +163,14 @@ def test_seed_and_share_code_are_reproducible(env):
     assert sampler.sample(pool, 7, 10) == sampler.sample(pool, 7, 10)
     assert sampler.sample(pool, 7, 10) != sampler.sample(pool, 8, 10)
     assert len({p["symbol"] for p in sampler.sample(pool, 7, 6)}) == 6           # egy papir egyszer
-    first = session.create(env["settings"], seed=7, rounds=6)
+    first = session.create(env["user"], env["settings"], seed=7, rounds=6)
     assert not re.search(r"\d", first["code"])
-    second = session.create(env["settings"], code=first["code"])
-    a, b = (store.load_session(x["id"]) for x in (first, second))
+    second = session.create(env["user"], env["settings"], code=first["code"])
+    a, b = (store.load_session(x["id"], env["user"]) for x in (first, second))
     assert [(t["symbol"], t["date"]) for t in a["tasks"]] == [(t["symbol"], t["date"]) for t in b["tasks"]]
     assert second["warning"] is None and second["rounds"] == 6
     store.save_pool(pool | {"fingerprint": "f" * 16})
-    assert session.create(env["settings"], code=first["code"])["warning"] == "other_pool"
+    assert session.create(env["user"], env["settings"], code=first["code"])["warning"] == "other_pool"
     with pytest.raises(ValueError):
         sampler.parse_code("abc-def")
 
@@ -181,7 +194,7 @@ def test_api_hides_symbol_date_and_raw_prices_before_reveal(env, server):
         assert status == 200, text
         texts.append(text)
         charts.append(json.loads(text)["chart"])
-    stored = store.load_session(created["id"])
+    stored = store.load_session(created["id"], env["user"])
     raw_prices, raw_volumes = set(), set()
     for symbol in {t["symbol"] for t in stored["tasks"]}:
         df = env["frames"][symbol]
@@ -212,13 +225,13 @@ def test_api_hides_symbol_date_and_raw_prices_before_reveal(env, server):
 # Szimulacio es dontes
 # ---------------------------------------------------------------------------
 def test_scoring_matches_direct_simulate_trade(env):
-    created = session.create(env["settings"], seed=21, rounds=4)
-    task = session.task_payload(created["id"], 0)
+    created = session.create(env["user"], env["settings"], seed=21, rounds=4)
+    task = session.task_payload(env["user"], created["id"], 0)
     atr = task["chart"]["atr"]
     decision = {"action": "enter", "entry": "limit", "limit": 99.0, "stop": round(99 - 2 * atr, 2),
                 "target": round(99 + 3 * atr, 2), "days": 12}
-    rev = session.decide(created["id"], 0, decision)["reveal"]
-    t = store.load_session(created["id"])["tasks"][0]
+    rev = session.decide(env["user"], created["id"], 0, decision)["reveal"]
+    t = store.load_session(created["id"], env["user"])["tasks"][0]
     df = env["frames"][t["symbol"]].loc[:sampler.VISIBLE_END]
     i = df.index.get_loc(pd.Timestamp(t["date"]))
     scale = 100 / float(df["close"].iloc[i])
@@ -240,42 +253,72 @@ def test_scoring_matches_direct_simulate_trade(env):
 
 
 def test_decision_is_validated_and_final(env, server):
-    created = session.create(env["settings"], seed=5, rounds=3)
+    created = session.create(env["user"], env["settings"], seed=5, rounds=3)
     with pytest.raises(ValueError):
-        session.decide(created["id"], 0, {"action": "enter", "entry": "open", "stop": 101, "days": 5})
+        session.decide(env["user"], created["id"], 0, {"action": "enter", "entry": "open", "stop": 101, "days": 5})
     with pytest.raises(ValueError):
-        session.decide(created["id"], 0, {"action": "enter", "entry": "open", "stop": 95, "days": 31})
-    session.decide(created["id"], 0, {"action": "enter", "entry": "open", "stop": 95, "days": 5})
+        session.decide(env["user"], created["id"], 0, {"action": "enter", "entry": "open", "stop": 95, "days": 31})
+    session.decide(env["user"], created["id"], 0, {"action": "enter", "entry": "open", "stop": 95, "days": 5})
     with pytest.raises(ValueError):
-        session.decide(created["id"], 0, {"action": "skip"})
+        session.decide(env["user"], created["id"], 0, {"action": "skip"})
     url = server + f"/api/practice/session/{created['id']}/task/0/decision"
     assert _call(url, {"action": "skip"})[0] == 400
     assert _call(server + f"/api/practice/session/{created['id']}/task/9")[0] == 404
     assert _call(server + "/api/practice/session/nincsilyenxx/task/0")[0] == 404
 
 
-def test_breakout_comparison_uses_the_lab_live_results(monkeypatch):
+def _lab_files(days: list, closed: dict) -> None:
+    """A labor kimeneti fajljai (kitores-cache + az ELO kiserlet kotesei), ahogy a labor irja oket."""
+    (breakouts.LAB_DIR / "events").mkdir(parents=True)
+    (breakouts.LAB_DIR / "events" / "ALFA.pkl").write_bytes(pickle.dumps({"events": [(d, 20, None) for d in days]}))
+    (breakouts.LAB_DIR / "experiments.json").write_text(json.dumps({"experiments": [{"id": "live1", "live": True}]}))
+    (breakouts.LAB_DIR / "results").mkdir()
+    rows = [[f"{d:%Y-%m-%d}", "ALFA", "Dupla alj", "breakout", r, "target", 7] for d, r in closed.items()]
+    (breakouts.LAB_DIR / "results" / "live1.json.gz").write_bytes(gzip.compress(json.dumps(rows).encode()))
+
+
+def test_breakout_compare_reads_the_lab_output():
     df = syn.frame(9)
     day = df.index[400]
-    monkeypatch.setattr(lab, "load_cache", lambda symbol: {"events": [(day, 20, None)]})
-    monkeypatch.setattr(lab, "load_store", lambda: {"experiments": [{"id": "live1", "live": True}]})
-    monkeypatch.setattr(lab, "load_results", lambda exp_id: [er.Result("ALFA", "Dupla alj", day, "breakout", 1.5, "target", 7)])
-    assert scoring.breakout_compare("ALFA", df, 400) | {} == {"strategy": "breakout", "signaled": True,
-                                                               "status": "closed", "r": 1.5, "reason": "target",
-                                                               "held": 7, "kind": "breakout"}
-    assert scoring.breakout_compare("BRVO", df, 400)["status"] == "filtered"
-    assert not scoring.breakout_compare("ALFA", df, 401)["signaled"]
-    monkeypatch.setattr(lab, "load_results", lambda exp_id: [])
-    assert scoring.breakout_compare("ALFA", df, 400)["status"] == "unknown"
+    _lab_files([day], {day: 1.5})
+    days, results = breakouts.days("ALFA"), breakouts.live_results()
+    assert breakouts.compare("ALFA", df, 400, days, results) == {"strategy": "breakout", "signaled": True,
+                                                                  "status": "closed", "r": 1.5, "reason": "target",
+                                                                  "held": 7, "kind": "breakout"}
+    assert breakouts.compare("BRVO", df, 400, days, results)["status"] == "filtered"
+    assert not breakouts.compare("ALFA", df, 401, days, results)["signaled"]
+    assert breakouts.compare("ALFA", df, 400, days, {})["status"] == "unknown"
+
+
+def test_breakout_comparison_is_stored_in_the_pool_and_works_without_the_lab(env, monkeypatch):
+    df = env["frames"]["ALFA"].loc[:sampler.VISIBLE_END]
+    days = [df.index[i] for i in np.flatnonzero(sampler.eligible(df))[::60][:4]]
+    _lab_files(days, {days[0]: 1.5})
+    monkeypatch.setitem(sampler.PER_SYMBOL, "strategy", 10_000)                # minden jelzes a keszletbe
+    pool = sampler.build(env["settings"], force=True)
+    stored = {k.split("|")[1]: v for k, v in pool["breakouts"].items() if k.startswith("ALFA|")}
+    assert all(len(e) == 3 for c in pool["entries"].values() for e in c)       # a bejegyzesek formaja valtozatlan
+    first = f"{days[0]:%Y-%m-%d}"
+    assert set(stored) == {f"{d:%Y-%m-%d}" for d in days}
+    assert stored[first]["status"] == "closed" and stored[first]["r"] == 1.5
+    assert all(v["status"] == "filtered" for k, v in stored.items() if k != first)
+    # a labor fajljai nelkul (pl. az oktatasi szerveren) a kor a keszletbol kapja az osszevetest
+    for path in sorted(breakouts.LAB_DIR.rglob("*"), reverse=True):
+        path.unlink() if path.is_file() else path.rmdir()
+    store.save_pool({"fingerprint": "0" * 16, "breakouts": {f"ALFA|{first}": stored[first]},
+                     "entries": {"strategy": [["ALFA", first, "breakout"]], "pattern": [], "short": [], "nothing": []}})
+    created = session.create(env["user"], env["settings"], seed=1, rounds=1, mix={"strategy": 1})
+    out = session.decide(env["user"], created["id"], 0, {"action": "skip"})
+    assert next(s for s in out["reveal"]["strategies"] if s["strategy"] == "breakout") == stored[first]
 
 
 # ---------------------------------------------------------------------------
 # Osszegzes, szovegezes
 # ---------------------------------------------------------------------------
 def _play(env, rounds: int = 8) -> dict:
-    created = session.create(env["settings"], seed=33, rounds=rounds)
+    created = session.create(env["user"], env["settings"], seed=33, rounds=rounds)
     for k in range(rounds):
-        atr = session.task_payload(created["id"], k)["chart"]["atr"]
+        atr = session.task_payload(env["user"], created["id"], k)["chart"]["atr"]
         if k % 3 == 0:
             body = {"action": "skip"}
         elif k % 3 == 1:
@@ -283,8 +326,8 @@ def _play(env, rounds: int = 8) -> dict:
         else:
             body = {"action": "enter", "entry": "limit", "limit": 99.5, "stop": round(99.5 - 2.5 * atr, 2),
                     "target": round(99.5 + 4 * atr, 2), "days": 20}
-        session.decide(created["id"], k, body)
-    return session.summary_payload(created["id"])
+        session.decide(env["user"], created["id"], k, body)
+    return session.summary_payload(env["user"], created["id"])
 
 
 @pytest.mark.parametrize("lang", ["hu", "en", "de", "es"])
@@ -314,26 +357,41 @@ def test_templates_digit_free_and_in_catalog():
 # ---------------------------------------------------------------------------
 # Tarolas, munkasor, webes payload
 # ---------------------------------------------------------------------------
-def test_sessions_are_capped(monkeypatch):
+def test_sessions_are_capped_per_user(env, monkeypatch):
     monkeypatch.setattr(store, "MAX_SESSIONS", 3)
-    ids = []
-    for _ in range(5):
-        sid = store.new_id()
-        store.save_session({"id": sid, "created": "x", "tasks": []})
-        ids.append(sid)
-    assert len(store.sessions()) == 3 and store.load_session(ids[-1]) is not None
+    other = make_user("bela@example.com")
+    theirs = session.create(other, env["settings"], seed=1, rounds=1)
+    ids = [session.create(env["user"], env["settings"], seed=n, rounds=1)["id"] for n in range(5)]
+    assert [s["id"] for s in session.listing(env["user"])] == ids[:-4:-1]      # a 3 legujabb, a legujabb elol
+    assert store.load_session(theirs["id"], other) is not None                 # masik felhasznalot nem erinti
     with pytest.raises(ValueError):
-        store.load_session("../../etc")
+        store.load_session("../../etc", env["user"])
 
 
-def test_pool_job_runs_on_the_lab_queue(env):
-    out = webapp.practice_action("pool", {})
-    job = labqueue.get("admin", out["queued"])
-    assert job["kind"] == "practice_pool" and "practice_pool" in labqueue._handlers()
-    with pytest.raises(ValueError):
-        webapp.practice_action("pool", {})                                   # mar sorban all
-    assert labqueue.run_next(env["settings"])
-    done = labqueue.get("admin", job["id"])
-    assert done["status"] == "done" and "valtozatlan" in done["message"]
-    payload = webapp.practice_payload()
+def test_user_cannot_see_or_change_another_users_session(env, server):
+    created = session.create(env["user"], env["settings"], seed=4, rounds=2)
+    make_user("bela@example.com")
+    bela = login_cookie("bela@example.com")
+    sid = created["id"]
+    assert _call(server + f"/api/practice/session/{sid}/task/0", cookie=bela)[0] == 404
+    assert _call(server + f"/api/practice/session/{sid}/summary", cookie=bela)[0] == 404
+    assert _call(server + f"/api/practice/session/{sid}/task/0/decision", {"action": "skip"}, cookie=bela)[0] == 404
+    assert _call(server + "/api/practice/delete", {"id": sid}, cookie=bela)[0] == 404
+    status, listing = _call(server + "/api/practice", cookie=bela)
+    assert status == 200 and sid not in listing
+    assert session.task_payload(env["user"], sid, 0)["decided"] is False          # a sajat kore erintetlen
+    assert _call(server + f"/api/practice/session/{sid}/task/0", cookie="sw_session=hamis")[0] == 401
+
+
+def test_symbol_without_eligible_points_does_not_stop_the_pool(env):
+    df = env["frames"]["ALFA"].loc[:sampler.VISIBLE_END].copy()
+    df["volume"] = 0.0                                                      # egyetlen tiszta ablak sincs
+    out = sampler.symbol_entries("ALFA", df, env["settings"], None, [])
+    assert out["breakouts"] == {} and not any(out[c] for c in sampler.CATEGORIES)
+
+
+def test_web_payload_and_no_pool_build_from_the_web(env):
+    payload = webapp.practice_payload(env["user"])
     assert payload["pool"]["counts"] == env["pool"]["counts"] and payload["defaults"]["max_days"] == 30
+    with pytest.raises(ValueError):
+        webapp.practice_action("pool", {}, env["user"])     # a keszletet csak a CLI epiti

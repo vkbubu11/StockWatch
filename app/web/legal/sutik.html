@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sütitájékoztató – StockWatch Gyakorlás</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="/"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22l6-7 5 4 9-11"/></svg><span>StockWatch Gyakorlás</span></a></header>
+  <main class="view landing legal">
+    <p class="login-error" role="note">TERVEZET – indulás előtt jogásznak át kell néznie. A [szögletes zárójeles] részeket ki kell tölteni.</p>
+    <h1>Sütitájékoztató</h1>
+    <p class="muted">Verzió: 2026-10-22 (hatályos: [DÁTUM])</p>
+
+    <p>Csak a működéshez feltétlenül szükséges sütit használunk, ezért ehhez nem kell hozzájárulás. Analitikai, reklám- vagy
+      követő sütink nincs, harmadik fél sütijét nem töltjük be.</p>
+    <div class="table-scroll"><table class="table"><thead><tr><th>Név</th><th>Típus</th><th>Cél</th><th>Lejárat</th></tr></thead><tbody>
+      <tr><td><code>sw_session</code></td><td>süti (HttpOnly, SameSite=Strict, HTTPS-en Secure)</td><td>bejelentkezve tartás</td><td>30 nap, vagy kilépéskor</td></tr>
+      <tr><td><code>sw-theme</code>, <code>sw-lang</code></td><td>a böngésző helyi tárolója (localStorage), nem süti</td>
+        <td>a választott téma és nyelv megjegyzése; a szerverre nem kerül</td><td>amíg a böngészőben nem törlöd</td></tr>
+    </tbody></table></div>
+  </main>
+  <footer class="footer">Oktatási célú gyakorlás múltbeli / szimulált adaton. <strong>Nem befektetési tanács.</strong>
+    · <a href="/aszf">ÁSZF</a> · <a href="/adatkezeles">Adatkezelési tájékoztató</a> · <a href="/sutik">Sütik</a></footer>
+</body>
+</html>

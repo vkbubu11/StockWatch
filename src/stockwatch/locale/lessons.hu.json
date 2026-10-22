@@ -1,0 +1,161 @@
+[
+  {
+    "level": 1,
+    "title": "Gyertyák és trend",
+    "paragraphs": [
+      "Egy napi gyertya négy árat mutat: a nyitót, a zárót, a napi csúcsot és a napi mélypontot. A test a nyitó és a záró közötti rész; ha a záró a nyitó fölött van, a gyertya emelkedő, ha alatta, eső.",
+      "A trend a csúcsok és a mélypontok sorrendje: emelkedő trendben egyre magasabb csúcsok és mélypontok jönnek, eső trendben egyre alacsonyabbak. Oldalazásnál a csúcsok és a mélypontok nagyjából egy sávban maradnak."
+    ],
+    "points": [
+      "A chart a döntés napjáig látszik; az utolsó záró mindig 100 (normalizált ár).",
+      "Egyetlen gyertya kevés: a sorrend és a környezet számít.",
+      "A kihagyás is döntés – ha a kép nem egyértelmű, gyakran ez a legjobb."
+    ],
+    "figure": {"kind": "trend"},
+    "caption": "Szintetikus példa: trendváltások, gyertyák és mozgóátlagok.",
+    "tasks": {"rounds": 6, "only": {"strategy": null, "nothing": null}}
+  },
+  {
+    "level": 2,
+    "title": "Mozgóátlagok",
+    "paragraphs": [
+      "A mozgóátlag az utolsó N záró átlaga, így kisimítja a napi ingadozást. A gyakorlásban az exponenciális mozgóátlagok (EMA20, EMA50, EMA200) látszanak: az EMA20 a rövid, az EMA200 a hosszú távú irányt mutatja.",
+      "Ha az ár az EMA200 fölött van, és az EMA50 is az EMA200 fölött, a hosszú távú trend emelkedő; fordítva eső. A mozgóátlag késik: a fordulót mindig utólag mutatja."
+    ],
+    "points": [
+      "Az EMA-k sorrendje (20 > 50 > 200 vagy fordítva) a trend erejét jelzi.",
+      "Oldalazásban a mozgóátlagok összefonódnak, és sok hamis jelet adnak.",
+      "A short-gyanús helyzetek egyik feltétele: a záró az SMA200 alatt, az EMA50 az EMA200 alatt."
+    ],
+    "figure": {"kind": "trend"},
+    "caption": "Szintetikus példa: az ár és az EMA20 / EMA50 / EMA200.",
+    "tasks": {"rounds": 6, "only": {"strategy": null, "nothing": null}}
+  },
+  {
+    "level": 3,
+    "title": "Support és rezisztencia",
+    "paragraphs": [
+      "A support olyan ársáv, ahol korábban az esés többször megállt; a rezisztencia olyan, ahol az emelkedés. Ezek a szintek azért számítanak, mert sok szereplő ugyanazokat az árakat figyeli.",
+      "Egy szint áttörése után a szerep gyakran megfordul: a letört rezisztencia supportként viselkedhet. A szintek sávok, nem éles vonalak – a napi ingás (ATR) mértékével érdemes mérni a távolságot tőlük."
+    ],
+    "points": [
+      "Minél többször tesztelt egy szintet az ár, annál láthatóbb a szereplők számára.",
+      "A szinthez képest mért távolság ATR-ben összehasonlítható papírok között.",
+      "A háromszögek és a dupla aljak is support- és rezisztenciaszintekből állnak."
+    ],
+    "figure": {"pattern": "Emelkedo haromszog"},
+    "caption": "Szintetikus példa: vízszintes rezisztencia és emelkedő mélypontok.",
+    "tasks": {"rounds": 6, "only": {"pattern": null, "nothing": null}}
+  },
+  {
+    "level": 4,
+    "title": "Alakzatok (bikás)",
+    "paragraphs": [
+      "A fordulós alakzatok (dupla és tripla alj, fordított fej-váll) egy esés végén jelennek meg: az ár többször ugyanott fordul, majd a köztes csúcsot összekötő vonal (nyakvonal) fölé zárhat. A folytatólagos alakzatok (zászló, emelkedő háromszög, csésze-fül) egy emelkedés közbeni szünetek.",
+      "Az alakzat addig csak formálódik, amíg az ár a triggerszintet nem töri át. A gyakorlásban a formálódó alakzatokat látod: a kérdés az, hogy a kép alapján érdemes-e már dönteni, vagy a kihagyás a jobb."
+    ],
+    "points": [
+      "A felismerő csak a döntés napjáig látható adatból dolgozik (megerősített pivotok).",
+      "Az alakzat nem garancia: a kitörés el is maradhat, vagy visszaeshet.",
+      "A céltávolságot gyakran az alakzat magasságából mérik (measured move)."
+    ],
+    "figure": {"pattern": "Dupla alj"},
+    "caption": "Szintetikus példa: dupla alj, nyakvonallal és az utána következő mozgással.",
+    "tasks": {"rounds": 6, "only": {"pattern": null}}
+  },
+  {
+    "level": 5,
+    "title": "Stop-elhelyezés és R",
+    "paragraphs": [
+      "A stop az az ár, ahol a kötés kockázata lezárul. Ha túl közel van a belépőhöz (például 1 ATR-en belül), a napi zaj is kiütheti; ha túl messze, a kötés kockázata nagy. A gyakorlás ítélete a túl szoros stopot külön jelzi.",
+      "Az R a kockázat egysége: 1 R az a veszteség, ami a stopnál keletkezik. Egy +2 R-es eredmény a kockázott összeg kétszerese. A cél és a stop aránya (cél / kockázat) megmutatja, mennyi a lehetséges nyereség a kockázathoz képest."
+    ],
+    "points": [
+      "A stop távolsága ATR-ben mérve összehasonlítható papírok között.",
+      "Kis cél / kockázat aránynál a nyerési aránynak nagyon magasnak kell lennie.",
+      "A levezetés megmutatja, más stoppal mi lett volna az eredmény."
+    ],
+    "figure": {"pattern": "Bull zaszlo"},
+    "caption": "Szintetikus példa: zászló – a stop a zászló alja alatt, a cél a rúd magasságából.",
+    "tasks": {"rounds": 6, "only": {"strategy": null, "pattern": null}}
+  },
+  {
+    "level": 6,
+    "title": "Visszahúzás és túladottság (RSI)",
+    "paragraphs": [
+      "Az RSI (relatív erő index) azt méri, mennyire voltak erősek az utóbbi napok emelkedései az esésekhez képest, 0 és 100 között. A kétnapos RSI(2) nagyon érzékeny: néhány erős esés után 10 alá is mehet – ez a rövid távú túladottság.",
+      "A Visszahúzás-stratégia emelkedő hosszú távú trendben (a záró az SMA200 fölött) keresi az ilyen rövid, éles visszaeséseket, abban a feltevésben, hogy a trend folytatódik. A gyakorlás ugyanazzal a motorral számolja, jelzett-e a stratégia az adott napon."
+    ],
+    "points": [
+      "Túladott állapot eső trendben gyakran tovább esik – a trendszűrő ezért számít.",
+      "A stratégia limitáras belépést és időkorlátot használ.",
+      "A levezetésben látszik, mely szűrők teljesültek és melyek nem."
+    ],
+    "figure": {"kind": "trend"},
+    "caption": "Szintetikus példa: emelkedő trend rövid visszaesésekkel.",
+    "tasks": {"rounds": 6, "only": {"strategy": ["pullback"]}}
+  },
+  {
+    "level": 7,
+    "title": "Kitörés",
+    "paragraphs": [
+      "Kitörésnél az ár egy szint (például egy háromszög vagy zászló teteje) fölé zár, ahol korábban többször megállt. A megerősített kitörésnél a következő nap záró is a szint fölött van – ez kevesebb hamis jelet ad, de későbbi belépést.",
+      "A kitörések egy része visszaesik a szint alá (hamis kitörés). Ezért a stop a kitörési szint alatt, az alakzaton belül szokott lenni, a cél pedig az alakzat magasságából mérhető."
+    ],
+    "points": [
+      "A kitörési napon a volumen gyakran az átlag fölött van.",
+      "Túlnyúlt kitörésnél (messze a szint fölött) a kockázat nagyobb.",
+      "A folytatólagos alakzatok a meglévő trend irányába törnek ki gyakrabban."
+    ],
+    "figure": {"pattern": "Bull zaszlo"},
+    "caption": "Szintetikus példa: zászló és a kitörés.",
+    "tasks": {"rounds": 6, "only": {"pattern": ["Bull zaszlo", "Emelkedo haromszog", "Csesze-ful", "Szimmetrikus haromszog", "Eso ek"]}}
+  },
+  {
+    "level": 8,
+    "title": "Short és medvés alakzatok",
+    "paragraphs": [
+      "Shortnál a kötés az esésből profitál: a belépő fölött van a stop, alatta a cél. A medvés alakzatok (dupla és tripla tető, fej-váll, bear zászló, csökkenő háromszög) a bikás párjaik tükörképei.",
+      "Eső trendben (a záró az SMA200 alatt, az EMA50 az EMA200 alatt) a short-gyanús helyzetek gyakoribbak. Shortnál a veszteség elvben nem korlátos, és kölcsönzési díj is lehet – ezért a stop itt is kötelező."
+    ],
+    "points": [
+      "A medvés alakzat a nyakvonal vagy a támasz letörésével aktiválódik.",
+      "Az emelkedő trendben megjelenő short-gyanús kép gyakran csak visszahúzás.",
+      "A levezetés a long és a short alternatívát is megmutatja."
+    ],
+    "figure": {"pattern": "Fej-vall"},
+    "caption": "Szintetikus példa: fej-váll alakzat és nyakvonal.",
+    "tasks": {"rounds": 6, "only": {"short": null}}
+  },
+  {
+    "level": 9,
+    "title": "Kockázatkezelés, pozícióméret",
+    "paragraphs": [
+      "A pozícióméret abból következik, mennyi a kötésenkénti kockázat: ha egy kötés legfeljebb a számla 1%-át kockáztathatja, a darabszám = (a számla 1%-a) / (belépő és stop távolsága). Így a szorosabb stop nagyobb, a tágabb kisebb pozíciót ad – a kockázat ugyanannyi.",
+      "Sok kötésen át a várható eredmény számít: nyerési arány × átlagos nyereség − vesztési arány × átlagos veszteség (R-ben). Egy sorozat vesztes kötés is belefér, ha a kötésenkénti kockázat kicsi."
+    ],
+    "points": [
+      "A vesztes sorozat normális: 50%-os nyerési aránynál 5 vesztes egymás után sem ritka.",
+      "Az eredményt R-ben mérve a különböző papírok összehasonlíthatók.",
+      "A véletlen alapvonal megmutatja, mennyi jönne vak belépéssel ugyanott."
+    ],
+    "figure": {"kind": "trend"},
+    "caption": "Szintetikus példa: ugyanaz a papír, eltérő volatilitású időszakok.",
+    "tasks": {"rounds": 8, "only": {"strategy": null, "pattern": null, "short": null, "nothing": null}}
+  },
+  {
+    "level": 10,
+    "title": "Vegyes vizsga",
+    "paragraphs": [
+      "Az utolsó szint minden eddigi témát vegyesen kérdez: stratégia-jelzéseket, formálódó alakzatokat, short-gyanús helyzeteket és semmi különös napokat. A kategória csak a felfedéskor derül ki.",
+      "A szint akkor teljesül, ha a döntések nagy része jó vagy balszerencsés – azaz a szabályok szerint indokolt volt, függetlenül attól, hogy a piac végül merre ment."
+    ],
+    "points": [
+      "Kihagyás, long és short is lehet a jó válasz.",
+      "A stop helye és a cél / kockázat arány az ítéletbe is beleszámít."
+    ],
+    "figure": {"pattern": "Forditott fej-vall"},
+    "caption": "Szintetikus példa: fordított fej-váll.",
+    "tasks": {"rounds": 10, "only": {"strategy": null, "pattern": null, "short": null, "nothing": null}}
+  }
+]

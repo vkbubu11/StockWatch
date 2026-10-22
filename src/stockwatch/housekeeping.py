@@ -1,6 +1,6 @@
 """Lemezhasznalat korlatozasa.
 
-A monitor honapokig futhat felugyelet nelkul, ezert minden irott fajlnak
+A szolgaltatas honapokig futhat felugyelet nelkul, ezert minden irott fajlnak
 felso korlatja van. Ez a modul tartja be ezeket a korlatokat:
 
   * signals.jsonl    - meretalapu rotacio, korlatozott szamu archivummal
@@ -27,12 +27,7 @@ log = logging.getLogger(__name__)
 MB = 1024 * 1024
 ACTIVE_STATE_MAX_DAYS = 365      # ennel regebbi, le nem zarult formacio-bejegyzes torlodik
 UNIVERSE_STALE_DAYS = 30         # a mar nem hasznalt universe-fajlok ennyi nap utan torlodnek
-EVENTS_LIMIT_MB = 30              # esemenytanulmanyok: munkateruletenkent 30 tanulmany (events/store.py)
-FORM4_LIMIT_MB = 50               # Form 4 kivonat, evenkent (events/sources/form4.py)
-AGENT_LIMIT_MB = 50               # kutatougynok: munkateruletenkent 30 futas, 50 MB (research_agent/store.py)
-DIGEST_LIMIT_MB = 10              # reggeli osszefoglalok: ~90 nap x 20-60 KB
-PRACTICE_LIMIT_MB = 10            # gyakorlo mod: 100 kor (~20-60 KB) + a feladatkeszlet (<= 5 MB)
-LAB_LIMIT_MB = 100                # strategia-labor: 60 kiserlet x max. 20k trade + papironkenti kitores-cache
+PRACTICE_LIMIT_MB = 5             # a gyakorlo feladatkeszlet (practice/store.POOL_LIMIT_MB); a korok az adatbazisban
 
 
 # ---------------------------------------------------------------------------
@@ -203,49 +198,19 @@ def disk_usage(settings: Settings | None = None) -> list[UsageEntry]:
         UsageEntry("Kutatasi cache (data/research)", _dir_size(DATA_DIR / "research"), None),
         UsageEntry("Visszahuzas-kutatas (data/research/meanrev)", _dir_size(DATA_DIR / "research" / "meanrev"),
                    20 * MB),
-        UsageEntry("Poziciokovetes (positions.json)", _file_size(settings.positions_path), None),
         UsageEntry("Jelzesnaplo (data/ledger)", _dir_size(DATA_DIR / "ledger"), None),
         UsageEntry("Indexosszetetel (index_members.json)", _file_size(settings.index_members_path), None),
         UsageEntry("Indexszkenneles eredmenye (index_scan.json)", _file_size(settings.index_scan_path), None),
-        UsageEntry("Paper trade-ek (broker.json)", _file_size(settings.broker_path), None),
-        UsageEntry("Sajat poziciok (holdings.json)", _file_size(settings.holdings_path), None),
         UsageEntry("Riasztasi cooldown (entry_state.json)", _file_size(settings.entry_state_path), None),
         UsageEntry("Earnings cache (earnings.json)", _file_size(settings.earnings_path), None),
-        UsageEntry("Strategia-labor (data/lab)", _dir_size(DATA_DIR / "lab"), int(LAB_LIMIT_MB * MB)),
-        UsageEntry("Reggeli osszefoglalok (data/users/*/digest)", _digest_bytes(), int(DIGEST_LIMIT_MB * MB)),
-        UsageEntry("Kutatougynok (data/users/*/agent)", _agent_bytes(), int(AGENT_LIMIT_MB * MB)),
-        UsageEntry("Labor-munkasor (data/queue)", _dir_size(DATA_DIR / "queue"), None),
-        UsageEntry("Gyakorlo mod (data/users/*/practice + data/practice)", _practice_bytes(),
-                   int(PRACTICE_LIMIT_MB * MB)),
-        UsageEntry("Esemenytanulmanyok (data/users/*/events)", _event_bytes(), int(EVENTS_LIMIT_MB * MB)),
-        UsageEntry("Form 4 bennfentes-tranzakciok (data/events/form4)", _dir_size(DATA_DIR / "events" / "form4"),
-                   int(FORM4_LIMIT_MB * MB)),
-        UsageEntry("Indexvaltozasok, szektorok (data/events/*.json)", _dir_size(DATA_DIR / "events", "*.json"), None),
+        UsageEntry("Gyakorlo feladatkeszlet (data/practice)", _practice_bytes(), int(PRACTICE_LIMIT_MB * MB)),
     ]
-
-
-def _event_bytes() -> int:
-    from .events import store as event_store
-
-    return event_store.usage_bytes()
-
-
-def _agent_bytes() -> int:
-    from .research_agent import store as agent_store
-
-    return agent_store.usage_bytes()
 
 
 def _practice_bytes() -> int:
     from .practice import store as practice_store
 
-    return practice_store.usage_bytes()
-
-
-def _digest_bytes() -> int:
-    from .digest import store as digest_store
-
-    return digest_store.usage_bytes()
+    return practice_store.pool_bytes()
 
 
 def total_usage_mb(settings: Settings | None = None) -> float:
@@ -392,51 +357,6 @@ def enforce_jsonl_limits(settings: Settings | None = None) -> None:
         _archive_path(path, index).unlink(missing_ok=True)
 
 
-def _prune_lab(settings: Settings) -> dict:
-    """A strategia-labor: torolt kiserletek eredmenyei, 30 napja nem hasznalt papirok cache-e."""
-    try:
-        from . import lab
-
-        return lab.prune(settings)
-    except Exception:
-        log.exception("A labor takaritasa nem sikerult")
-        return {}
-
-
-def _prune_digest(settings: Settings) -> int:
-    """A reggeli osszefoglalok archivuma: `digest.keep_days` napnal regebbiek (admin munkaterulet)."""
-    try:
-        from .digest import store as digest_store
-
-        return digest_store.prune(settings.digest.keep_days)
-    except Exception:
-        log.exception("Az osszefoglalok takaritasa nem sikerult")
-        return 0
-
-
-def _prune_practice() -> int:
-    """Gyakorlo mod: munkateruletenkent legfeljebb 100 kor (a feladatkeszlet mentesekor ellenorzott)."""
-    try:
-        from . import workspace
-        from .practice import store as practice_store
-
-        return practice_store.prune(workspace.DEFAULT)
-    except Exception:
-        log.exception("A gyakorlo korok takaritasa nem sikerult")
-        return 0
-
-
-def _prune_queue() -> int:
-    """A labor-munkasor 7 napnal regebbi, befejezett feladatai."""
-    try:
-        from . import labqueue
-
-        return labqueue.prune()
-    except Exception:
-        log.exception("A munkasor takaritasa nem sikerult")
-        return 0
-
-
 def run(settings: Settings | None = None) -> dict:
     """A napi takaritas - a scheduler ezt hivja piaczaras utan."""
     settings = settings or load_settings()
@@ -447,10 +367,6 @@ def run(settings: Settings | None = None) -> dict:
         "pruned_state_entries": prune_state(settings),
         "pruned_universe_files": prune_universe(settings),
         "ledger": _prune_ledger(),
-        "lab": _prune_lab(settings),
-        "digest": _prune_digest(settings),
-        "queue": _prune_queue(),
-        "practice": _prune_practice(),
     }
     enforce_jsonl_limits(settings)
 

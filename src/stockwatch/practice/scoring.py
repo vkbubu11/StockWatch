@@ -171,30 +171,6 @@ def meanrev_compare(name: str, params: PullbackParams, symbol: str, df: pd.DataF
     return out | {"signaled": True} | trade_view(trade, feat, i, scale, trade.limit, params.total_cost_bps)
 
 
-def breakout_compare(symbol: str, df: pd.DataFrame, i: int) -> dict:
-    """A Kitores: ha a labor kitores-cache-eben t-n kitores van, a labor ELO kiserletenek mentett kotese
-    (megerositett belepesnel a kovetkezo napi jelzes). Nincs mentett kotes: a szurok kizartak, vagy a labor
-    meg nem ertekelt."""
-    from .. import lab
-
-    day = df.index[i]
-    out = {"strategy": "breakout", "signaled": False}
-    cache = lab.load_cache(symbol) or {}
-    if not any(pd.Timestamp(e[0]) == day for e in cache.get("events", [])):
-        return out
-    live = next((e for e in lab.load_store().get("experiments", []) if e.get("live")), None)
-    results = lab.load_results(live["id"]) if live else []
-    if not results:
-        return out | {"signaled": True, "status": "unknown"}
-    nxt = df.index[i + 1] if i + 1 < len(df) else None
-    hit = next((x for x in results if x.symbol == symbol
-                and (x.date == day or (x.kind == "confirm" and nxt is not None and x.date == nxt))), None)
-    if hit is None:
-        return out | {"signaled": True, "status": "filtered"}
-    return out | {"signaled": True, "status": "closed", "r": round(float(hit.r), 3), "reason": hit.reason,
-                  "held": int(hit.held), "kind": hit.kind}
-
-
 # ---------------------------------------------------------------------------
 # Referencia-kotes es veletlen alapvonal
 # ---------------------------------------------------------------------------
@@ -318,7 +294,8 @@ def user_trade(feat: pd.DataFrame, i: int, decision: dict, scale: float, cost: f
 
 
 def evaluate(symbol: str, df: pd.DataFrame, i: int, decision: dict, settings: Settings, seed: int,
-             mctx: market.MarketContext | None = None, earnings_dates: list | None = None) -> dict:
+             mctx: market.MarketContext | None = None, earnings_dates: list | None = None,
+             breakout: dict | None = None) -> dict:
     """A dontes (normalizalt arakkal) kimenetele + az osszevetes + az itelet es a levezetes + a jovobeli gyertyak."""
     from . import review
 
@@ -340,7 +317,7 @@ def evaluate(symbol: str, df: pd.DataFrame, i: int, decision: dict, settings: Se
     strategies = [
         meanrev_compare("pullback", settings.strategies.pullback.params, symbol, df, i, scale, mctx, earnings_dates),
         meanrev_compare("deep", settings.strategies.deep.params, symbol, df, i, scale, mctx, earnings_dates),
-        breakout_compare(symbol, df, i),
+        breakout or {"strategy": "breakout", "signaled": False},          # a keszletbol (breakouts.py)
         short_compare(symbol, df, i, scale, settings, mctx, earnings_dates, cost, mirrored, borrow),
     ]
     end = min(i + FUTURE_BARS, len(df) - 1)
