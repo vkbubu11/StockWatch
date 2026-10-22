@@ -70,7 +70,7 @@ async function route() {
     const me = await whoami();
     if (!me.onboarded && !pm) { pageWelcome(Number((hash.match(/^#\/welcome\/(\d)$/) || [0, 0])[1])); return; }
     const lm = hash.match(/^#\/learn\/(\d{1,2})$/);
-    if (tab === "info") pageInfo();
+    if (tab === "info") pageInfo(me.contact);
     else if (tab === "learn") { if (lm) await pageLesson(Number(lm[1])); else await pageLearn(); }
     else if (tab === "profile") await pageProfile();
     else if (tab === "daily") await pageDaily();
@@ -122,19 +122,18 @@ function pageWelcome(step) {
 }
 
 // ---------------------------------------------------------------------------
-// Informacio: hibabejelentes a GitHub Issues oldalon
+// Informacio: visszajelzes e-mailben (#45) - a cim a CONTACT_EMAIL beallitasbol
 // ---------------------------------------------------------------------------
-const ISSUES_URL = "https://github.com/vkbubu11/StockWatch/issues";
-
-function pageInfo() {
+function pageInfo(contact) {
+  const mail = contact ? `mailto:${encodeURIComponent(contact)}?subject=${encodeURIComponent("StockWatch Gyakorlás – visszajelzés")}` : "";
   view.innerHTML = `
     <div class="page-head"><h1>Információ</h1></div>
-    <section class="card"><h2>Hibabejelentés</h2><div class="card-body">
-      <p>Hibát bejelenteni a rendszer GitHub oldalán, az <strong>Issues</strong> fülön lehet.</p>
-      <p><a class="btn primary" href="${ISSUES_URL}" target="_blank" rel="noopener noreferrer">Hiba bejelentése a GitHubon (Issues) ↗</a></p>
+    ${contact ? `<section class="card"><h2>Visszajelzés, hibabejelentés</h2><div class="card-body">
+      <p>Hibát találtál, vagy van ötleted? Írj nekünk – minden visszajelzést elolvasunk.</p>
+      <p><a class="btn primary" href="${esc(mail)}">Visszajelzés küldése</a> <span class="muted small">${esc(contact)}</span></p>
       <p class="muted small">Írd le, mit csináltál, mire számítottál, és mi történt helyette – ha lehet, képernyőképpel.
-        Jelszót soha ne másolj be.</p>
-    </div></section>
+        Jelszót soha ne küldj el.</p>
+    </div></section>` : ""}
     <section class="card"><h2>A szolgáltatásról</h2><div class="card-body muted">
       StockWatch Gyakorlás – oktatási célú chart-olvasási gyakorlás múltbeli adaton: döntés, ítélet és lépésenkénti levezetés.
       Nem befektetési tanács.
@@ -206,23 +205,53 @@ async function pageDaily() {
 }
 
 let lbPeriod = "week";
+let lbGroup = "";                                    // "" = mindenki, kulonben a privat csoport azonositoja (#47)
 const LB_PERIODS = { day: "Napi", week: "Heti", month: "Havi", all: "Összesített" };
 
 async function pageLeaderboard() {
-  const d = await api(`/api/leaderboard?period=${lbPeriod}`);
+  const groups = await api("/api/groups");
+  if (lbGroup && !groups.some((g) => String(g.id) === lbGroup)) lbGroup = "";
+  const d = await api(`/api/leaderboard?period=${lbPeriod}${lbGroup ? `&group=${lbGroup}` : ""}`);
   const row = (r) => `<tr class="${r.me ? "lb-me" : ""}"><td class="num">${r.rank}.</td><td>${esc(r.name)}${r.me ? " (te)" : ""}</td>
     <td class="num">${r.points}</td><td class="num">${r.days}</td></tr>`;
   view.innerHTML = `
     <div class="page-head"><h1>Ranglista</h1><span class="muted">A napi kihívások pontjai szerint (a döntés minősége, nem a profit).
       Becenév látszik, e-mail soha – a becenevet a Profil oldalon állíthatod be.</span></div>
     <section class="card"><div class="card-body">
+      ${groups.length ? `<label class="cal-field">Kik között<select id="lb-group"><option value="">Mindenki</option>
+        ${groups.map((g) => `<option value="${g.id}" ${String(g.id) === lbGroup ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select></label>` : ""}
       <div class="segmented" role="group" aria-label="Időszak">${Object.entries(LB_PERIODS).map(([k, v]) =>
         `<button type="button" class="seg ${k === lbPeriod ? "on" : ""}" data-lb="${k}" aria-pressed="${k === lbPeriod}">${v}</button>`).join("")}</div>
       ${d.rows.length ? `<table class="table cards-on-phone"><thead><tr><th>Hely</th><th>Becenév</th><th>Pont</th><th>Napok</th></tr></thead>
         <tbody>${d.rows.map(row).join("")}</tbody></table>` : `<p class="muted">Ebben az időszakban még nincs eredmény.</p>`}
       ${d.me && !d.rows.some((r) => r.me) ? `<p>A te helyed: <strong>${d.me.rank}.</strong> (${d.me.points} pont)</p>` : ""}
+    </div></section>
+    <section class="card"><h2>Csoportjaim</h2><div class="card-body">
+      <p class="muted small">Privát ranglista egy kurzusnak vagy baráti körnek: hozz létre egy csoportot, és add tovább a meghívókódot.</p>
+      ${groups.length ? `<table class="table cards-on-phone"><thead><tr><th>Csoport</th><th>Meghívókód</th><th>Tagok</th><th></th></tr></thead><tbody>
+        ${groups.map((g) => `<tr><td>${esc(g.name)}${g.owner ? ` <span class="badge go">saját</span>` : ""}</td><td><code>${esc(g.code)}</code></td>
+          <td class="num">${g.members}</td><td><button class="btn" type="button" data-group-${g.owner ? "delete" : "leave"}="${g.id}">${g.owner ? "Törlés" : "Kilépés"}</button></td></tr>`).join("")}
+      </tbody></table>` : ""}
+      <form id="group-create" class="ag-form"><label>Új csoport neve<input name="name" maxlength="40" required></label>
+        <div class="wide"><button class="btn" type="submit">Csoport létrehozása</button></div></form>
+      <form id="group-join" class="ag-form"><label>Meghívókód<input name="code" maxlength="8" autocomplete="off" required></label>
+        <div class="wide"><button class="btn" type="submit">Csatlakozás</button> <span id="group-msg" class="small"></span></div></form>
     </div></section>`;
   view.querySelectorAll("[data-lb]").forEach((b) => b.addEventListener("click", () => { lbPeriod = b.dataset.lb; pageLeaderboard(); }));
+  const sel = $("#lb-group");
+  if (sel) sel.addEventListener("change", () => { lbGroup = sel.value; pageLeaderboard(); });
+  const groupAction = async (action, body) => {
+    try { await api(`/api/groups/${action}`, { method: "POST", body: JSON.stringify(body) }); await pageLeaderboard(); }
+    catch (e) { const m = $("#group-msg"); m.className = "msg err small"; m.textContent = e.message; }
+  };
+  $("#group-create").addEventListener("submit", (ev) => { ev.preventDefault(); groupAction("create", { name: ev.target.elements.name.value }); });
+  $("#group-join").addEventListener("submit", (ev) => { ev.preventDefault(); groupAction("join", { code: ev.target.elements.code.value }); });
+  view.querySelectorAll("[data-group-leave]").forEach((b) => b.addEventListener("click", () => {
+    if (confirm("Kilépsz a csoportból?")) groupAction("leave", { id: Number(b.dataset.groupLeave) });
+  }));
+  view.querySelectorAll("[data-group-delete]").forEach((b) => b.addEventListener("click", () => {
+    if (confirm("Törlöd a csoportot? Minden tag kikerül belőle.")) groupAction("delete", { id: Number(b.dataset.groupDelete) });
+  }));
 }
 
 // ---------------------------------------------------------------------------

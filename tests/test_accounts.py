@@ -156,3 +156,25 @@ def test_stale_unverified_registrations_are_removed(neon):
     with db.connection() as conn:
         ids = {r[0] for r in conn.execute("SELECT id FROM users")}
     assert old not in ids and kept in ids
+
+
+def test_resend_verification_link(neon, outbox):
+    make_user("kesz@example.com")
+    accounts.resend_verification("kesz@example.com", "1.1.1.1", BASE)          # megerositett: nincs level
+    accounts.resend_verification("nincs@example.com", "1.1.1.1", BASE)        # nem letezik: nincs level, nincs hiba
+    assert outbox == []
+    accounts.register("uj@example.com", PW, True, True, "1.1.1.1", BASE)
+    first = _token(outbox)
+    accounts.resend_verification("UJ@example.com", "1.1.1.1", BASE)
+    assert len(outbox) == 2 and outbox[-1][0] == "uj@example.com"
+    assert not accounts.verify_email(first)                                     # a regi link mar nem ervenyes
+    assert accounts.verify_email(_token(outbox))
+    assert accounts.login("uj@example.com", PW, "1.1.1.1")
+
+
+def test_resend_is_rate_limited(neon):
+    make_user(verified=False)
+    for n in range(accounts.ACCOUNT_RESEND.limit):
+        accounts.resend_verification("anna@example.com", f"2.2.2.{n}", BASE)
+    with pytest.raises(accounts.RateLimited):
+        accounts.resend_verification("anna@example.com", "3.3.3.3", BASE)

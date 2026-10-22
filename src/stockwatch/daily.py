@@ -14,7 +14,7 @@ from datetime import date, timedelta
 
 import psycopg
 
-from . import db, progress
+from . import db, groups, progress
 from .config import Settings
 from .practice import sampler, store
 from .practice import session as practice
@@ -64,9 +64,12 @@ def _range(period: str, day: date) -> tuple[date | None, date | None]:
     return None, None
 
 
-def leaderboard(period: str, user_id: int, day: date | None = None) -> dict:
+def leaderboard(period: str, user_id: int, day: date | None = None, group: int | None = None) -> dict:
+    """`group`: csak a privat csoport (#47) tagjai - csak tag lathatja."""
     if period not in PERIODS:
         raise ValueError(f"period: {', '.join(PERIODS)}")
+    if group is not None and not groups.is_member(user_id, group):
+        raise LookupError("Nincs ilyen csoport.")
     day = day or progress.today()
     lo, hi = _range(period, day)
     with db.connection() as conn:
@@ -75,12 +78,13 @@ def leaderboard(period: str, user_id: int, day: date | None = None) -> dict:
             "sum(t.points) AS points, count(DISTINCT s.id) AS days FROM practice_sessions s "
             "JOIN practice_tasks t ON t.session_id = s.id JOIN users u ON u.id = s.user_id "
             "WHERE s.daily IS NOT NULL AND (%(lo)s::date IS NULL OR s.daily BETWEEN %(lo)s AND %(hi)s) "
-            "AND u.email_verified_at IS NOT NULL AND t.points IS NOT NULL GROUP BY u.id), "
+            "AND u.email_verified_at IS NOT NULL AND t.points IS NOT NULL AND (%(group)s::bigint IS NULL OR u.id IN "
+            "(SELECT user_id FROM group_members WHERE group_id = %(group)s)) GROUP BY u.id), "
             "ranked AS (SELECT *, rank() OVER (ORDER BY points DESC) AS rank FROM scores) "
             "SELECT rank, name, points, days, id = %(me)s FROM ranked WHERE rank <= %(top)s OR id = %(me)s "
-            "ORDER BY rank, name", {"lo": lo, "hi": hi, "me": user_id, "top": TOP}).fetchall()
+            "ORDER BY rank, name", {"lo": lo, "hi": hi, "me": user_id, "top": TOP, "group": group}).fetchall()
     out = [{"rank": r, "name": n, "points": p, "days": d, "me": me} for r, n, p, d, me in rows]
-    return {"period": period, "from": f"{lo:%Y-%m-%d}" if lo else None, "to": f"{hi:%Y-%m-%d}" if hi else None,
+    return {"period": period, "group": group, "from": f"{lo:%Y-%m-%d}" if lo else None, "to": f"{hi:%Y-%m-%d}" if hi else None,
             "rows": [r for r in out if r["rank"] <= TOP], "me": next((r for r in out if r["me"]), None)}
 
 

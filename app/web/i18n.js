@@ -9,7 +9,9 @@
  */
 "use strict";
 
-const LANGS = { hu: "Magyar", en: "English", de: "Deutsch", es: "Español" };
+// Az engedelyezett nyelvek (#46): indulasra csak a magyar - a leckek es az uj szovegek meg nincsenek leforditva.
+// Visszakapcsolas a forditasok utan: { hu: "Magyar", en: "English", de: "Deutsch", es: "Español" }
+const LANGS = { hu: "Magyar" };
 const LOCALES = { hu: "hu-HU", en: "en-US", de: "de-DE", es: "es-ES" };
 const LANG_KEY = "sw-lang";
 
@@ -213,7 +215,7 @@ const I18N = (() => {
 
   function picker() {
     const box = document.querySelector(".topbar-right");
-    if (!box || document.getElementById("lang")) return;
+    if (!box || document.getElementById("lang") || Object.keys(LANGS).length < 2) return;   // egy nyelvnel nincs valaszto
     const sel = document.createElement("select");
     sel.id = "lang";
     sel.className = "lang-select";

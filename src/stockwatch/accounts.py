@@ -36,6 +36,8 @@ ACCOUNT_LOGIN = webauth.RateLimit("account-login", 5, 15 * 60)   # fiokonkent 5 
 IP_REGISTER = webauth.RateLimit("ip-register", 5, 60 * 60)   # IP-nkent 5 regisztracio / ora
 IP_RESET = webauth.RateLimit("ip-reset", 5, 60 * 60)         # IP-nkent 5 visszaallitasi keres / ora
 ACCOUNT_RESET = webauth.RateLimit("account-reset", 3, 60 * 60)   # cimenkent 3 visszaallito level / ora
+IP_RESEND = webauth.RateLimit("ip-resend", 5, 60 * 60)       # IP-nkent 5 uj megerosito link / ora (#44)
+ACCOUNT_RESEND = webauth.RateLimit("account-resend", 3, 60 * 60)   # cimenkent 3 uj megerosito link / ora
 
 _DUMMY_HASH: list[str] = []                     # ismeretlen e-mailnel is fusson egy scrypt (idozites)
 
@@ -112,6 +114,19 @@ def register(email: str, password: str, accepted_terms: bool, age_ok: bool, ip: 
         _verify_mail(email, token, base_url)
 
 
+def resend_verification(email: str, ip: str, base_url: str) -> None:
+    """Uj megerosito link (#44) - csak letezo, meg nem megerositett fiokra; a regi link ervenytelen lesz. A valasz
+    minden esetben ugyanaz (nincs fiok-felsorolas)."""
+    email = normalize_email(email)
+    if not IP_RESEND.hit(ip) or not ACCOUNT_RESEND.hit(email):
+        raise RateLimited("Túl sok kérés. Próbáld újra később.")
+    with db.connection() as conn:
+        row = conn.execute("SELECT id FROM users WHERE lower(email) = %s AND email_verified_at IS NULL", (email,)).fetchone()
+        token = _new_token(conn, row[0], "verify", VERIFY_TTL) if row else None
+    if token:
+        _verify_mail(email, token, base_url)
+
+
 def verify_email(token: str) -> bool:
     with db.connection() as conn:
         row = conn.execute("UPDATE email_tokens SET used_at = now() WHERE token_hash = %s AND purpose = 'verify' "
@@ -139,8 +154,8 @@ def login(email: str, password: str, ip: str, user_agent: str = "") -> str | Non
     if not (row and row[1] and ok):                     # csak Google-os fiok (nincs jelszo): nincs jelszavas belepes
         return None
     if row[2] is None:
-        raise AccountError("Előbb erősítsd meg az e-mail-címedet (a regisztrációkor küldött linkkel). "
-                           "Új linket a regisztráció ismétlésével kérhetsz.")
+        raise AccountError("Előbb erősítsd meg az e-mail-címedet a regisztrációkor küldött linkkel. Nem kaptad meg? "
+                           "Nézd meg a spam mappát, vagy kérj újat lent: „Nem kaptad meg a megerősítő levelet?”")
     ACCOUNT_LOGIN.clear(key)
     with db.connection() as conn:
         return _new_session(conn, row[0], user_agent)
@@ -251,10 +266,13 @@ def export(user_id: int) -> dict:
                                 "WHERE user_id = %s ORDER BY created_at", (user_id,)).fetchall()
         identities = conn.execute("SELECT provider, email, created_at FROM user_identities WHERE user_id = %s",
                                   (user_id,)).fetchall()
+        groups = conn.execute("SELECT g.name, g.owner_id = %s, m.joined_at FROM group_members m JOIN learning_groups g "
+                              "ON g.id = m.group_id WHERE m.user_id = %s", (user_id, user_id)).fetchall()
     keys = ("email", "created_at", "email_verified_at", "terms_version", "terms_accepted_at", "onboarded_at")
     return {"account": dict(zip(keys, row)) if row else None,
             "sessions": [dict(zip(("created_at", "last_used_at", "expires_at", "user_agent"), s)) for s in sessions],
             "identities": [dict(zip(("provider", "email", "created_at"), i)) for i in identities],
+            "groups": [dict(zip(("name", "owner", "joined_at"), g)) for g in groups],
             "practice": [store.load_session(s["id"], user_id) for s in store.sessions(user_id, limit=store.MAX_SESSIONS)]}
 
 

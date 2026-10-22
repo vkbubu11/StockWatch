@@ -38,14 +38,17 @@ WEB_DIR = PROJECT_ROOT / "app" / "web"
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
                 ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png"}
 PUBLIC_FILES = ("/style.css", "/i18n.js")             # bejelentkezes nelkul is (+ /i18n/<nyelv>.json, urlapok)
-AUTH_PAGES = ("/login", "/register", "/forgot", "/reset")
+AUTH_PAGES = ("/login", "/register", "/forgot", "/reset", "/resend")
 LEGAL_PAGES = {"/aszf": "aszf.html", "/adatkezeles": "adatkezeles.html", "/sutik": "sutik.html"}   # nyilvanos (#40)
 LESSON_RE = re.compile(r"/api/lessons/(\d{1,2})(/start)?")
 PRACTICE_SESSION_RE = re.compile(r"/api/practice/session/([a-z]{12})/(task/(\d{1,2})(/decision)?|summary)")
 
 # az urlapok visszajelzesei (?e=kod): (fajta, szoveg)
 NOTICES = {
-    "sent": ("info", "Ha ez a cím még nincs megerősítve, küldtünk rá egy ellenőrző linket. Nézd meg a leveleidet."),
+    "sent": ("info", "Ha ez a cím még nincs megerősítve, küldtünk rá egy ellenőrző linket. Nézd meg a leveleidet "
+                     "(a spam mappát is)."),
+    "resent": ("info", "Ha ez a cím egy még nem megerősített fiókhoz tartozik, küldtünk rá egy új linket (a régi már "
+                       "nem érvényes). Nézd meg a spam mappát is."),
     "verified": ("info", "Az e-mail-címed megerősítve – most már beléphetsz."),
     "badlink": ("error", "A link lejárt vagy már felhasználták. Kérj újat."),
     "resetsent": ("info", "Ha van ilyen fiók, küldtünk egy linket az új jelszó beállításához."),
@@ -129,7 +132,9 @@ def _field(name: str, label: str, kind: str, autocomplete: str, value: str = "",
 def auth_form(page: str, email: str = "", token: str = "", google: bool = False) -> tuple[str, str]:
     """(cim, urlap) a belepes / regisztracio / elfelejtett jelszo / uj jelszo oldalhoz; `google`: a Google-gomb is."""
     pw_min = f'minlength="{webauth.MIN_PASSWORD}" maxlength="{webauth.MAX_PASSWORD}"'
-    links = {"login": '<a href="/register">Regisztráció</a><a href="/forgot">Elfelejtett jelszó</a>',
+    links = {"login": '<a href="/register">Regisztráció</a><a href="/forgot">Elfelejtett jelszó</a>'
+                      '<a href="/resend">Nem kaptad meg a megerősítő levelet?</a>',
+             "resend": '<a href="/login">Vissza a belépéshez</a>',
              "register": '<a href="/login">Van már fiókom – belépés</a>',
              "forgot": '<a href="/login">Vissza a belépéshez</a>', "reset": '<a href="/login">Vissza a belépéshez</a>'}
     if page == "login":
@@ -146,6 +151,9 @@ def auth_form(page: str, email: str = "", token: str = "", google: bool = False)
               'tájékoztatót</a>.</span></label>'
             + '<label class="check"><input type="checkbox" name="age" value="1" required> <span>Elmúltam 16 éves.</span>'
               '</label><button class="btn primary" type="submit">Regisztráció</button>')
+    elif page == "resend":
+        title, body = "Új megerősítő link", (_field("email", "E-mail-cím", "email", "username", email, "autofocus")
+                                             + '<button class="btn primary" type="submit">Új link küldése</button>')
     elif page == "forgot":
         title, body = "Elfelejtett jelszó", (_field("email", "E-mail-cím", "email", "username", email, "autofocus")
                                              + '<button class="btn primary" type="submit">Link küldése</button>')
@@ -274,6 +282,9 @@ def make_handler(trust_proxy: bool = False):
                 if path == "/forgot":
                     accounts.request_reset(email, ip, self._base_url())
                     return self._redirect("/login?e=resetsent")
+                if path == "/resend":
+                    accounts.resend_verification(email, ip, self._base_url())
+                    return self._redirect("/login?e=resent")
                 token = form.get("token", "")
                 if not accounts.reset_password(token, form.get("password", "")):
                     return self._redirect("/forgot?e=badlink")
@@ -357,7 +368,11 @@ def make_handler(trust_proxy: bool = False):
                 if path in PUBLIC_FILES or posixpath.normpath(path).startswith("/img/"):   # a kezdooldal kepei
                     return self._static(path)
                 if path in LEGAL_PAGES:
-                    return self._send(200, (WEB_DIR / "legal" / LEGAL_PAGES[path]).read_bytes(), STATIC_TYPES[".html"])
+                    text = (WEB_DIR / "legal" / LEGAL_PAGES[path]).read_text(encoding="utf-8")
+                    contact = config.env_value("CONTACT_EMAIL")       # egy forras: az Informacio oldal is ezt mutatja
+                    if contact:
+                        text = text.replace("[KAPCSOLATI E-MAIL]", html.escape(contact))
+                    return self._send(200, text.encode("utf-8"), STATIC_TYPES[".html"])
                 user = self._user()
                 if user is None:
                     if path.startswith("/api/"):
@@ -367,7 +382,8 @@ def make_handler(trust_proxy: bool = False):
                     return self._redirect("/login")
                 if path == "/api/session":
                     return self._json({k: user[k] for k in ("email", "onboarded", "nickname", "has_password", "google")}
-                                      | {"google_available": google_auth.configured()})
+                                      | {"google_available": google_auth.configured(),
+                                         "contact": config.env_value("CONTACT_EMAIL")})
                 if path == "/api/daily":
                     from . import daily
 
@@ -375,7 +391,18 @@ def make_handler(trust_proxy: bool = False):
                 if path == "/api/leaderboard":
                     from . import daily
 
-                    return self._json(daily.leaderboard(query.get("period", ["week"])[0], user["id"]))
+                    group = query.get("group", [""])[0]
+                    try:
+                        return self._json(daily.leaderboard(query.get("period", ["week"])[0], user["id"],
+                                                            group=int(group) if group else None))
+                    except LookupError as exc:
+                        return self._error(404, str(exc))
+                    except ValueError as exc:
+                        return self._error(400, str(exc))
+                if path == "/api/groups":
+                    from . import groups
+
+                    return self._json(groups.mine(user["id"]))
                 if path == "/api/practice":
                     return self._json(practice_payload(user["id"]))
                 if path == "/api/progress":
@@ -473,6 +500,18 @@ def make_handler(trust_proxy: bool = False):
                     from . import daily
 
                     return self._json({"session": daily.start(user["id"], load_settings())})
+                if path.startswith("/api/groups/"):
+                    from . import groups
+
+                    action = path.rsplit("/", 1)[-1]
+                    if action == "create":
+                        return self._json(groups.create(user["id"], str(body.get("name") or "")))
+                    if action == "join":
+                        return self._json(groups.join(user["id"], str(body.get("code") or "")))
+                    if action in ("leave", "delete"):
+                        getattr(groups, action)(user["id"], int(body.get("id") or 0))
+                        return self._json({"ok": True})
+                    return self._error(404, "Nem talalhato")
                 if path == "/api/profile/nickname":
                     from . import daily
 

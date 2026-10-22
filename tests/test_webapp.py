@@ -62,7 +62,8 @@ def test_http_security_without_login(port):
     assert _req(port, "GET", "/api/practice").status == 401
     login = _req(port, "GET", "/login")
     assert login.status == 200 and "frame-ancestors 'none'" in login.getheader("Content-Security-Policy")
-    for public in ("/register", "/forgot", "/style.css", "/i18n.js", "/i18n/en.json"):
+    assert 'href="/resend"' in login.text                                  # "Nem kaptad meg a levelet?" (#44)
+    for public in ("/register", "/forgot", "/resend", "/style.css", "/i18n.js", "/i18n/en.json"):
         assert _req(port, "GET", public).status == 200, public
     assert _req(port, "GET", "/i18n/xx.json").status == 404
     assert _req(port, "GET", "/auth.html").status == 303                # a sablon nem fajl, bejelentkezve sem
@@ -175,3 +176,25 @@ def test_lessons_over_http(neon, port):
     assert _req(port, "GET", "/api/lessons/2", headers=session).status == 403            # zarolt
     assert _req(port, "POST", "/api/lessons/2/start", b"{}", session).status == 400
     assert _req(port, "GET", "/api/lessons/11", headers=session).status == 404
+
+
+
+def test_resend_over_http(neon, outbox, port):
+    make_user(verified=False)
+    res = _form(port, "/resend", {"email": "anna@example.com"})
+    assert res.getheader("Location") == "/login?e=resent" and "/verify?token=" in outbox[-1][2]
+    early = _form(port, "/login", {"email": "anna@example.com", "password": PW})
+    assert "spam" in early.text and 'href="/resend"' in early.text
+
+
+
+def test_contact_email_on_legal_pages_and_session(neon, port, monkeypatch):
+    real = webapp.config.env_value
+    monkeypatch.setattr(webapp.config, "env_value", lambda key: "hello@gyakorlas.example" if key == "CONTACT_EMAIL" else real(key))
+    for page in ("/aszf", "/adatkezeles"):
+        text = _req(port, "GET", page).text
+        assert "hello@gyakorlas.example" in text and "[KAPCSOLATI E-MAIL]" not in text
+    make_user()
+    cookie = _form(port, "/login", {"email": "anna@example.com", "password": PW}).getheader("Set-Cookie").split(";")[0]
+    assert json.loads(_req(port, "GET", "/api/session", headers={"Cookie": cookie}).text)["contact"] == "hello@gyakorlas.example"
+    assert "github.com" not in (webapp.WEB_DIR / "app.js").read_text(encoding="utf-8")       # nincs GitHub-link (#45)

@@ -150,3 +150,15 @@ def test_desktop_keeps_the_top_navigation(ui_server, browser):
     rights = page.eval_on_selector_all(".tabs a", "els => els.map(a => a.getBoundingClientRect().right)")
     assert max(rights) <= 1280
     page.close()
+
+
+
+def test_only_hungarian_for_launch(ui_server, browser):  # noqa: F811
+    # korabban elmentett angol beallitas mellett is magyar, es nincs nyelvvalaszto (#46)
+    page = _new_page(browser, ui_server, viewport={"width": 1280, "height": 900}, locale="en-US")
+    page.add_init_script("try { localStorage.setItem('sw-lang', 'en'); } catch (e) {}")
+    page.goto(ui_server + "/#/learn")
+    _settle(page)
+    assert page.evaluate("document.documentElement.lang") == "hu"
+    assert page.query_selector(".lang-select") is None and "Tanulás" in page.inner_text("h1")
+    page.close()

@@ -9,7 +9,8 @@ levezetés, összevetve a stratégiákkal és egy véletlen alapvonallal.
 - **Pontok és XP** a döntés minősége szerint (jó > balszerencsés > szerencsés > rossz, levonás a túl szoros stopért),
   napi sorozat egy fagyasztó nappal, jelvények. A pontnak nincs pénzbeli értéke; a súlyok: `practice.points`.
 - **Napi kihívás** (mindenkinek ugyanaz az 5 helyzet, naponta egyszer, 20 perc) és **ranglista** (napi / heti / havi /
-  összesített, becenévvel – e-mail soha).
+  összesített, becenévvel – e-mail soha), **privát csoport-ranglistával** meghívókóddal (pl. egy kurzusnak).
+- **Nyelv**: indulásra csak magyar (`app/web/i18n.js`, `LANGS`) – a többi a leckék fordítása után kapcsolható vissza.
 - **Kezdőoldal** bejelentkezés nélkül; első belépéskor 3 lépéses **bevezető** és egy próbafeladat.
 - **Tanulási út**: 10 szint, rövid lecke ábrával és célzott feladatsorral; a következő szint a jó / balszerencsés
   döntések aránya (≥ 60%) szerint nyílik. A leckék szövege: `src/stockwatch/locale/lessons.hu.json`.
@@ -42,7 +43,9 @@ python cli.py web                 # http://127.0.0.1:8765 – regisztráció, be
 A felhasználók e-maillel és jelszóval regisztrálnak (min. 10 karakter, ÁSZF + 16 év elfogadása), az e-mail-címet
 egy egyszer használható linkkel erősítik meg; ellenőrzés nélkül nincs belépés. Elfelejtett jelszó: visszaállító link
 (1 óráig érvényes), utána minden munkamenet zárul. A levelek SMTP-n mennek (`SMTP_*`, `MAIL_FROM`, `PUBLIC_URL` a
-`.env`-ben); helyi kipróbáláshoz `MAIL_TO_LOG=1`: a levél a linkkel a naplóba (`logs/app.log`) kerül.
+`.env`-ben); helyi kipróbáláshoz `MAIL_TO_LOG=1`: a levél a linkkel a naplóba (`logs/app.log`) kerül. Elveszett vagy
+spambe került megerősítő levél: „Nem kaptad meg a megerősítő levelet?” a belépési oldalon (új link, a régi érvénytelen).
+Visszajelzés: a `CONTACT_EMAIL` címre (Információ oldal) – ugyanez a cím kerül a jogi oldalak kapcsolati címe helyére.
 
 A feladatkészletet csak a parancssor építi, a webes kérés soha. A Kitörés-összevetés a készlet építésekor kerül a
 készletbe a labor kimeneti fájljaiból (`data/lab`), ha az adatkönyvtárban vannak – futás közben a labor nem kell.
