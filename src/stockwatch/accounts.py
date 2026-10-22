@@ -31,11 +31,11 @@ LEAKED = frozenset({
     "jelszo1234", "jelszo12345", "jelszavam123", "aaaaaaaaaa", "123123123123", "abc1234567", "admin12345",
 })
 
-IP_LOGIN = webauth.RateLimit(20, 15 * 60)       # IP-nkent 20 belepesi kiserlet / 15 perc
-ACCOUNT_LOGIN = webauth.RateLimit(5, 15 * 60)   # fiokonkent 5 kiserlet / 15 perc (sikeres belepes torli)
-IP_REGISTER = webauth.RateLimit(5, 60 * 60)     # IP-nkent 5 regisztracio / ora
-IP_RESET = webauth.RateLimit(5, 60 * 60)        # IP-nkent 5 visszaallitasi keres / ora
-ACCOUNT_RESET = webauth.RateLimit(3, 60 * 60)   # cimenkent 3 visszaallito level / ora
+IP_LOGIN = webauth.RateLimit("ip-login", 20, 15 * 60)       # IP-nkent 20 belepesi kiserlet / 15 perc
+ACCOUNT_LOGIN = webauth.RateLimit("account-login", 5, 15 * 60)   # fiokonkent 5 kiserlet / 15 perc (sikeres belepes torli)
+IP_REGISTER = webauth.RateLimit("ip-register", 5, 60 * 60)   # IP-nkent 5 regisztracio / ora
+IP_RESET = webauth.RateLimit("ip-reset", 5, 60 * 60)         # IP-nkent 5 visszaallitasi keres / ora
+ACCOUNT_RESET = webauth.RateLimit("account-reset", 3, 60 * 60)   # cimenkent 3 visszaallito level / ora
 
 _DUMMY_HASH: list[str] = []                     # ismeretlen e-mailnel is fusson egy scrypt (idozites)
 

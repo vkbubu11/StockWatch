@@ -44,15 +44,6 @@ def outbox(monkeypatch):
     return sent
 
 
-@pytest.fixture(autouse=True)
-def _fresh_rate_limits(monkeypatch):
-    from stockwatch import accounts, webauth
-
-    for name in ("IP_LOGIN", "ACCOUNT_LOGIN", "IP_REGISTER", "IP_RESET", "ACCOUNT_RESET"):
-        old = getattr(accounts, name)
-        monkeypatch.setattr(accounts, name, webauth.RateLimit(old.limit, old.window))
-
-
 @pytest.fixture(scope="session")
 def _neon_url():
     """Ideiglenes sema a Neonon (a DATABASE_URL kozvetlen, nem pooled vegpontjan - a pooler nem enged
@@ -94,10 +85,10 @@ def neon(_neon_url, monkeypatch):
 
     monkeypatch.setattr(db, "url", lambda: _neon_url)
     with db.connection() as conn:                  # elotte is: egy megszakadt teszt maradeka ne zavarjon
-        conn.execute("TRUNCATE users, practice_sessions RESTART IDENTITY CASCADE")
+        conn.execute("TRUNCATE users, practice_sessions, rate_hits, oauth_states RESTART IDENTITY CASCADE")
     yield
     with db.connection() as conn:
-        conn.execute("TRUNCATE users, practice_sessions RESTART IDENTITY CASCADE")
+        conn.execute("TRUNCATE users, practice_sessions, rate_hits, oauth_states RESTART IDENTITY CASCADE")
 
 
 def make_user(email: str = "anna@example.com", password: str = "helyes-lo-elem-tuzfal", verified: bool = True) -> int:

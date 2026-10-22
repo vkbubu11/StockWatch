@@ -47,7 +47,14 @@ def test_claims_are_checked(bad):
         google_auth.claims("nem.jwt", "N")
 
 
-def test_state_is_single_use_bound_to_browser_and_expires():
+def _nonce(state: str) -> str:
+    from stockwatch import db
+
+    with db.connection() as conn:
+        return conn.execute("SELECT nonce FROM oauth_states WHERE state_hash = %s", (google_auth._h(state),)).fetchone()[0]
+
+
+def test_state_is_single_use_bound_to_browser_and_expires(neon):
     url, state = google_auth.begin("https://gy.example")
     q = parse_qs(urlparse(url).query)
     assert q["scope"] == ["openid email profile"] and q["code_challenge_method"] == ["S256"] and q["client_id"] == [CLIENT]
@@ -57,7 +64,11 @@ def test_state_is_single_use_bound_to_browser_and_expires():
     with pytest.raises(google_auth.GoogleError):
         google_auth.finish(state, state, "code", "https://gy.example")                # a state elhasznalva
     _, old = google_auth.begin("https://gy.example")
-    google_auth._PENDING[old]["created"] -= google_auth.STATE_TTL + 1
+    from stockwatch import db
+
+    with db.connection() as conn:
+        assert old.encode() not in conn.execute("SELECT state_hash FROM oauth_states").fetchone()[0]   # csak hash
+        conn.execute("UPDATE oauth_states SET created_at = now() - interval '11 minutes'")
     with pytest.raises(google_auth.GoogleError):
         google_auth.finish(old, old, "code", "https://gy.example")                    # lejart
 
@@ -107,12 +118,12 @@ def test_google_flow_over_http(neon, port, monkeypatch, caplog):
     state = parse_qs(urlparse(start.getheader("Location")).query)["state"][0]
     cookie = start.getheader("Set-Cookie")
     assert start.status == 303 and "SameSite=Lax" in cookie and "HttpOnly" in cookie
-    nonce = google_auth._PENDING[state]["nonce"]
+    nonce = _nonce(state)
     monkeypatch.setattr(google_auth, "_exchange", lambda code, verifier, uri: _token(nonce=nonce))
     assert _get(port, f"/auth/google/callback?state={state}&code=c").getheader("Location") == "/login?e=googlefail"  # suti nelkul
     start = _get(port, "/auth/google/start?terms=1&age=1")
     state = parse_qs(urlparse(start.getheader("Location")).query)["state"][0]
-    nonce = google_auth._PENDING[state]["nonce"]
+    nonce = _nonce(state)
     done = _get(port, f"/auth/google/callback?{urlencode({'state': state, 'code': 'c'})}",
                 {"Cookie": start.getheader("Set-Cookie").split(";")[0]})
     session = [c for c in done.msg.get_all("Set-Cookie") if c.startswith("sw_session=")][0].split(";")[0]

@@ -1,4 +1,4 @@
-"""Bejelentkezesi segedek: jelszo-hash (scrypt), munkamenet-suti, kliens-IP, keresgyakorisag-korlat.
+"""Bejelentkezesi segedek: jelszo-hash (scrypt), munkamenet-suti, kliens-IP, keresgyakorisag-korlat (adatbazisban).
 A fiokok es a munkamenetek az adatbazisban vannak (accounts.py).
 
 JELSZO
@@ -24,8 +24,10 @@ import hmac
 import logging
 import secrets
 import threading
-import time
+from datetime import timedelta
 from http.cookies import CookieError, SimpleCookie
+
+from . import db
 
 log = logging.getLogger(__name__)
 
@@ -77,33 +79,30 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 class RateLimit:
-    """Legfeljebb `limit` esemeny kulcsonkent (IP, e-mail) a csuszo `window` mp-es ablakban.
-    A `hit` egyszerre ellenoriz es konyvel (zar alatt), igy az egyszerre erkezo keresek sem jutnak at tobben.
-    shortcut: egy folyamat memoriajaban el - tobb webes folyamatnal / gepnel kozos tar (adatbazis) kell."""
+    """Legfeljebb `limit` esemeny kulcsonkent (IP, e-mail) a csuszo `window` mp-es ablakban - az adatbazisban
+    (rate_hits), igy tobb webes folyamat / gep kozott is kozos. A `hit` egy tranzakcioban, kulcsonkenti advisory
+    lock alatt ellenoriz es konyvel: az egyszerre erkezo keresek sem jutnak at tobben."""
 
-    MAX_KEYS = 10_000
+    def __init__(self, name: str, limit: int, window: float) -> None:
+        self.name, self.limit, self.window = name, limit, window
 
-    def __init__(self, limit: int, window: float) -> None:
-        self.limit, self.window = limit, window
-        self._hits: dict[str, list[float]] = {}
-        self._lock = threading.Lock()
+    def _key(self, key: str) -> str:
+        return f"{self.name}:{key}"[:300]
 
     def hit(self, key: str) -> bool:
-        now = time.time()
-        with self._lock:
-            times = [t for t in self._hits.get(key, []) if now - t < self.window]
-            if len(times) >= self.limit:
-                self._hits[key] = times
+        key = self._key(key)
+        with db.connection() as conn:
+            conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (key,))
+            conn.execute("DELETE FROM rate_hits WHERE at < now() - interval '1 day'")   # a tabla nem no korlatlanul
+            conn.execute("DELETE FROM rate_hits WHERE key = %s AND at < now() - %s", (key, timedelta(seconds=self.window)))
+            if conn.execute("SELECT count(*) FROM rate_hits WHERE key = %s", (key,)).fetchone()[0] >= self.limit:
                 return False
-            times.append(now)
-            self._hits[key] = times
-            if len(self._hits) > self.MAX_KEYS:                    # a tarolt kulcsok szama korlatos
-                self._hits = {k: v for k, v in self._hits.items() if v and now - v[-1] < self.window}
+            conn.execute("INSERT INTO rate_hits (key) VALUES (%s)", (key,))
             return True
 
     def clear(self, key: str) -> None:
-        with self._lock:
-            self._hits.pop(key, None)
+        with db.connection() as conn:
+            conn.execute("DELETE FROM rate_hits WHERE key = %s", (self._key(key),))
 
 
 def session_token(handler) -> str | None:
