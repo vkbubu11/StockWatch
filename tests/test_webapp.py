@@ -54,6 +54,9 @@ def _form(port, path, fields, headers=None):
 def test_http_security_without_login(port):
     res = _req(port, "GET", "/")                                       # nyilvanos kezdooldal (#39)
     assert res.status == 200 and 'href="/register"' in res.text and "app.js" not in res.text
+    shot = _req(port, "GET", "/img/feladat.png")                       # a kezdooldal kepei is nyilvanosak
+    assert shot.status == 200 and shot.getheader("Content-Type") == "image/png"
+    assert _req(port, "GET", "/img/../app.js").status in (303, 404)
     assert _req(port, "GET", "/app.js").status == 303                  # a tobbi oldal nem nyilvanos
     assert _req(port, "GET", "/index.html").status == 303
     assert _req(port, "GET", "/api/practice").status == 401
@@ -95,7 +98,8 @@ def test_account_flow_over_http(neon, outbox, port):
     app = _req(port, "GET", "/", headers=session)
     assert app.status == 200 and "app.js" in app.text                  # bejelentkezve a felulet
     me = _req(port, "GET", "/api/session", headers=session)
-    assert json.loads(me.text) == {"email": "anna@example.com", "onboarded": False}   # elso belepes: bevezeto
+    assert {k: v for k, v in json.loads(me.text).items() if k in ("email", "onboarded", "nickname")} == {
+        "email": "anna@example.com", "onboarded": False, "nickname": None}                      # bevezeto jon
     assert _req(port, "POST", "/api/onboarded", b"{}", {**session, "X-StockWatch": "1"}).status == 200
     assert json.loads(_req(port, "GET", "/api/session", headers=session).text)["onboarded"] is True
     out = _req(port, "POST", "/logout", b"{}", {**session, "X-StockWatch": "1"})

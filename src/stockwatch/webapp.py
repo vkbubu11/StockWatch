@@ -17,16 +17,18 @@ import html
 import json
 import logging
 import math
+import posixpath
 import re
 import threading
 from datetime import date, datetime
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 import pandas as pd
 
-from . import accounts, config, db, webauth
+from . import accounts, config, db, google_auth, webauth
 from .config import PROJECT_ROOT, load_settings
 from .locks import LockTimeout
 
@@ -34,7 +36,7 @@ log = logging.getLogger(__name__)
 
 WEB_DIR = PROJECT_ROOT / "app" / "web"
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-                ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
+                ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png"}
 PUBLIC_FILES = ("/style.css", "/i18n.js")             # bejelentkezes nelkul is (+ /i18n/<nyelv>.json, urlapok)
 AUTH_PAGES = ("/login", "/register", "/forgot", "/reset")
 LEGAL_PAGES = {"/aszf": "aszf.html", "/adatkezeles": "adatkezeles.html", "/sutik": "sutik.html"}   # nyilvanos (#40)
@@ -51,6 +53,11 @@ NOTICES = {
     "bad": ("error", "Hibás e-mail-cím vagy jelszó."),
     "origin": ("error", "A kérés nem erről az oldalról jött."),
     "loggedout": ("info", "Kiléptettünk minden eszközön."),
+    "googlelink": ("error", "Ehhez az e-mail-címhez már van jelszavas fiók. Lépj be jelszóval, és a Profil oldalon "
+                            "kapcsold össze a Google-fiókoddal."),
+    "googleterms": ("error", "Új fiókhoz fogadd el az ÁSZF-et és az adatkezelési tájékoztatót, majd folytasd Google-lel."),
+    "googlefail": ("error", "A Google-belépés nem sikerült – próbáld újra."),
+    "googletaken": ("error", "Ez a Google-fiók már egy másik fiókhoz kapcsolódik."),
 }
 
 
@@ -119,8 +126,8 @@ def _field(name: str, label: str, kind: str, autocomplete: str, value: str = "",
             f'autocomplete="{autocomplete}" value="{html.escape(value)}" required {extra}>')
 
 
-def auth_form(page: str, email: str = "", token: str = "") -> tuple[str, str]:
-    """(cim, urlap) a belepes / regisztracio / elfelejtett jelszo / uj jelszo oldalhoz."""
+def auth_form(page: str, email: str = "", token: str = "", google: bool = False) -> tuple[str, str]:
+    """(cim, urlap) a belepes / regisztracio / elfelejtett jelszo / uj jelszo oldalhoz; `google`: a Google-gomb is."""
     pw_min = f'minlength="{webauth.MIN_PASSWORD}" maxlength="{webauth.MAX_PASSWORD}"'
     links = {"login": '<a href="/register">Regisztráció</a><a href="/forgot">Elfelejtett jelszó</a>',
              "register": '<a href="/login">Van már fiókom – belépés</a>',
@@ -147,12 +154,22 @@ def auth_form(page: str, email: str = "", token: str = "") -> tuple[str, str]:
                                     + _field("password", f"Új jelszó (legalább {webauth.MIN_PASSWORD} karakter)",
                                              "password", "new-password", extra=pw_min + " autofocus")
                                     + '<button class="btn primary" type="submit">Jelszó beállítása</button>')
-    return title, (f'<form method="post" action="/{page}" class="field">{body}</form>'
+    extra = ""
+    if google and page == "login":
+        extra = '<p class="auth-or">vagy</p><a class="btn" href="/auth/google/start">Folytatás Google-lel</a>'
+    elif google and page == "register":
+        extra = ('<p class="auth-or">vagy Google-fiókkal</p><form method="get" action="/auth/google/start" class="field">'
+                 '<input type="hidden" name="terms" value="1">'
+                 '<label class="check"><input type="checkbox" name="age" value="1" required> <span>Elfogadom az '
+                 '<a href="/aszf" target="_blank">ÁSZF-et</a> és az <a href="/adatkezeles" target="_blank">adatkezelési '
+                 'tájékoztatót</a>, és elmúltam 16 éves.</span></label>'
+                 '<button class="btn" type="submit">Regisztráció Google-lel</button></form>')
+    return title, (f'<form method="post" action="/{page}" class="field">{body}</form>{extra}'
                    f'<p class="auth-links">{links[page]}</p>')
 
 
 def auth_page(page: str, message: tuple[str, str] | None = None, email: str = "", token: str = "") -> bytes:
-    title, form = auth_form(page, email, token)
+    title, form = auth_form(page, email, token, google_auth.configured())
     notice = (f'<p class="login-{"error" if message[0] == "error" else "info"}" role="alert">{html.escape(message[1])}</p>'
               if message else "")
     text = (WEB_DIR / "auth.html").read_text(encoding="utf-8")
@@ -266,6 +283,50 @@ def make_handler(trust_proxy: bool = False):
             except accounts.AccountError as exc:
                 return self._page(page, 400, ("error", str(exc)), email=email, token=form.get("token", ""))
 
+        def _google(self, path: str, query: dict) -> None:
+            """/auth/google/start es /callback (#43)."""
+            if not google_auth.configured():
+                return self._error(404, "Nem talalhato")
+            secure = "; Secure" if self._https() else ""
+            if path == "/auth/google/start":
+                link_user = None
+                if query.get("link", [""])[0] == "1":
+                    user = self._user()
+                    if user is None:
+                        return self._redirect("/login")
+                    link_user = user["id"]
+                terms = query.get("terms", [""])[0] == "1" and query.get("age", [""])[0] == "1"
+                target, state = google_auth.begin(self._base_url(), link_user, terms)
+                # Lax: a Google-rol visszatero (oldalak kozotti) GET is elviszi; a state a bongeszohoz kotve
+                return self._redirect(target, f"{google_auth.COOKIE}={state}; Path=/auth/google; HttpOnly; "
+                                              f"SameSite=Lax; Max-Age={google_auth.STATE_TTL}{secure}")
+            clear = f"{google_auth.COOKIE}=; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=0{secure}"
+            if "error" in query:
+                return self._redirect("/login?e=googlefail", clear)
+            try:
+                cookie = SimpleCookie(self.headers.get("Cookie", "")).get(google_auth.COOKIE)
+            except CookieError:
+                cookie = None
+            try:
+                pending, claims = google_auth.finish(query.get("state", [""])[0], cookie.value if cookie else None,
+                                                     query.get("code", [""])[0], self._base_url())
+            except google_auth.GoogleError:
+                return self._redirect("/login?e=googlefail", clear)
+            outcome, token = accounts.google_login(claims["sub"], claims["email"], pending["link_user"], pending["terms"],
+                                                   self.headers.get("User-Agent", ""))
+            if outcome == "session":
+                self.send_response(303)
+                self.send_header("Location", "/")
+                self.send_header("Content-Length", "0")
+                self._headers()
+                self.send_header("Set-Cookie", clear)
+                self.send_header("Set-Cookie", self._cookie(token))
+                self.end_headers()
+                return None
+            target = {"linked": "/#/profile", "link_required": "/login?e=googlelink", "terms_required": "/register?e=googleterms",
+                      "taken": "/login?e=googletaken"}[outcome]
+            return self._redirect(target, clear)
+
         def _logout(self, everywhere: bool, user: dict) -> None:
             if everywhere:
                 accounts.logout_everywhere(user["id"])
@@ -281,6 +342,8 @@ def make_handler(trust_proxy: bool = False):
                 if path in AUTH_PAGES:
                     return self._page(path.lstrip("/"), message=NOTICES.get(query.get("e", [""])[0]),
                                       token=query.get("token", [""])[0])
+                if path in ("/auth/google/start", "/auth/google/callback"):
+                    return self._google(path, query)
                 if path == "/verify":
                     ok = accounts.verify_email(query.get("token", [""])[0])
                     return self._redirect("/login?e=verified" if ok else "/login?e=badlink")
@@ -291,7 +354,7 @@ def make_handler(trust_proxy: bool = False):
                     if m.group(1) not in config.LANGUAGES:
                         return self._error(404, "Nem talalhato")
                     return self._json(i18n.entries(m.group(1)))
-                if path in PUBLIC_FILES:
+                if path in PUBLIC_FILES or posixpath.normpath(path).startswith("/img/"):   # a kezdooldal kepei
                     return self._static(path)
                 if path in LEGAL_PAGES:
                     return self._send(200, (WEB_DIR / "legal" / LEGAL_PAGES[path]).read_bytes(), STATIC_TYPES[".html"])
@@ -303,9 +366,22 @@ def make_handler(trust_proxy: bool = False):
                         return self._send(200, (WEB_DIR / "landing.html").read_bytes(), STATIC_TYPES[".html"])
                     return self._redirect("/login")
                 if path == "/api/session":
-                    return self._json({"email": user["email"], "onboarded": user["onboarded"]})
+                    return self._json({k: user[k] for k in ("email", "onboarded", "nickname", "has_password", "google")}
+                                      | {"google_available": google_auth.configured()})
+                if path == "/api/daily":
+                    from . import daily
+
+                    return self._json(daily.status(user["id"]))
+                if path == "/api/leaderboard":
+                    from . import daily
+
+                    return self._json(daily.leaderboard(query.get("period", ["week"])[0], user["id"]))
                 if path == "/api/practice":
                     return self._json(practice_payload(user["id"]))
+                if path == "/api/progress":
+                    from . import progress
+
+                    return self._json(progress.summary(user["id"]))
                 if path == "/api/lessons":
                     from . import learning
 
@@ -393,6 +469,17 @@ def make_handler(trust_proxy: bool = False):
                     if not accounts.delete_account(user["id"], str(body.get("password") or "")):
                         return self._error(400, "Hibás jelszó.")
                     return self._json({"ok": True}, cookie=self._cookie("", 0))
+                if path == "/api/daily/start":
+                    from . import daily
+
+                    return self._json({"session": daily.start(user["id"], load_settings())})
+                if path == "/api/profile/nickname":
+                    from . import daily
+
+                    return self._json({"nickname": daily.set_nickname(user["id"], str(body.get("nickname") or ""))})
+                if path == "/api/account/google/unlink":
+                    accounts.unlink_google(user["id"])
+                    return self._json({"ok": True})
                 if path == "/api/onboarded":
                     accounts.mark_onboarded(user["id"])
                     return self._json({"ok": True})
@@ -411,6 +498,8 @@ def make_handler(trust_proxy: bool = False):
                 return self._error(404, "Nem talalhato")
             except LookupError as exc:
                 return self._error(404, str(exc))
+            except accounts.AccountError as exc:
+                return self._error(400, str(exc))
             except (ValueError, TypeError, LockTimeout) as exc:
                 return self._error(400, str(exc))
             except db.DatabaseUnavailable:

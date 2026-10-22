@@ -61,8 +61,8 @@ def load_pool() -> dict | None:
 # ---------------------------------------------------------------------------
 # Korok (adatbazis)
 # ---------------------------------------------------------------------------
-SESSION_COLS = "id, created_at, seed, rounds, mix, pool_fingerprint, code, warning, summary, lesson"
-TASK_COLS = "k, task_id, symbol, day, category, source, breakout, decision, decided_at"
+SESSION_COLS = "id, created_at, seed, rounds, mix, pool_fingerprint, code, warning, summary, lesson, daily"
+TASK_COLS = "k, task_id, symbol, day, category, source, breakout, decision, decided_at, points"
 
 
 def _check(session_id: str) -> None:
@@ -75,16 +75,17 @@ def _iso(value) -> str | None:
 
 
 def _session(row, tasks: list[dict]) -> dict:
-    sid, created, seed, rounds, mix, fingerprint, code, warning, summary, lesson = row
+    sid, created, seed, rounds, mix, fingerprint, code, warning, summary, lesson, daily = row
     out = {"id": sid, "created": _iso(created), "seed": seed, "rounds": rounds, "mix": mix,
-           "pool_fingerprint": fingerprint, "code": code, "warning": warning, "lesson": lesson, "tasks": tasks}
+           "pool_fingerprint": fingerprint, "code": code, "warning": warning, "lesson": lesson,
+           "daily": f"{daily:%Y-%m-%d}" if daily else None, "tasks": tasks}
     return out | ({"summary": summary} if summary is not None else {})
 
 
 def _task(row, result: bytes | None) -> dict:
-    k, task_id, symbol, day, category, source, breakout, decision, decided_at = row
+    k, task_id, symbol, day, category, source, breakout, decision, decided_at, points = row
     task = {"task_id": task_id, "symbol": symbol, "date": f"{day:%Y-%m-%d}", "category": category, "source": source,
-            "breakout": breakout, "decision": decision,
+            "breakout": breakout, "decision": decision, "points": points,
             "result": json.loads(gzip.decompress(result)) if result is not None else None}
     return task | ({"decided_at": _iso(decided_at)} if decided_at else {})
 
@@ -107,12 +108,12 @@ def load_session(session_id: str, user_id: int) -> dict | None:
 
 def _save(conn, session: dict, user_id: int, only: list[int] | None = None) -> None:
     conn.execute(
-        "INSERT INTO practice_sessions (id, user_id, seed, rounds, mix, pool_fingerprint, code, warning, summary, lesson) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO UPDATE SET summary = EXCLUDED.summary "
+        "INSERT INTO practice_sessions (id, user_id, seed, rounds, mix, pool_fingerprint, code, warning, summary, lesson, "
+        "daily) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO UPDATE SET summary = EXCLUDED.summary "
         "WHERE practice_sessions.user_id = EXCLUDED.user_id",
         (session["id"], user_id, session["seed"], session["rounds"], Jsonb(session["mix"]), session["pool_fingerprint"],
          session["code"], session.get("warning"), Jsonb(session["summary"]) if session.get("summary") else None,
-         session.get("lesson")))
+         session.get("lesson"), session.get("daily")))
     rows = []
     for k, t in enumerate(session["tasks"]):
         if only is not None and k not in only:
@@ -123,31 +124,43 @@ def _save(conn, session: dict, user_id: int, only: list[int] | None = None) -> N
                      Jsonb(t["decision"]) if t.get("decision") else None,
                      ((res or {}).get("review") or {}).get("verdict", {}).get("category") if res else None,
                      ((res or {}).get("user") or {}).get("r") if res else None, t.get("decided_at"),
-                     gzip.compress(json.dumps(res, ensure_ascii=False).encode("utf-8")) if res is not None else None))
+                     gzip.compress(json.dumps(res, ensure_ascii=False).encode("utf-8")) if res is not None else None,
+                     t.get("points"), ((res or {}).get("user") or {}).get("stop_atr") if res else None))
     with conn.cursor() as cur:
         cur.executemany(
             "INSERT INTO practice_tasks (session_id, k, task_id, symbol, day, category, source, breakout, decision, "
-            "verdict, r, decided_at, result) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
-            "ON CONFLICT (session_id, k) DO UPDATE SET decision = EXCLUDED.decision, verdict = EXCLUDED.verdict, "
-            "r = EXCLUDED.r, decided_at = EXCLUDED.decided_at, result = EXCLUDED.result", rows)
+            "verdict, r, decided_at, result, points, stop_atr) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+            "%s, %s) ON CONFLICT (session_id, k) DO UPDATE SET decision = EXCLUDED.decision, verdict = EXCLUDED.verdict, "
+            "r = EXCLUDED.r, decided_at = EXCLUDED.decided_at, result = EXCLUDED.result, points = EXCLUDED.points, "
+            "stop_atr = EXCLUDED.stop_atr", rows)
 
 
 def create_session(session: dict, user_id: int) -> None:
-    """Uj kor mentese; a felhasznalo MAX_SESSIONS-nel regebbi korei torlodnek."""
+    """Uj kor mentese; a felhasznalo MAX_SESSIONS-nel regebbi (nem napi) korei torlodnek. A napi kihivas korei
+    maradnak - a ranglista ezekbol szamol. shortcut: napi ~50 KB / felhasznalo orokre; ha a Neon merete szamit,
+    a regi napi korok felfedes-blobja (result) torolheto, a pont oszlop marad."""
     with db.connection() as conn:
         _save(conn, session, user_id)
-        conn.execute("DELETE FROM practice_sessions WHERE user_id = %s AND id NOT IN (SELECT id FROM practice_sessions "
-                     "WHERE user_id = %s ORDER BY created_at DESC, id LIMIT %s)", (user_id, user_id, MAX_SESSIONS))
+        conn.execute("DELETE FROM practice_sessions WHERE user_id = %s AND daily IS NULL AND id NOT IN (SELECT id "
+                     "FROM practice_sessions WHERE user_id = %s AND daily IS NULL ORDER BY created_at DESC, id LIMIT %s)",
+                     (user_id, user_id, MAX_SESSIONS))
 
 
 @contextmanager
 def editing(session_id: str, user_id: int):
-    """A kor zarolva (FOR UPDATE) a blokk vegeig; `save(k)` a k. helyzetet (es az osszegzest) irja vissza."""
+    """A kor zarolva (FOR UPDATE) a blokk vegeig; `save(k)` a k. helyzetet (es az osszegzest) irja vissza; a
+    kapcsolat ugyanabban a tranzakcioban tovabbi irasra (pl. XP) is hasznalhato."""
     with db.connection() as conn:
         session = _load(conn, session_id, user_id, lock=True)
         if session is None:
             raise LookupError("Nincs ilyen munkamenet.")
-        yield session, lambda k: _save(conn, session, user_id, only=[k])
+        yield session, lambda k: _save(conn, session, user_id, only=[k]), conn
+
+
+def daily_session(user_id: int, day: str) -> str | None:
+    with db.connection() as conn:
+        row = conn.execute("SELECT id FROM practice_sessions WHERE user_id = %s AND daily = %s", (user_id, day)).fetchone()
+    return row[0] if row else None
 
 
 def delete_session(session_id: str, user_id: int) -> bool:

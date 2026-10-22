@@ -130,7 +130,7 @@ def test_phone_reaches_every_view_in_two_taps(ui_server, browser):
     assert page.is_visible(".more-list")
     listed = page.eval_on_selector_all(".more-list a", "els => els.map(a => a.getAttribute('href'))")
     assert set(listed) == set(routes)
-    assert set(routes) == {"#/learn", "#/practice", "#/profile", "#/info"}
+    assert set(routes) == {"#/learn", "#/practice", "#/daily", "#/leaderboard", "#/profile", "#/info"}
     page.click(".more-list a[href='#/info']")                                 # 2. koppintas
     _settle(page)
     assert page.evaluate("location.hash") == "#/info" and not page.is_visible(".more-list")

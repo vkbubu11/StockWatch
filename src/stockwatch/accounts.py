@@ -135,20 +135,24 @@ def login(email: str, password: str, ip: str, user_agent: str = "") -> str | Non
                            (key,)).fetchone()
     if not _DUMMY_HASH:
         _DUMMY_HASH.append(webauth.hash_password(secrets.token_urlsafe(16)))
-    ok = webauth.verify_password(password, row[1] if row else _DUMMY_HASH[0])
-    if not (row and ok):
+    ok = webauth.verify_password(password, (row[1] if row else None) or _DUMMY_HASH[0])
+    if not (row and row[1] and ok):                     # csak Google-os fiok (nincs jelszo): nincs jelszavas belepes
         return None
     if row[2] is None:
         raise AccountError("Előbb erősítsd meg az e-mail-címedet (a regisztrációkor küldött linkkel). "
                            "Új linket a regisztráció ismétlésével kérhetsz.")
     ACCOUNT_LOGIN.clear(key)
-    token = secrets.token_urlsafe(32)
     with db.connection() as conn:
-        conn.execute("DELETE FROM sessions WHERE expires_at < now()")
-        conn.execute("INSERT INTO sessions (token_hash, user_id, expires_at, user_agent) VALUES (%s, %s, now() + %s, %s)",
-                     (_h(token), row[0], SESSION_TTL, (user_agent or "")[:200]))
-        conn.execute("DELETE FROM sessions WHERE user_id = %s AND token_hash NOT IN (SELECT token_hash FROM sessions "
-                     "WHERE user_id = %s ORDER BY created_at DESC LIMIT %s)", (row[0], row[0], MAX_SESSIONS_PER_USER))
+        return _new_session(conn, row[0], user_agent)
+
+
+def _new_session(conn, user_id: int, user_agent: str) -> str:
+    token = secrets.token_urlsafe(32)
+    conn.execute("DELETE FROM sessions WHERE expires_at < now()")
+    conn.execute("INSERT INTO sessions (token_hash, user_id, expires_at, user_agent) VALUES (%s, %s, now() + %s, %s)",
+                 (_h(token), user_id, SESSION_TTL, (user_agent or "")[:200]))
+    conn.execute("DELETE FROM sessions WHERE user_id = %s AND token_hash NOT IN (SELECT token_hash FROM sessions "
+                 "WHERE user_id = %s ORDER BY created_at DESC LIMIT %s)", (user_id, user_id, MAX_SESSIONS_PER_USER))
     return token
 
 
@@ -159,8 +163,11 @@ def session_user(token: str | None) -> dict | None:
     with db.connection() as conn:
         row = conn.execute("UPDATE sessions s SET last_used_at = now() FROM users u WHERE s.token_hash = %s "
                            "AND s.expires_at > now() AND u.id = s.user_id "
-                           "RETURNING u.id, u.email, u.onboarded_at IS NOT NULL", (_h(token),)).fetchone()
-    return {"id": row[0], "email": row[1], "onboarded": row[2]} if row else None
+                           "RETURNING u.id, u.email, u.onboarded_at IS NOT NULL, u.nickname, u.password_hash IS NOT NULL, "
+                           "EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = u.id AND i.provider = 'google')",
+                           (_h(token),)).fetchone()
+    return {"id": row[0], "email": row[1], "onboarded": row[2], "nickname": row[3], "has_password": row[4],
+            "google": row[5]} if row else None
 
 
 def mark_onboarded(user_id: int) -> None:
@@ -216,11 +223,16 @@ def reset_password(token: str, password: str) -> bool:
 # Fiok torlese, adatexport (#40)
 # ---------------------------------------------------------------------------
 def delete_account(user_id: int, password: str) -> bool:
-    """A fiok vegleges torlese a jelszo megerositesevel. A kaszkad viszi a munkameneteket, a tokeneket es a
-    gyakorlo koroket; a torles utan a felhasznalo adatai nem kerdezhetok le. Rossz jelszo: False."""
+    """A fiok vegleges torlese a jelszo (csak Google-os fioknal: az e-mail-cim) megerositesevel. A kaszkad viszi a
+    munkameneteket, a tokeneket es a gyakorlo koroket; a torles utan az adatok nem kerdezhetok le. Rossz: False."""
     with db.connection() as conn:
-        row = conn.execute("SELECT password_hash FROM users WHERE id = %s", (user_id,)).fetchone()
-    if not row or not webauth.verify_password(password, row[0]):
+        row = conn.execute("SELECT password_hash, email FROM users WHERE id = %s", (user_id,)).fetchone()
+    if not row:
+        return False
+    if row[0] is None:
+        if (password or "").strip().lower() != row[1].lower():
+            return False
+    elif not webauth.verify_password(password, row[0]):
         return False
     with db.connection() as conn:
         conn.execute("DELETE FROM users WHERE id = %s", (user_id,))
@@ -237,7 +249,51 @@ def export(user_id: int) -> dict:
                            "FROM users WHERE id = %s", (user_id,)).fetchone()
         sessions = conn.execute("SELECT created_at, last_used_at, expires_at, user_agent FROM sessions "
                                 "WHERE user_id = %s ORDER BY created_at", (user_id,)).fetchall()
+        identities = conn.execute("SELECT provider, email, created_at FROM user_identities WHERE user_id = %s",
+                                  (user_id,)).fetchall()
     keys = ("email", "created_at", "email_verified_at", "terms_version", "terms_accepted_at", "onboarded_at")
     return {"account": dict(zip(keys, row)) if row else None,
             "sessions": [dict(zip(("created_at", "last_used_at", "expires_at", "user_agent"), s)) for s in sessions],
+            "identities": [dict(zip(("provider", "email", "created_at"), i)) for i in identities],
             "practice": [store.load_session(s["id"], user_id) for s in store.sessions(user_id, limit=store.MAX_SESSIONS)]}
+
+
+# ---------------------------------------------------------------------------
+# Google-fiok (#43) - a token-ellenorzes a google_auth.py-ban
+# ---------------------------------------------------------------------------
+def google_login(subject: str, email: str, link_user: int | None, terms: bool, user_agent: str = "") -> tuple[str, str | None]:
+    """A Google-azonosito (sub) feldolgozasa. Visszaad: ("session", token) | ("linked", None) | (hibakod, None):
+      * ismert sub: belepes abba a fiokba (osszekapcsolasnal: masik fiokhoz kotott -> "taken")
+      * osszekapcsolas (a felhasznalo jelszoval mar belepett): a sub az o fiokjahoz kerul
+      * ismeretlen sub, de letezo e-mail: "link_required" - nincs automatikus fiokatvetel
+      * uj fiok: csak az ASZF + 16+ elfogadasaval ("terms_required"); a Google mar igazolta az e-mailt"""
+    email = (email or "").strip().lower()
+    with db.connection() as conn:
+        row = conn.execute("SELECT user_id FROM user_identities WHERE provider = 'google' AND subject = %s",
+                           (subject,)).fetchone()
+        if row:
+            if link_user is not None:
+                return ("linked", None) if row[0] == link_user else ("taken", None)
+            return "session", _new_session(conn, row[0], user_agent)
+        if link_user is not None:
+            conn.execute("INSERT INTO user_identities (provider, subject, user_id, email) VALUES ('google', %s, %s, %s)",
+                         (subject, link_user, email))
+            return "linked", None
+        if conn.execute("SELECT 1 FROM users WHERE lower(email) = %s", (email,)).fetchone():
+            return "link_required", None
+        if not terms:
+            return "terms_required", None
+        user_id = conn.execute(
+            "INSERT INTO users (email, password_hash, email_verified_at, terms_version, terms_accepted_at) "
+            "VALUES (%s, NULL, now(), %s, now()) RETURNING id", (email, TERMS_VERSION)).fetchone()[0]
+        conn.execute("INSERT INTO user_identities (provider, subject, user_id, email) VALUES ('google', %s, %s, %s)",
+                     (subject, user_id, email))
+        return "session", _new_session(conn, user_id, user_agent)
+
+
+def unlink_google(user_id: int) -> None:
+    """A Google-kapcsolat bontasa - csak ha van jelszo (kulonben a fiok elerhetetlenne valna)."""
+    with db.connection() as conn:
+        if conn.execute("SELECT password_hash FROM users WHERE id = %s", (user_id,)).fetchone()[0] is None:
+            raise AccountError("Előbb állíts be jelszót (Elfelejtett jelszó), különben nem tudnál belépni.")
+        conn.execute("DELETE FROM user_identities WHERE user_id = %s AND provider = 'google'", (user_id,))

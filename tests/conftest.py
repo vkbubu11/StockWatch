@@ -93,6 +93,8 @@ def neon(_neon_url, monkeypatch):
     from stockwatch import db
 
     monkeypatch.setattr(db, "url", lambda: _neon_url)
+    with db.connection() as conn:                  # elotte is: egy megszakadt teszt maradeka ne zavarjon
+        conn.execute("TRUNCATE users, practice_sessions RESTART IDENTITY CASCADE")
     yield
     with db.connection() as conn:
         conn.execute("TRUNCATE users, practice_sessions RESTART IDENTITY CASCADE")

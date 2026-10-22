@@ -428,11 +428,18 @@ class PracticeSettings(BaseModel):
     # nyilvanos szolgaltatasban csak licencelt forrasbol)
     source: str = "synthetic"
     synthetic_symbols: int = 300        # ennyi szintetikus papir a keszletben
+    # pontok a dontes minosege szerint (#34) - nem a profit szerint; a pontnak nincs penzbeli erteke
+    points: dict[str, int] = Field(default_factory=lambda: {"good": 10, "unlucky": 7, "lucky": 3, "bad": 0,
+                                                            "tight": -2, "rr": -1})
 
     @model_validator(mode="after")
     def _check(self) -> "PracticeSettings":
         if self.source not in ("synthetic", "real"):
             raise ValueError("practice.source: synthetic vagy real")
+        if set(self.points) != {"good", "unlucky", "lucky", "bad", "tight", "rr"}:
+            raise ValueError("practice.points: good, unlucky, lucky, bad, tight, rr")
+        if not self.points["good"] >= self.points["unlucky"] >= self.points["lucky"] >= self.points["bad"] >= 0:
+            raise ValueError("practice.points: good >= unlucky >= lucky >= bad >= 0 (a szerencse kevesebbet er)")
         if not 10 <= self.synthetic_symbols <= 2000:
             raise ValueError("practice.synthetic_symbols: 10 es 2000 kozott")
         if not 0 <= self.borrow_bps_day <= 100:

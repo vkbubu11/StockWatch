@@ -1,5 +1,5 @@
 /* StockWatch oktatasi felulet - vanilla JS, keretrendszer nelkul.
- * Utvonalak (hash): #/ (= #/learn)  #/learn/N  #/practice  #/practice/ID  #/welcome  #/profile  #/info
+ * Utvonalak (hash): #/ (= #/learn)  #/learn/N  #/practice  #/practice/ID  #/daily  #/leaderboard  #/welcome  #/profile  #/info
  */
 "use strict";
 
@@ -56,13 +56,15 @@ function niceTicks(lo, hi, count) {
 async function route() {
   const hash = location.hash || "#/";
   const tab = hash.startsWith("#/info") ? "info" : hash.startsWith("#/profile") ? "profile"
-    : hash.startsWith("#/practice") ? "practice" : "learn";
+    : hash.startsWith("#/practice") ? "practice" : hash.startsWith("#/daily") ? "daily"
+    : hash.startsWith("#/leaderboard") ? "leaderboard" : "learn";
   document.querySelectorAll(".tabs a, .bottom-nav a, .more-list a").forEach((a) => {
     a.classList.toggle("active", a.dataset.tab === tab);
     if (a.dataset.tab === tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
   closeMoreSheet();
   tooltip.hidden = true;
+  view.innerHTML = `<div class="loading">Betöltés…</div>`;      // a regi nezet ne latszodjon az uj adat helyett
   try {
     const pm = hash.match(/^#\/practice\/([a-z]{12})$/);
     const me = await whoami();
@@ -71,6 +73,8 @@ async function route() {
     if (tab === "info") pageInfo();
     else if (tab === "learn") { if (lm) await pageLesson(Number(lm[1])); else await pageLearn(); }
     else if (tab === "profile") await pageProfile();
+    else if (tab === "daily") await pageDaily();
+    else if (tab === "leaderboard") await pageLeaderboard();
     else if (pm) await pagePracticeSession(pm[1]);
     else await pagePractice();
   } catch (e) {
@@ -85,19 +89,15 @@ let me = null;
 async function whoami() { if (!me) me = await api("/api/session"); return me; }
 
 const WELCOME = [
-  ["A chart olvasása", `<p>Egy rejtett helyzetet kapsz: a chart a döntés napjáig látszik, a jövő nem. A papír neve és a dátum rejtve marad,
-     az ár <strong>normalizált</strong> – az utolsó látható záró mindig 100, így a számok nem árulják el, melyik papírról van szó.</p>
-   <ul class="digest-list"><li><span>Gyertyák: nyitó, záró, napi csúcs és mélypont.</span></li>
-     <li><span>EMA20 / EMA50 / EMA200: a rövid, közép és hosszú távú trend.</span></li>
-     <li><span>Volumen: a 20 napos átlaghoz viszonyítva; az ATR a napi ingás szokásos mérete.</span></li></ul>`],
-  ["A döntés", `<p>Három lehetőséged van: <strong>kihagyod</strong>, <strong>long</strong> (emelkedésre) vagy <strong>short</strong>
-     (esésre) lépsz be. Belépésnél kötelező a stop; a cél és az időkorlát opcionális. A döntés után nem módosítható.</p>
-   <p class="muted">A kihagyás is döntés – sokszor a legjobb.</p>`],
-  ["Az ítélet és a levezetés", `<p>A döntés után lejátsszuk, mi történt. Az ítélet nem csak az eredményt nézi: egy rossz döntés is
-     hozhat szerencsés nyereséget, egy jó döntés is végződhet balszerencsés stoppal.</p>
-   <ul class="digest-list"><li><span>Jó döntés · Szerencsés · Balszerencsés · Rossz döntés</span></li>
-     <li><span>Lépésenkénti levezetés: mit mutattak a szabályok, mi lett volna a stratégiák és egy véletlen alapvonal eredménye.</span></li></ul>
-   <p>Most kipróbálhatod egy próbafeladaton; utána a Tanulás fülön az 1. szint vár.</p>`],
+  ["A chart olvasása", `<p>Rejtett helyzetet kapsz: a chart a döntés napjáig látszik, a papír neve és a dátum nem.
+     Az ár <strong>normalizált</strong>: az utolsó záró mindig 100.</p>
+   <ul class="digest-list"><li><span>Gyertyák, EMA20 / 50 / 200 (rövid, közép, hosszú trend), volumen.</span></li>
+     <li><span>ATR: a napi ingás szokásos mérete – a stopot ehhez érdemes mérni.</span></li></ul>`],
+  ["A döntés", `<p><strong>Kihagyod</strong>, vagy <strong>long</strong> (emelkedésre) / <strong>short</strong> (esésre) lépsz be,
+     kötelező stoppal. A döntés után nem módosítható – és a kihagyás is döntés.</p>`],
+  ["Az ítélet", `<p>Lejátsszuk, mi történt. Az ítélet a döntés minőségét nézi, nem csak az eredményt:
+     <strong>jó · szerencsés · balszerencsés · rossz</strong>, lépésenkénti levezetéssel.</p>
+   <p>Jöjjön egy próbafeladat; utána a Tanulás fülön az 1. szint vár.</p>`],
 ];
 
 function pageWelcome(step) {
@@ -183,12 +183,72 @@ async function pageLesson(level) {
 }
 
 // ---------------------------------------------------------------------------
+// Napi kihivas es ranglista (#35)
+// ---------------------------------------------------------------------------
+async function pageDaily() {
+  const d = await api("/api/daily");
+  const s = d.session;
+  const state = !s ? "new" : d.hidden ? "running" : "done";
+  view.innerHTML = `
+    <div class="page-head"><h1>Napi kihívás</h1><span class="muted">${esc(d.day)} – ma mindenki ugyanazt az ${d.rounds} helyzetet kapja.
+      Egyszer játszható, az indítástól ${d.minutes} percig; az eredmény a beadás után derül ki, és a ranglistába számít.</span></div>
+    <section class="card"><div class="card-body"><div class="digest-controls">
+      ${state === "new" ? `<button class="btn primary" id="daily-start" type="button">A mai kihívás indítása</button>`
+        : state === "running" ? `<a class="btn primary" href="#/practice/${esc(s.id)}">Folytatás (${s.decided} / ${s.rounds})</a>
+            <span class="badge watch">Beadás: ${esc(new Date(s.deadline).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" }))}-ig</span>`
+        : `<a class="btn primary" href="#/practice/${esc(s.id)}">A mai eredményem</a> <span class="badge go">Kész</span>`}
+      <a class="btn" href="#/leaderboard">Ranglista</a></div></div></section>`;
+  const btn = $("#daily-start");
+  if (btn) btn.addEventListener("click", async () => {
+    const r = await api("/api/daily/start", { method: "POST", body: "{}" });
+    location.hash = `#/practice/${r.session.id}`;
+  });
+}
+
+let lbPeriod = "week";
+const LB_PERIODS = { day: "Napi", week: "Heti", month: "Havi", all: "Összesített" };
+
+async function pageLeaderboard() {
+  const d = await api(`/api/leaderboard?period=${lbPeriod}`);
+  const row = (r) => `<tr class="${r.me ? "lb-me" : ""}"><td class="num">${r.rank}.</td><td>${esc(r.name)}${r.me ? " (te)" : ""}</td>
+    <td class="num">${r.points}</td><td class="num">${r.days}</td></tr>`;
+  view.innerHTML = `
+    <div class="page-head"><h1>Ranglista</h1><span class="muted">A napi kihívások pontjai szerint (a döntés minősége, nem a profit).
+      Becenév látszik, e-mail soha – a becenevet a Profil oldalon állíthatod be.</span></div>
+    <section class="card"><div class="card-body">
+      <div class="segmented" role="group" aria-label="Időszak">${Object.entries(LB_PERIODS).map(([k, v]) =>
+        `<button type="button" class="seg ${k === lbPeriod ? "on" : ""}" data-lb="${k}" aria-pressed="${k === lbPeriod}">${v}</button>`).join("")}</div>
+      ${d.rows.length ? `<table class="table cards-on-phone"><thead><tr><th>Hely</th><th>Becenév</th><th>Pont</th><th>Napok</th></tr></thead>
+        <tbody>${d.rows.map(row).join("")}</tbody></table>` : `<p class="muted">Ebben az időszakban még nincs eredmény.</p>`}
+      ${d.me && !d.rows.some((r) => r.me) ? `<p>A te helyed: <strong>${d.me.rank}.</strong> (${d.me.points} pont)</p>` : ""}
+    </div></section>`;
+  view.querySelectorAll("[data-lb]").forEach((b) => b.addEventListener("click", () => { lbPeriod = b.dataset.lb; pageLeaderboard(); }));
+}
+
+// ---------------------------------------------------------------------------
 // Profil: a fiok, kilepes (mindenhonnan is)
 // ---------------------------------------------------------------------------
 async function pageProfile() {
-  const s = await api("/api/session");
+  const [s, g] = await Promise.all([api("/api/session"), api("/api/progress")]);
   view.innerHTML = `
     <div class="page-head"><h1>Profil</h1><span class="muted">${esc(s.email)}</span></div>
+    <div class="kpis">
+      <div class="kpi"><div class="label">Szint</div><div class="value">${g.level}</div><div class="sub">${g.level_xp} / ${g.next} XP a következőig</div></div>
+      <div class="kpi"><div class="label">XP</div><div class="value">${g.xp}</div><div class="sub">a döntések minősége szerint – nincs pénzbeli értéke</div></div>
+      <div class="kpi"><div class="label">Napi sorozat</div><div class="value">${g.streak} nap</div><div class="sub">legjobb: ${g.best_streak} · fagyasztó: ${g.freeze ? "van" : "felhasználva"}</div></div>
+    </div>
+    ${s.google_available || s.google ? `<section class="card"><h2>Google-fiók</h2><div class="card-body">
+      ${s.google ? `<p><span class="badge go">Kapcsolva</span> A Google-fiókoddal is beléphetsz.</p>
+        ${s.has_password ? `<p><button class="btn" id="google-unlink" type="button">Kapcsolat bontása</button></p>`
+          : `<p class="muted small">Bontás előtt állíts be jelszót (Elfelejtett jelszó), különben nem tudnál belépni.</p>`}`
+        : `<p>Kapcsold össze a fiókodat a Google-fiókoddal, és utána azzal is beléphetsz.</p>
+          <p><a class="btn" href="/auth/google/start?link=1">Google-fiók összekapcsolása</a></p>`}
+    </div></section>` : ""}
+    <section class="card"><h2>Becenév a ranglistán</h2><div class="card-body">
+      <form id="nick-form" class="ag-form"><label>Becenév<input name="nickname" maxlength="20" value="${esc(s.nickname || "")}" autocomplete="nickname"></label>
+        <div class="wide"><button class="btn" type="submit">Mentés</button> <span id="nick-msg" class="small"></span></div></form></div></section>
+    <section class="card"><h2>Jelvények</h2><div class="card-body"><div class="badges">${g.badges.map((b) =>
+      `<span class="badge ${b.earned_at ? "go" : "fail"}">${b.earned_at ? "✓" : "○"} ${esc(b.label)}</span>`).join(" ")}</div></div></section>
     <section class="card"><h2>Munkamenetek</h2><div class="card-body">
       <p>Ha más eszközön is beléptél (vagy egy eszközt elvesztettél), itt mindenhonnan kiléptethetsz.</p>
       <p><button class="btn" id="logout-all" type="button">Kilépés minden eszközön</button></p>
@@ -201,7 +261,8 @@ async function pageProfile() {
     <section class="card"><h2>Fiók törlése</h2><div class="card-body">
       <p>A törlés végleges: a fiókod, a munkameneteid és minden gyakorló köröd azonnal törlődik (a biztonsági mentésekből
         legkésőbb 30 napon belül). Megerősítéshez írd be a jelszavadat.</p>
-      <form id="delete-form" class="ag-form"><label>Jelszó<input name="password" type="password" autocomplete="current-password" required></label>
+      <form id="delete-form" class="ag-form"><label>${s.has_password ? "Jelszó" : "Az e-mail-címed (megerősítésként)"}
+        <input name="password" type="${s.has_password ? "password" : "email"}" autocomplete="${s.has_password ? "current-password" : "off"}" required></label>
         <div class="wide"><button class="btn" type="submit">Fiók végleges törlése</button> <span id="delete-msg" class="small"></span></div></form>
     </div></section>`;
   $("#delete-form").addEventListener("submit", async (ev) => {
@@ -211,6 +272,20 @@ async function pageProfile() {
       await api("/api/account/delete", { method: "POST", body: JSON.stringify({ password: ev.target.elements.password.value }) });
       location.href = "/";
     } catch (e) { const m = $("#delete-msg"); m.className = "msg err small"; m.textContent = e.message; }
+  });
+  const unlink = $("#google-unlink");
+  if (unlink) unlink.addEventListener("click", async () => {
+    if (!confirm("Bontod a Google-kapcsolatot? Utána jelszóval léphetsz be.")) return;
+    await api("/api/account/google/unlink", { method: "POST", body: "{}" });
+    await pageProfile();
+  });
+  $("#nick-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const m = $("#nick-msg");
+    try {
+      await api("/api/profile/nickname", { method: "POST", body: JSON.stringify({ nickname: ev.target.elements.nickname.value }) });
+      m.className = "small up"; m.textContent = "Mentve.";
+    } catch (e) { m.className = "msg err small"; m.textContent = e.message; }
   });
   $("#logout-all").addEventListener("click", async () => {
     if (!confirm("Kilépsz minden eszközön (ezen is)?")) return;
@@ -362,7 +437,8 @@ function practiceChart(svg, bars, opt = {}) {
 async function pagePracticeSession(id) {
   clearInterval(practiceTimer);
   const s = await api(`/api/practice/session/${id}/summary`);
-  if (s.session.done) { renderPracticeSummary(s); return; }
+  const expired = s.session.deadline && new Date(s.session.deadline) < new Date();
+  if (!s.hidden && (s.session.done || expired)) { renderPracticeSummary(s); return; }
   await pagePracticeTask(id, s.session.next, s.session);
 }
 
@@ -380,7 +456,8 @@ async function pagePracticeTask(id, k, sess) {
   const t = await api(`/api/practice/session/${id}/task/${k}`);
   const atr = t.chart.atr || 1;
   view.innerHTML = `
-    <div class="page-head"><a href="#/practice" class="muted">← Gyakorlás</a><h1>Helyzet ${k + 1} / ${t.rounds}</h1>
+    <div class="page-head"><a href="${sess.daily ? "#/daily" : "#/practice"}" class="muted">← ${sess.daily ? "Napi kihívás" : "Gyakorlás"}</a><h1>Helyzet ${k + 1} / ${t.rounds}</h1>
+      ${sess.deadline ? `<span class="badge watch">Beadás: ${esc(new Date(sess.deadline).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" }))}-ig</span>` : ""}
       <span class="muted">Az utolsó látható záró = 100; a vízszintes tengely kereskedési napokban (0 = a döntés napja). ATR (14): ${fmt(atr, 2)}</span></div>
     ${sess.warning === "other_pool" ? `<section class="card"><div class="card-body">Ez a megosztási kód más feladatkészlethez készült: itt ugyanaz a kód más helyzeteket ad.</div></section>` : ""}
     <section class="card chart-card"><div class="chart-legend"><span><span class="swatch" style="background:var(--ema20)"></span> EMA20</span>
@@ -449,7 +526,14 @@ async function pagePracticeTask(id, k, sess) {
     const body = f.action === "skip" ? { action: "skip" } : { ...f, limit: f.entry === "limit" ? f.limit : null };
     try {
       const r = await api(`/api/practice/session/${id}/task/${k}/decision`, { method: "POST", body: JSON.stringify(body) });
-      showPracticeReveal(id, k, t, r.reveal, (o) => { chartOpt = o; draw(); }, false, r.session);
+      if (r.hidden) {                          // napi kihivas: az eredmeny csak a vegen
+        form.querySelectorAll("input, select, button").forEach((el) => { el.disabled = true; });
+        $("#pr-reveal").innerHTML = `<section class="card"><div class="card-body"><p><strong>Rögzítve.</strong> A napi kihívás eredménye a beadás után derül ki.</p>
+          <button class="btn primary" id="pr-next" type="button">Következő helyzet</button></div></section>`;
+        $("#pr-next").addEventListener("click", () => pagePracticeSession(id));
+        return;
+      }
+      showPracticeReveal(id, k, t, { ...r.reveal, progress: r.progress }, (o) => { chartOpt = o; draw(); }, false, r.session);
     } catch (e) { const m = $("#pr-err"); m.className = "msg err small"; m.textContent = e.message; }
   });
 }
@@ -532,6 +616,17 @@ function practiceSteps(rv) {
   </div></section>`;
 }
 
+// a pont atlathato: melyik reszbol mennyi (#34); a pontnak nincs penzbeli erteke
+function practicePoints(rev) {
+  const p = rev.points;
+  if (!p) return "";
+  const g = rev.progress;
+  return `<div class="pr-points"><strong>+${p.points} pont</strong>
+    <span class="small muted">${p.parts.map((x) => `${esc(x.label)} ${x.value >= 0 ? "+" : "−"}${Math.abs(x.value)}`).join(" · ")}</span>
+    ${g ? `<span class="small">XP ${g.xp} · ${g.level}. szint · sorozat: ${g.streak} nap</span>` : ""}
+    ${g && g.new_badges.length ? g.new_badges.map((b) => `<span class="badge go">Új jelvény: ${esc(b.label)}</span>`).join(" ") : ""}</div>`;
+}
+
 function practiceOutcome(k, t, rev, sess) {
   const d = rev.decision || {};
   const u = rev.user;
@@ -545,7 +640,7 @@ function practiceOutcome(k, t, rev, sess) {
     <td class="num ${rCls(s.r)}">${s.signaled ? (s.r != null ? signed(s.r, 2, " R") : esc(PR_STATUS[s.status] || "–")) : "–"}</td>
     <td class="small muted">${s.signaled && s.reason ? `${esc(PR_REASON[s.reason] || s.reason)}${s.held ? ` · ${s.held} nap` : ""}` : ""}</td></tr>`).join("");
   const last = sess ? sess.done : k + 1 >= t.rounds;
-  return `<section class="card"><h2>Ítélet</h2><div class="card-body">${practiceVerdict(rev.review)}</div></section>
+  return `<section class="card"><h2>Ítélet</h2><div class="card-body">${practiceVerdict(rev.review)}${practicePoints(rev)}</div></section>
     <section class="card"><h2>Eredmény</h2><div class="card-body">
     <div class="kpis check-kpis">
       <div class="kpi"><div class="label">A te döntésed</div><div class="value ${mine[1]}">${mine[0]}</div><div class="sub">${mine[2]}</div></div>
@@ -569,6 +664,9 @@ function renderPracticeSummary(p) {
   const buckets = s.stop_buckets.map((b) => `<div class="part"><span>${b.hi == null ? `≥ ${fmt(b.lo, 0)} ATR` : `${fmt(b.lo, 0)}–${fmt(b.hi, 0)} ATR`}</span>
     <span class="track"><span class="fill" style="width:${(b.n / maxb) * 100}%"></span></span><span class="muted small">${b.n}</span></div>`).join("");
   const ls = p.lesson;
+  const dailyBox = p.session.daily ? `<section class="card"><div class="card-body"><div class="digest-controls">
+      <strong>Napi kihívás (${esc(p.session.daily)}): ${p.tasks.reduce((a, t) => a + (t.points || 0), 0)} pont</strong>
+      <a class="btn primary" href="#/leaderboard">Ranglista</a></div></div></section>` : "";
   const lessonBox = ls ? `<section class="card"><div class="card-body"><div class="pr-verdict ${ls.passed ? "ok" : "warn"}" role="status">
       <span class="pr-verdict-icon" aria-hidden="true">${ls.passed ? "✓" : "↺"}</span>
       <div><div class="pr-verdict-label">${ls.level}. szint: ${ls.passed ? "teljesítve" : "még nem teljesült"}</div>
@@ -578,7 +676,7 @@ function renderPracticeSummary(p) {
   view.innerHTML = `
     <div class="page-head"><a href="${ls ? "#/learn" : "#/practice"}" class="muted">← ${ls ? "Tanulás" : "Gyakorlás"}</a><h1>A kör összegzése</h1>
       <span class="muted">Megosztási kód: <code>${esc(p.session.code)}</code> – ugyanazzal a feladatkészlettel ugyanazt a helyzetsort adja.</span></div>
-    ${lessonBox}
+    ${lessonBox}${dailyBox}
     <div class="kpis">
       <div class="kpi"><div class="label">Teljesült kötés</div><div class="value">${s.filled}</div><div class="sub">${s.entered} belépési döntés, ${s.skipped} kihagyás</div></div>
       <div class="kpi"><div class="label">Nyerési arány</div><div class="value">${s.win == null ? "–" : `${fmt(s.win * 100, 1)}%`}</div><div class="sub">átlag ${signed(s.mean_r, 2, " R")}</div></div>

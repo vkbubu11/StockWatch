@@ -4,7 +4,12 @@ Chart-olvasási gyakorlás szimulált (vagy licencelt múltbeli) adaton: rejtett
 short, stoppal és céllal), utána felfedés, ítélet (jó / szerencsés / balszerencsés / rossz döntés) és lépésenkénti
 levezetés, összevetve a stratégiákkal és egy véletlen alapvonallal.
 
-- **Fiókok** (e-mail + jelszó, e-mail-megerősítés, jelszó-visszaállítás); a haladás felhasználónként a Neon Postgresben.
+- **Fiókok** (e-mail + jelszó, e-mail-megerősítés, jelszó-visszaállítás, vagy **Google-fiók**); a haladás
+  felhasználónként a Neon Postgresben.
+- **Pontok és XP** a döntés minősége szerint (jó > balszerencsés > szerencsés > rossz, levonás a túl szoros stopért),
+  napi sorozat egy fagyasztó nappal, jelvények. A pontnak nincs pénzbeli értéke; a súlyok: `practice.points`.
+- **Napi kihívás** (mindenkinek ugyanaz az 5 helyzet, naponta egyszer, 20 perc) és **ranglista** (napi / heti / havi /
+  összesített, becenévvel – e-mail soha).
 - **Kezdőoldal** bejelentkezés nélkül; első belépéskor 3 lépéses **bevezető** és egy próbafeladat.
 - **Tanulási út**: 10 szint, rövid lecke ábrával és célzott feladatsorral; a következő szint a jó / balszerencsés
   döntések aránya (≥ 60%) szerint nyílik. A leckék szövege: `src/stockwatch/locale/lessons.hu.json`.
@@ -45,6 +50,13 @@ Labor-adat nélkül a Kitörés „nem jelzett”; a többi stratégia és az í
 
 > Ha ugyanazt a `data/` mappát a fő StockWatch is használja: a szintetikus készletet (SYN papírok) a fő StockWatch
 > nem tudja megnyitni – ilyenkor az oktatási kiadást külön mappában (szerveren) futtasd.
+
+## Belépés Google-fiókkal (opcionális)
+
+Google Cloud Console → *APIs & Services* → *Credentials* → OAuth kliens (*Web application*); engedélyezett visszatérési
+cím: `<PUBLIC_URL>/auth/google/callback`; a hozzájárulási képernyőn az ÁSZF és az adatkezelési tájékoztató linkje.
+A titokfájlba: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` – nélkülük nincs Google-gomb. Hatókör csak
+`openid email profile`. Meglévő jelszavas fiókhoz a Google-fiók csak jelszavas belépés után, a Profil oldalon köthető.
 
 ## Adatbázis (Neon Postgres)
 
@@ -99,4 +111,6 @@ pytest -q
 
 Az adatbázis-tesztek a Neonon, egy ideiglenes, a végén törölt sémában futnak (a `DATABASE_URL` közvetlen, nem
 pooled végpontján; a `public` sémát nem érintik). A CI-ban a `TEST_DATABASE_URL` repo-titokkal futnak, nélküle
-kimaradnak. A reszponzív felület tesztje Playwright + Chromium mellett fut (a CI telepíti), nélküle kimarad.
+kimaradnak. A böngészős tesztek (reszponzív felület, az első értékelt döntésig tartó út) Playwright + Chromium
+mellett futnak (`pip install playwright && python -m playwright install chromium`; a CI telepíti), nélküle kimaradnak.
+A kezdőoldal képernyőképei: `LANDING_SHOTS=app/web/img pytest tests/test_onboarding_e2e.py`.

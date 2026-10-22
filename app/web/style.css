@@ -546,7 +546,7 @@ tr.lab-detail h3, #lab-ml h3 { font-size: 13px; margin: 6px 0; }
 /* Gyakorlas: itelet, levezetes (#25, #26), irany-valaszto (#24) */
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
 .pr-sides { margin-top: 4px; }
-.pr-sides .seg { min-height: 40px; min-width: 88px; }
+.pr-sides .seg { min-height: 44px; min-width: 88px; }
 .pr-verdict { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border); }
 .pr-verdict.ok { background: var(--up-soft); color: var(--up); }
 .pr-verdict.bad { background: var(--down-soft); color: var(--down); }
@@ -736,3 +736,15 @@ pre, code { overflow-wrap: anywhere; }
 .learn-card.locked { opacity: .55; cursor: not-allowed; }
 .learn-level { font-size: 13px; color: var(--muted); }
 .lesson p { max-width: 75ch; }
+
+/* Pontok, jelvenyek (#34) */
+.pr-points { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; margin-top: 12px; }
+.badges { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Ranglista (#35) */
+.lb-me td { font-weight: 700; background: var(--accent-soft); }
+.auth-or { margin: 4px 0 0; color: var(--muted); font-size: 14px; text-align: center; }
+.landing-shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 16px 0; }
+.landing-shots figure { margin: 0; text-align: center; }
+.landing-shots img { width: 100%; max-width: 300px; height: auto; border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.landing-shots figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }

@@ -9,19 +9,21 @@ from __future__ import annotations
 
 import math
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from .. import indicators, market
+from .. import indicators, market, progress
 from ..config import Settings, load_settings
 from . import sampler, scoring, store, synthetic
 from .templates import STRATEGY_LABELS, Line
 
 FEW = 10
+DAILY_ROUNDS = 5                                 # a napi kihivas (#35) helyzetei
+DAILY_MINUTES = 20                               # az inditastol ennyi perc a beadasra
 EMAS = (20, 50, 200)
 
 
@@ -111,13 +113,15 @@ def public(session: dict) -> dict:
             "decided": decided, "done": decided == len(session["tasks"]), "warning": session.get("warning"),
             "next": next((k for k, t in enumerate(session["tasks"]) if not t.get("decision")), None),
             "mean_r": session.get("summary", {}).get("mean_r") if decided == len(session["tasks"]) else None,
-            "lesson": session.get("lesson")}
+            "lesson": session.get("lesson"), "daily": session.get("daily"),
+            "deadline": deadline(session).isoformat(timespec="seconds") if deadline(session) else None}
 
 
 def create(user_id: int, settings: Settings | None = None, seed: int | None = None,
            rounds: int = 20, mix: dict | None = None, code: str | None = None,
-           only: dict | None = None, lesson: int | None = None) -> dict:
-    """Uj kor. `only` es `lesson`: a tanulasi ut (#33) celzott feladatsora (learning.py)."""
+           only: dict | None = None, lesson: int | None = None, daily: str | None = None) -> dict:
+    """Uj kor. `only` es `lesson`: a tanulasi ut (#33) celzott feladatsora (learning.py); `daily`: a napi
+    kihivas napja (daily.py)."""
     settings = settings or load_settings()
     pool = store.load_pool()
     if not pool:
@@ -135,9 +139,21 @@ def create(user_id: int, settings: Settings | None = None, seed: int | None = No
     session = {"id": store.new_id(), "created": _now(), "seed": int(seed), "rounds": int(rounds),
                "mix": sampler.normalize_mix(mix), "pool_fingerprint": pool["fingerprint"],
                "code": sampler.share_code(int(seed), pool["fingerprint"], int(rounds)), "warning": warning, "lesson": lesson,
-               "tasks": [p | {"task_id": store.new_id(10), "decision": None, "result": None} for p in picks]}
+               "daily": daily, "tasks": [p | {"task_id": store.new_id(10), "decision": None, "result": None} for p in picks]}
     store.create_session(session, user_id)
     return public(session)
+
+
+def deadline(session: dict) -> datetime | None:
+    if not session.get("daily"):
+        return None
+    return datetime.fromisoformat(session["created"]) + timedelta(minutes=DAILY_MINUTES)
+
+
+def hidden(session: dict) -> bool:
+    """A napi kihivas felfedese csak a beadas utan (minden dontes megvan, vagy lejart az ido)."""
+    limit = deadline(session)
+    return limit is not None and not all(t.get("decision") for t in session["tasks"])         and datetime.now(timezone.utc) < limit
 
 
 def _load(session_id: str, user_id: int) -> dict:
@@ -180,7 +196,7 @@ def task_payload(user_id: int, session_id: str, k: int, settings: Settings | Non
     df, i = _frame(task, settings)
     out = {"session": session["id"], "k": k, "rounds": len(session["tasks"]), "task_id": task["task_id"],
            "chart": hidden_chart(df, i), "max_days": sampler.MAX_DAYS, "decided": task.get("decision") is not None}
-    if out["decided"]:
+    if out["decided"] and not hidden(session):
         out["reveal"] = reveal(task)
     return out
 
@@ -192,27 +208,34 @@ def decide(user_id: int, session_id: str, k: int, body: dict, settings: Settings
     task = _task(session, k)
     if task.get("decision") is not None:
         raise ValueError("A dontes mar rogzitve - nem modosithato.")
+    if deadline(session) and datetime.now(timezone.utc) > deadline(session):
+        raise ValueError("A napi kihivas ideje lejart.")
     # a (masodpercekig tarto) ertekeles zar nelkul fut; zar alatt csak az ujraellenorzes es a mentes
     df, i = _frame(task, settings)
     mctx = market.load_context(settings, refresh=False, allow_network=False)
     dates = market.HistoricalEarnings(settings, allow_network=False).dates(task["symbol"])
     result = scoring.evaluate(task["symbol"], df, i, decision.model_dump(), settings, seed=session["seed"] * 100 + k,
                               mctx=mctx, earnings_dates=dates, breakout=task.get("breakout"))
-    with store.editing(session_id, user_id) as (session, save):
+    points = progress.score((result.get("review") or {}).get("verdict"), settings)
+    with store.editing(session_id, user_id) as (session, save, conn):
         task = _task(session, k)
         if task.get("decision") is not None:
             raise ValueError("A dontes mar rogzitve - nem modosithato.")
-        task["result"] = result
+        task["result"] = result | {"points": points}
+        task["points"] = points["points"]
         task["decision"] = decision.model_dump()
         task["decided_at"] = _now()
         if all(t.get("decision") for t in session["tasks"]):
             session["summary"] = scoring.summary(session["tasks"])
         save(k)
+        prog = progress.record(conn, user_id, points["points"], progress.today())
     if session.get("lesson") and session.get("summary"):
         from .. import learning                      # a tanulasi ut (#33) szintje teljesult-e
 
         learning.record(user_id, session)
-    return {"session": public(session), "k": k, "reveal": reveal(task)}
+    if hidden(session):                          # napi kihivas: az eredmeny (es a pont) csak a beadas utan
+        return {"session": public(session), "k": k, "hidden": True}
+    return {"session": public(session), "k": k, "reveal": reveal(task), "progress": prog}
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +286,8 @@ def lines(s: dict) -> list[dict]:
 
 def summary_payload(user_id: int, session_id: str) -> dict:
     session = _load(session_id, user_id)
+    if hidden(session):                          # napi kihivas kozben: csak az allapot, eredmeny nelkul
+        return {"session": public(session), "hidden": True}
     s = scoring.summary(session["tasks"])
     tasks = [{"k": k, "decided": t.get("decision") is not None} | (
         shown(t["symbol"], t["date"]) | {"category": t["category"], "source": t["source"],
@@ -271,7 +296,8 @@ def summary_payload(user_id: int, session_id: str) -> dict:
          "status": (t["result"].get("user") or {}).get("status"),
          "strategies": [{"strategy": x["strategy"], "r": x.get("r"), "status": x.get("status")}
                         for x in t["result"]["strategies"] if x.get("signaled")],
-         "reference_r": t["result"]["reference"].get("r"), "baseline_r": t["result"]["baseline"].get("mean_r")}
+         "reference_r": t["result"]["reference"].get("r"), "baseline_r": t["result"]["baseline"].get("mean_r"),
+         "points": t.get("points")}
         if t.get("decision") else {}) for k, t in enumerate(session["tasks"])]
     from .. import learning
 

@@ -17,7 +17,8 @@ from .guards import (BROKER_REACHING, _module_file, advice_hits, import_closure,
                      unexplained_numbers)
 
 ROOT = Path(__file__).resolve().parents[1]
-NEW_PACKAGES = ["stockwatch.practice", "stockwatch.accounts", "stockwatch.db", "stockwatch.mailer", "stockwatch.learning"]
+NEW_PACKAGES = ["stockwatch.practice", "stockwatch.accounts", "stockwatch.db", "stockwatch.mailer", "stockwatch.learning",
+                "stockwatch.progress", "stockwatch.daily", "stockwatch.google_auth"]
 # a teljes StockWatch kereskedesi / ertesitesi / kutatasi reszei - az oktatasi agon nem lehetnek
 REMOVED = BROKER_REACHING + ("stockwatch.alerts", "stockwatch.lab", "stockwatch.labqueue", "stockwatch.research_agent",
                              "stockwatch.digest", "stockwatch.events", "stockwatch.sentiment", "stockwatch.pnl_calendar",
