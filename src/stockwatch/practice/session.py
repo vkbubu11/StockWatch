@@ -14,7 +14,7 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from .. import indicators, market, progress
 from ..config import Settings, load_settings
@@ -48,29 +48,29 @@ class Decision(BaseModel):
         if self.action == "enter":
             self.action = "long"
         if not 1 <= self.days <= sampler.MAX_DAYS:
-            raise ValueError(f"days: 1 es {sampler.MAX_DAYS} kozott")
+            raise ValueError(f"Az időkorlát 1 és {sampler.MAX_DAYS} nap között legyen.")
         if self.entry == "limit":
             if self.limit is None or not 0 < self.limit <= 150:
-                raise ValueError("limit: 0 es 150 kozott (normalizalt ar)")
+                raise ValueError("A limitár 0 és 150 között legyen (normalizált ár).")
         else:
             self.limit = None
         for name in ("limit", "stop", "target"):
             value = getattr(self, name)
             if value is not None and not math.isfinite(value):
-                raise ValueError(f"{name}: ervenytelen szam")
+                raise ValueError("Érvénytelen szám.")
         ref = self.limit if self.entry == "limit" else 100.0
         if self.stop is None:
-            raise ValueError("stop: kotelezo")
+            raise ValueError("A stop kötelező.")
         if self.action == "long":
             if not 0 < self.stop < ref:
-                raise ValueError("stop: a belepo alatt legyen")
+                raise ValueError("Longnál a stop a belépő alatt legyen.")
             if self.target is not None and not ref < self.target <= 1000:
-                raise ValueError("target: a belepo felett legyen")
+                raise ValueError("Longnál a cél a belépő felett legyen.")
         else:
             if not ref < self.stop <= 1000:
-                raise ValueError("stop: short-nal a belepo felett legyen")
+                raise ValueError("Shortnál a stop a belépő felett legyen.")
             if self.target is not None and not 0 < self.target < ref:
-                raise ValueError("target: short-nal a belepo alatt legyen")
+                raise ValueError("Shortnál a cél a belépő alatt legyen.")
         return self
 
 
@@ -203,7 +203,10 @@ def task_payload(user_id: int, session_id: str, k: int, settings: Settings | Non
 
 def decide(user_id: int, session_id: str, k: int, body: dict, settings: Settings | None = None) -> dict:
     settings = settings or load_settings()
-    decision = Decision(**(body or {}))
+    try:
+        decision = Decision(**(body or {}))
+    except ValidationError as exc:                   # a felhasznalonak csak az elso, emberi szovegu hiba
+        raise ValueError(str(exc.errors()[0]["msg"]).removeprefix("Value error, ")) from None
     session = _load(session_id, user_id)
     task = _task(session, k)
     if task.get("decision") is not None:

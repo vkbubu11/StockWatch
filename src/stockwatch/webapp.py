@@ -262,6 +262,14 @@ def make_handler(trust_proxy: bool = False):
                 return None
             return {k: v[0] for k, v in parse_qs(raw).items()}
 
+        def _lang(self) -> str:
+            """A feluleti nyelv (az i18n.js sutije) - a levelek nyelvehez."""
+            try:
+                morsel = SimpleCookie(self.headers.get("Cookie", "")).get("sw_lang")
+            except CookieError:
+                morsel = None
+            return morsel.value if morsel and morsel.value in config.LANGUAGES else "hu"
+
         def _post_form(self, path: str) -> None:
             form = self._form()
             page = path.lstrip("/")
@@ -277,13 +285,13 @@ def make_handler(trust_proxy: bool = False):
                     return self._redirect("/", self._cookie(token))
                 if path == "/register":
                     accounts.register(email, form.get("password", ""), form.get("terms") == "1", form.get("age") == "1",
-                                      ip, self._base_url())
+                                      ip, self._base_url(), self._lang())
                     return self._redirect("/login?e=sent")
                 if path == "/forgot":
-                    accounts.request_reset(email, ip, self._base_url())
+                    accounts.request_reset(email, ip, self._base_url(), self._lang())
                     return self._redirect("/login?e=resetsent")
                 if path == "/resend":
-                    accounts.resend_verification(email, ip, self._base_url())
+                    accounts.resend_verification(email, ip, self._base_url(), self._lang())
                     return self._redirect("/login?e=resent")
                 token = form.get("token", "")
                 if not accounts.reset_password(token, form.get("password", "")):

@@ -76,13 +76,13 @@ def test_leaderboard_periods_ranks_and_privacy(neon, monkeypatch):
     day = daily.leaderboard("day", anna, DAY)
     assert [(r["rank"], r["points"]) for r in day["rows"]] == [(1, 20), (2, 17)]
     assert day["me"]["name"] == "Anna" and day["me"]["rank"] == 2
-    assert day["rows"][0]["name"].startswith("Játékos #")
+    assert day["rows"][0]["name"] is None and len(day["rows"][0]["tag"]) == 5                # becenev nelkul
     week = daily.leaderboard("week", anna, DAY)
     assert [r["points"] for r in week["rows"]] == [30, 20, 17] and week["from"] == "2026-10-19"
     assert [r["points"] for r in daily.leaderboard("all", anna, DAY)["rows"]] == [30, 30, 17]
     assert [r["rank"] for r in daily.leaderboard("all", anna, DAY)["rows"]] == [1, 1, 3]     # holtverseny
     text = str(daily.leaderboard("all", anna, DAY))
-    assert "@" not in text and "titok" not in text
+    assert "@" not in text and "titok" not in text and "example" not in text
     monkeypatch.setattr(daily, "TOP", 1)
     top1 = daily.leaderboard("week", anna, DAY)
     assert len(top1["rows"]) == 1 and top1["me"]["rank"] == 3                          # a sajat hely a top alatt is

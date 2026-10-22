@@ -28,7 +28,7 @@ TEMPLATES = {
     "x_earn": "Következő gyorsjelentés: {0:n} nap múlva.",
     "x_earn_none": "A következő gyorsjelentés dátuma nem ismert.",
     "x_rules_none": "Egyik szabály sem jelzett ezen a ponton.",
-    "x_rules_some": "Jelzett szabály: {0}.",
+    "x_rules_some": "Jelzett szabály: {0}",   # pont nelkul: a felsorolas a forditasban tagolhato
     "x_rules_choice": "A szabályok szerinti döntés: {0}.",
     "x_breakout_note": "A Kitörés szűrőit a labor értékeli; itt csak az eredménye látszik.",
     "x_short_note": "A short motor kísérleti: backtesttel nincs igazolva.",

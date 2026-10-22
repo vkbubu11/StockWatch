@@ -153,12 +153,11 @@ def test_desktop_keeps_the_top_navigation(ui_server, browser):
 
 
 
-def test_only_hungarian_for_launch(ui_server, browser):  # noqa: F811
-    # korabban elmentett angol beallitas mellett is magyar, es nincs nyelvvalaszto (#46)
-    page = _new_page(browser, ui_server, viewport={"width": 1280, "height": 900}, locale="en-US")
-    page.add_init_script("try { localStorage.setItem('sw-lang', 'en'); } catch (e) {}")
+def test_unsupported_browser_language_falls_back_to_hungarian(ui_server, browser):  # noqa: F811
+    # nincs mentett nyelv, a bongeszo francia: magyar felulet, a valasztoval (#46)
+    page = _new_page(browser, ui_server, viewport={"width": 1280, "height": 900}, locale="fr-FR")
     page.goto(ui_server + "/#/learn")
     _settle(page)
     assert page.evaluate("document.documentElement.lang") == "hu"
-    assert page.query_selector(".lang-select") is None and "Tanulás" in page.inner_text("h1")
+    assert page.query_selector(".lang-select") and "Tanulás" in page.inner_text("h1")
     page.close()

@@ -9,9 +9,8 @@
  */
 "use strict";
 
-// Az engedelyezett nyelvek (#46): indulasra csak a magyar - a leckek es az uj szovegek meg nincsenek leforditva.
-// Visszakapcsolas a forditasok utan: { hu: "Magyar", en: "English", de: "Deutsch", es: "Español" }
-const LANGS = { hu: "Magyar" };
+// Az engedelyezett nyelvek; egyetlen nyelvnel nincs valaszto (#46)
+const LANGS = { hu: "Magyar", en: "English", de: "Deutsch", es: "Español" };
 const LOCALES = { hu: "hu-HU", en: "en-US", de: "de-DE", es: "es-ES" };
 const LANG_KEY = "sw-lang";
 
@@ -28,6 +27,8 @@ const I18N = (() => {
   const exact = new Map();
   let patterns = [];
   const done = new WeakMap();             // csomopont -> az altalunk beirt szoveg (ne forditsuk ujra)
+  const missing = new Set();              // ami nem fordult (a tesztek olvassak: window.__i18nMissing)
+  window.__i18nMissing = missing;
   const ATTRS = ["title", "placeholder", "aria-label"];
   const SKIP = new Set(["SCRIPT", "STYLE", "TEXTAREA", "CODE", "PRE"]);
   const norm = (s) => s.replace(/\s+/g, " ").trim();
@@ -97,7 +98,8 @@ const I18N = (() => {
   function sub(raw, depth) {
     if (!/[A-Za-zÀ-ž]{2}/.test(raw)) return raw;
     const out = lookup(norm(raw), depth + 1);
-    return out === undefined ? raw : raw.match(/^\s*/)[0] + out + raw.match(/\s*$/)[0];
+    if (out === undefined) return raw;
+    return raw.match(/^\s*/)[0] + out + raw.match(/\s*$/)[0];
   }
 
   function match(text, depth, strict) {
@@ -165,6 +167,8 @@ const I18N = (() => {
     const n = norm(str);
     if (!n || !/[A-Za-zÀ-ž]/.test(n)) return str;
     const out = lookup(n);
+    // forditatlan, vagy csak reszben fordult (az angol kimenetben magyar ekezet maradt)
+    if (out === undefined || (LANG === "en" && /[áéíóöőúüű]/i.test(out))) missing.add(n);
     if (out === undefined) return str;
     return str.match(/^\s*/)[0] + out + str.match(/\s*$/)[0];
   }
@@ -189,13 +193,15 @@ const I18N = (() => {
 
   function walk(root) {
     if (root.nodeType === Node.TEXT_NODE) {
-      if (!root.parentElement || !SKIP.has(root.parentElement.tagName)) textNode(root);
+      if (!root.parentElement || (!SKIP.has(root.parentElement.tagName) && !root.parentElement.closest("[translate=no]"))) textNode(root);
       return;
     }
-    if (root.nodeType !== Node.ELEMENT_NODE || SKIP.has(root.tagName)) return;
+    if (root.nodeType !== Node.ELEMENT_NODE || SKIP.has(root.tagName) || root.closest("[translate=no]")) return;
     element(root);
     const tw = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
-      acceptNode: (n) => (n.nodeType === Node.ELEMENT_NODE && SKIP.has(n.tagName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+      // translate="no" (szabvanyos HTML): felhasznaloi adat (e-mail, becenev, csoportnev), uzemeltetoi adat
+      acceptNode: (n) => (n.nodeType === Node.ELEMENT_NODE && (SKIP.has(n.tagName) || n.getAttribute("translate") === "no")
+        ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
     });
     for (let n = tw.nextNode(); n; n = tw.nextNode()) {
       if (n.nodeType === Node.TEXT_NODE) textNode(n); else element(n);
@@ -231,6 +237,8 @@ const I18N = (() => {
 
   function start() {
     document.documentElement.lang = LANG;
+    // a szerver is tudja (pl. a megerosito level nyelve); nem titok, nem azonosit
+    document.cookie = `sw_lang=${LANG}; Path=/; Max-Age=31536000; SameSite=Lax`;
     picker();
     if (LANG === "hu") return;
     // a katalogus betolteseig a felulet rejtve (ne villanjon fel magyarul); hiba eseten magyarul jelenik meg

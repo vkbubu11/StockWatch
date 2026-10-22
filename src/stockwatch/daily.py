@@ -74,16 +74,17 @@ def leaderboard(period: str, user_id: int, day: date | None = None, group: int |
     lo, hi = _range(period, day)
     with db.connection() as conn:
         rows = conn.execute(
-            "WITH scores AS (SELECT u.id, coalesce(u.nickname, 'Játékos #' || substr(md5(u.id::text), 1, 5)) AS name, "
+            "WITH scores AS (SELECT u.id, u.nickname AS name, substr(md5(u.id::text), 1, 5) AS tag, "
             "sum(t.points) AS points, count(DISTINCT s.id) AS days FROM practice_sessions s "
             "JOIN practice_tasks t ON t.session_id = s.id JOIN users u ON u.id = s.user_id "
             "WHERE s.daily IS NOT NULL AND (%(lo)s::date IS NULL OR s.daily BETWEEN %(lo)s AND %(hi)s) "
             "AND u.email_verified_at IS NOT NULL AND t.points IS NOT NULL AND (%(group)s::bigint IS NULL OR u.id IN "
             "(SELECT user_id FROM group_members WHERE group_id = %(group)s)) GROUP BY u.id), "
             "ranked AS (SELECT *, rank() OVER (ORDER BY points DESC) AS rank FROM scores) "
-            "SELECT rank, name, points, days, id = %(me)s FROM ranked WHERE rank <= %(top)s OR id = %(me)s "
-            "ORDER BY rank, name", {"lo": lo, "hi": hi, "me": user_id, "top": TOP, "group": group}).fetchall()
-    out = [{"rank": r, "name": n, "points": p, "days": d, "me": me} for r, n, p, d, me in rows]
+            "SELECT rank, name, tag, points, days, id = %(me)s FROM ranked WHERE rank <= %(top)s OR id = %(me)s "
+            "ORDER BY rank, coalesce(name, tag)", {"lo": lo, "hi": hi, "me": user_id, "top": TOP, "group": group}).fetchall()
+    # name: a becenev (None: nincs - a felulet "Jatekos #<tag>"-et mutat, forditva)
+    out = [{"rank": r, "name": n, "tag": tag, "points": p, "days": d, "me": me} for r, n, tag, p, d, me in rows]
     return {"period": period, "group": group, "from": f"{lo:%Y-%m-%d}" if lo else None, "to": f"{hi:%Y-%m-%d}" if hi else None,
             "rows": [r for r in out if r["rank"] <= TOP], "me": next((r for r in out if r["me"]), None)}
 

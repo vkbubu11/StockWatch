@@ -130,7 +130,7 @@ function pageInfo(contact) {
     <div class="page-head"><h1>Információ</h1></div>
     ${contact ? `<section class="card"><h2>Visszajelzés, hibabejelentés</h2><div class="card-body">
       <p>Hibát találtál, vagy van ötleted? Írj nekünk – minden visszajelzést elolvasunk.</p>
-      <p><a class="btn primary" href="${esc(mail)}">Visszajelzés küldése</a> <span class="muted small">${esc(contact)}</span></p>
+      <p><a class="btn primary" href="${esc(mail)}">Visszajelzés küldése</a> <span class="muted small" translate="no">${esc(contact)}</span></p>
       <p class="muted small">Írd le, mit csináltál, mire számítottál, és mi történt helyette – ha lehet, képernyőképpel.
         Jelszót soha ne küldj el.</p>
     </div></section>` : ""}
@@ -212,14 +212,15 @@ async function pageLeaderboard() {
   const groups = await api("/api/groups");
   if (lbGroup && !groups.some((g) => String(g.id) === lbGroup)) lbGroup = "";
   const d = await api(`/api/leaderboard?period=${lbPeriod}${lbGroup ? `&group=${lbGroup}` : ""}`);
-  const row = (r) => `<tr class="${r.me ? "lb-me" : ""}"><td class="num">${r.rank}.</td><td>${esc(r.name)}${r.me ? " (te)" : ""}</td>
+  const row = (r) => `<tr class="${r.me ? "lb-me" : ""}"><td class="num">${r.rank}.</td>
+    <td>${r.name ? `<span translate="no">${esc(r.name)}</span>` : `Játékos #${esc(r.tag)}`}${r.me ? " (te)" : ""}</td>
     <td class="num">${r.points}</td><td class="num">${r.days}</td></tr>`;
   view.innerHTML = `
     <div class="page-head"><h1>Ranglista</h1><span class="muted">A napi kihívások pontjai szerint (a döntés minősége, nem a profit).
       Becenév látszik, e-mail soha – a becenevet a Profil oldalon állíthatod be.</span></div>
     <section class="card"><div class="card-body">
       ${groups.length ? `<label class="cal-field">Kik között<select id="lb-group"><option value="">Mindenki</option>
-        ${groups.map((g) => `<option value="${g.id}" ${String(g.id) === lbGroup ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select></label>` : ""}
+        ${groups.map((g) => `<option value="${g.id}" translate="no" ${String(g.id) === lbGroup ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select></label>` : ""}
       <div class="segmented" role="group" aria-label="Időszak">${Object.entries(LB_PERIODS).map(([k, v]) =>
         `<button type="button" class="seg ${k === lbPeriod ? "on" : ""}" data-lb="${k}" aria-pressed="${k === lbPeriod}">${v}</button>`).join("")}</div>
       ${d.rows.length ? `<table class="table cards-on-phone"><thead><tr><th>Hely</th><th>Becenév</th><th>Pont</th><th>Napok</th></tr></thead>
@@ -229,7 +230,7 @@ async function pageLeaderboard() {
     <section class="card"><h2>Csoportjaim</h2><div class="card-body">
       <p class="muted small">Privát ranglista egy kurzusnak vagy baráti körnek: hozz létre egy csoportot, és add tovább a meghívókódot.</p>
       ${groups.length ? `<table class="table cards-on-phone"><thead><tr><th>Csoport</th><th>Meghívókód</th><th>Tagok</th><th></th></tr></thead><tbody>
-        ${groups.map((g) => `<tr><td>${esc(g.name)}${g.owner ? ` <span class="badge go">saját</span>` : ""}</td><td><code>${esc(g.code)}</code></td>
+        ${groups.map((g) => `<tr><td><span translate="no">${esc(g.name)}</span>${g.owner ? ` <span class="badge go">saját</span>` : ""}</td><td><code>${esc(g.code)}</code></td>
           <td class="num">${g.members}</td><td><button class="btn" type="button" data-group-${g.owner ? "delete" : "leave"}="${g.id}">${g.owner ? "Törlés" : "Kilépés"}</button></td></tr>`).join("")}
       </tbody></table>` : ""}
       <form id="group-create" class="ag-form"><label>Új csoport neve<input name="name" maxlength="40" required></label>
@@ -260,7 +261,7 @@ async function pageLeaderboard() {
 async function pageProfile() {
   const [s, g] = await Promise.all([api("/api/session"), api("/api/progress")]);
   view.innerHTML = `
-    <div class="page-head"><h1>Profil</h1><span class="muted">${esc(s.email)}</span></div>
+    <div class="page-head"><h1>Profil</h1><span class="muted" translate="no">${esc(s.email)}</span></div>
     <div class="kpis">
       <div class="kpi"><div class="label">Szint</div><div class="value">${g.level}</div><div class="sub">${g.level_xp} / ${g.next} XP a következőig</div></div>
       <div class="kpi"><div class="label">XP</div><div class="value">${g.xp}</div><div class="sub">a döntések minősége szerint – nincs pénzbeli értéke</div></div>
@@ -679,7 +680,7 @@ function practiceOutcome(k, t, rev, sess) {
         <div class="sub">${base.n} véletlen nap ugyanezen a papíron, azonos stop-távolsággal</div></div>
     </div>
     <div class="table-scroll"><table class="table"><thead><tr><th>Stratégia ugyanezen a ponton</th><th>Jelzés</th><th>Eredmény</th><th>Kilépés</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="pr-name"><strong>${esc(rev.symbol)}</strong>${rev.date ? ` · ${esc(rev.date)}` : ""} · ${esc(PR_CAT[rev.category] || rev.category)}${rev.source && rev.category !== "strategy" ? ` (${esc(rev.source)})` : ""}</p>
+    <p class="pr-name"><strong>${esc(rev.symbol)}</strong>${rev.date ? ` · ${esc(rev.date)}` : ""} · ${esc(PR_CAT[rev.category] || rev.category)}${rev.source && rev.category !== "strategy" ? ` (${esc(rev.source === "downtrend" ? "eső trend" : rev.source)})` : ""}</p>
   </div></section>
   ${practiceSteps(rev.review)}
   <section class="card"><div class="card-body"><div class="digest-controls"><button class="btn primary" id="pr-next" type="button">${last ? "Összegzés" : "Következő helyzet"}</button>

@@ -14,7 +14,7 @@ import re
 import secrets
 from datetime import timedelta
 
-from . import db, mailer, webauth
+from . import db, i18n, mailer, webauth
 
 TERMS_VERSION = "2026-10-22"                    # az ASZF es az adatkezelesi tajekoztato verzioja (#40)
 SESSION_TTL = timedelta(days=30)
@@ -79,16 +79,22 @@ def _new_token(conn, user_id: int, purpose: str, ttl: timedelta) -> str:
     return token
 
 
-def _verify_mail(email: str, token: str, base_url: str) -> None:
-    mailer.send(email, "StockWatch – erősítsd meg az e-mail-címedet",
-                f"A regisztráció befejezéséhez nyisd meg ezt a linket (24 óráig érvényes, egyszer használható):\n\n"
-                f"{base_url}/verify?token={token}\n\nHa nem te regisztráltál, hagyd figyelmen kívül ezt a levelet.\n")
+def _send(email: str, subject: str, body: str, lang: str) -> None:
+    """A level a felhasznalo feluleti nyelven (a katalogusbol, soronkent; a link sor valtozatlan)."""
+    mailer.send(email, i18n.translate(subject, lang), i18n.translate(body, lang))
+
+
+def _verify_mail(email: str, token: str, base_url: str, lang: str = "hu") -> None:
+    _send(email, "StockWatch – erősítsd meg az e-mail-címedet",
+          f"A regisztráció befejezéséhez nyisd meg ezt a linket (24 óráig érvényes, egyszer használható):\n\n"
+          f"{base_url}/verify?token={token}\n\nHa nem te regisztráltál, hagyd figyelmen kívül ezt a levelet.\n", lang)
 
 
 # ---------------------------------------------------------------------------
 # Regisztracio, ellenorzes
 # ---------------------------------------------------------------------------
-def register(email: str, password: str, accepted_terms: bool, age_ok: bool, ip: str, base_url: str) -> None:
+def register(email: str, password: str, accepted_terms: bool, age_ok: bool, ip: str, base_url: str,
+             lang: str = "hu") -> None:
     """Uj fiok + ellenorzo level. Letezo, ellenorizetlen cimre uj ellenorzo levelet kuld, letezo ellenorzottre
     semmit - a valasz minden esetben ugyanaz."""
     if not IP_REGISTER.hit(ip):
@@ -111,10 +117,10 @@ def register(email: str, password: str, accepted_terms: bool, age_ok: bool, ip: 
                                (email,)).fetchone()
         token = _new_token(conn, row[0], "verify", VERIFY_TTL) if row else None
     if token:
-        _verify_mail(email, token, base_url)
+        _verify_mail(email, token, base_url, lang)
 
 
-def resend_verification(email: str, ip: str, base_url: str) -> None:
+def resend_verification(email: str, ip: str, base_url: str, lang: str = "hu") -> None:
     """Uj megerosito link (#44) - csak letezo, meg nem megerositett fiokra; a regi link ervenytelen lesz. A valasz
     minden esetben ugyanaz (nincs fiok-felsorolas)."""
     email = normalize_email(email)
@@ -124,7 +130,7 @@ def resend_verification(email: str, ip: str, base_url: str) -> None:
         row = conn.execute("SELECT id FROM users WHERE lower(email) = %s AND email_verified_at IS NULL", (email,)).fetchone()
         token = _new_token(conn, row[0], "verify", VERIFY_TTL) if row else None
     if token:
-        _verify_mail(email, token, base_url)
+        _verify_mail(email, token, base_url, lang)
 
 
 def verify_email(token: str) -> bool:
@@ -205,7 +211,7 @@ def logout_everywhere(user_id: int) -> None:
 # ---------------------------------------------------------------------------
 # Jelszo-visszaallitas
 # ---------------------------------------------------------------------------
-def request_reset(email: str, ip: str, base_url: str) -> None:
+def request_reset(email: str, ip: str, base_url: str, lang: str = "hu") -> None:
     """Visszaallito level, ha van ilyen fiok - a valasz minden esetben ugyanaz."""
     email = normalize_email(email)
     if not IP_RESET.hit(ip) or not ACCOUNT_RESET.hit(email):
@@ -214,10 +220,10 @@ def request_reset(email: str, ip: str, base_url: str) -> None:
         row = conn.execute("SELECT id FROM users WHERE lower(email) = %s", (email,)).fetchone()
         token = _new_token(conn, row[0], "reset", RESET_TTL) if row else None
     if token:
-        mailer.send(email, "StockWatch – új jelszó beállítása",
-                    f"Új jelszót ezen a linken állíthatsz be (1 óráig érvényes, egyszer használható):\n\n"
-                    f"{base_url}/reset?token={token}\n\nHa nem te kérted, hagyd figyelmen kívül ezt a levelet – "
-                    f"a jelszavad nem változik.\n")
+        _send(email, "StockWatch – új jelszó beállítása",
+              f"Új jelszót ezen a linken állíthatsz be (1 óráig érvényes, egyszer használható):\n\n"
+              f"{base_url}/reset?token={token}\n\nHa nem te kérted, hagyd figyelmen kívül ezt a levelet – "
+              f"a jelszavad nem változik.\n", lang)
 
 
 def reset_password(token: str, password: str) -> bool:

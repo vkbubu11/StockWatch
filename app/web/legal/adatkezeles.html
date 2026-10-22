@@ -11,10 +11,11 @@
   <main class="view landing legal">
     <p class="login-error" role="note">TERVEZET – indulás előtt jogásznak át kell néznie. A [szögletes zárójeles] részeket ki kell tölteni.</p>
     <h1>Adatkezelési tájékoztató</h1>
-    <p class="muted">Verzió: 2026-10-22 (hatályos: [DÁTUM])</p>
+    <p class="muted">Verzió: 2026-10-22 (hatályos: <span class="op" translate="no">[DÁTUM]</span>)</p>
+    <p class="muted small">A fordítás tájékoztató jellegű; eltérés esetén a magyar nyelvű változat az irányadó.</p>
 
     <h2>1. Adatkezelő</h2>
-    <p>[ÜZEMELTETŐ NEVE], [CÍM], e-mail: [KAPCSOLATI E-MAIL]. [ADATVÉDELMI TISZTVISELŐ, HA VAN]</p>
+    <p><span class="op" translate="no">[ÜZEMELTETŐ NEVE]</span>, <span class="op" translate="no">[CÍM]</span>, e-mail: <span class="op" translate="no">[KAPCSOLATI E-MAIL]</span>. <span class="op" translate="no">[ADATVÉDELMI TISZTVISELŐ, HA VAN]</span></p>
     <h2>2. Milyen adatokat kezelünk, miért, meddig?</h2>
     <div class="table-scroll"><table class="table"><thead><tr><th>Adat</th><th>Cél</th><th>Jogalap</th><th>Megőrzés</th></tr></thead><tbody>
       <tr><td>E-mail-cím; a jelszó scrypt-lenyomata (maga a jelszó nem); a regisztráció, az e-mail-megerősítés, az ÁSZF-elfogadás ideje és verziója; a bevezető elvégzésének ideje</td>
@@ -27,13 +28,13 @@
       <tr><td>Gyakorló körök: a döntéseid, az ítéletek és az eredmények, időbélyeggel</td><td>a szolgáltatás nyújtása, a saját haladásod</td>
         <td>szerződés teljesítése</td><td>a fiók törléséig; felhasználónként legfeljebb 30 kör (a legrégebbi törlődik)</td></tr>
       <tr><td>IP-cím</td><td>a túl sok belépési / regisztrációs kísérlet korlátozása; hibakeresés</td><td>jogos érdek – 6. cikk (1) f) (visszaélés-megelőzés)</td>
-        <td>a korláthoz csak a szerver memóriájában (legfeljebb 1 óra); a szervernaplóban méretkorlátos, rotált naplóban [JELLEMZŐ IDŐTARTAM]</td></tr>
+        <td>a korláthoz az adatbázisban (legfeljebb 1 napig); a szervernaplóban méretkorlátos, rotált naplóban <span class="op" translate="no">[JELLEMZŐ IDŐTARTAM]</span></td></tr>
     </tbody></table></div>
     <h2>3. Adatfeldolgozók</h2>
     <ul class="digest-list">
-      <li><span>Neon Inc. – adatbázis (felhő, EU: Frankfurt régió) [SZERZŐDÉS / DPA]</span></li>
-      <li><span>[E-MAIL SZOLGÁLTATÓ] – a megerősítő és jelszó-visszaállító levelek küldése</span></li>
-      <li><span>[SZERVER / TÁRHELY SZOLGÁLTATÓ] – a webes szolgáltatás futtatása</span></li>
+      <li><span>Neon Inc. – adatbázis (felhő, EU: Frankfurt régió) <span class="op" translate="no">[SZERZŐDÉS / DPA]</span></span></li>
+      <li><span><span class="op" translate="no">[E-MAIL SZOLGÁLTATÓ]</span> – a megerősítő és jelszó-visszaállító levelek küldése</span></li>
+      <li><span><span class="op" translate="no">[SZERVER / TÁRHELY SZOLGÁLTATÓ]</span> – a webes szolgáltatás futtatása</span></li>
     </ul>
     <p>Az adatokat nem adjuk el, reklámcélra nem használjuk, és az adatfeldolgozókon kívül harmadik félnek nem továbbítjuk.</p>
     <h2>4. Korhatár</h2>
@@ -43,7 +44,7 @@
       <li><span>Hozzáférés és adathordozhatóság: a Profil oldalon minden adatodat letöltheted (JSON).</span></li>
       <li><span>Törlés: a Profil oldalon a fiókodat és minden adatodat véglegesen törölheted; az adatbázisból azonnal,
         a biztonsági mentésekből legkésőbb 30 napon belül tűnnek el.</span></li>
-      <li><span>Helyesbítés, korlátozás, tiltakozás: írj a [KAPCSOLATI E-MAIL] címre; 30 napon belül válaszolunk.</span></li>
+      <li><span>Helyesbítés, korlátozás, tiltakozás: írj a <span class="op" translate="no">[KAPCSOLATI E-MAIL]</span> címre; 30 napon belül válaszolunk.</span></li>
       <li><span>Panasz: Nemzeti Adatvédelmi és Információszabadság Hatóság (NAIH), 1055 Budapest, Falk Miksa u. 9–11.,
         www.naih.hu; vagy bírósághoz fordulhatsz.</span></li>
     </ul>
@@ -53,5 +54,6 @@
   </main>
   <footer class="footer">Oktatási célú gyakorlás múltbeli / szimulált adaton. <strong>Nem befektetési tanács.</strong>
     · <a href="/aszf">ÁSZF</a> · <a href="/adatkezeles">Adatkezelési tájékoztató</a> · <a href="/sutik">Sütik</a></footer>
+  <script src="/i18n.js"></script>
 </body>
 </html>
