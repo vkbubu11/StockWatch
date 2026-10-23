@@ -138,9 +138,9 @@ def auth_form(page: str, email: str = "", token: str = "", google: bool = False)
              "register": '<a href="/login">Van már fiókom – belépés</a>',
              "forgot": '<a href="/login">Vissza a belépéshez</a>', "reset": '<a href="/login">Vissza a belépéshez</a>'}
     if page == "login":
-        title, body = "Belépés", (_field("email", "E-mail-cím", "email", "username", email, "autofocus")
+        title, body = "Bejelentkezés", (_field("email", "E-mail-cím", "email", "username", email, "autofocus")
                                   + _field("password", "Jelszó", "password", "current-password")
-                                  + '<button class="btn primary" type="submit">Belépés</button>')
+                                  + '<button class="btn primary" type="submit">Bejelentkezés</button>')
     elif page == "register":
         title, body = "Regisztráció", (
             _field("email", "E-mail-cím", "email", "username", email, "autofocus")

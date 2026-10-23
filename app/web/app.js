@@ -231,7 +231,7 @@ async function pageLeaderboard() {
       <p class="muted small">Privát ranglista egy kurzusnak vagy baráti körnek: hozz létre egy csoportot, és add tovább a meghívókódot.</p>
       ${groups.length ? `<table class="table cards-on-phone"><thead><tr><th>Csoport</th><th>Meghívókód</th><th>Tagok</th><th></th></tr></thead><tbody>
         ${groups.map((g) => `<tr><td><span translate="no">${esc(g.name)}</span>${g.owner ? ` <span class="badge go">saját</span>` : ""}</td><td><code>${esc(g.code)}</code></td>
-          <td class="num">${g.members}</td><td><button class="btn" type="button" data-group-${g.owner ? "delete" : "leave"}="${g.id}">${g.owner ? "Törlés" : "Kilépés"}</button></td></tr>`).join("")}
+          <td class="num">${g.members}</td><td><button class="btn" type="button" data-group-${g.owner ? "delete" : "leave"}="${g.id}">${g.owner ? "Törlés" : "Kilépés a csoportból"}</button></td></tr>`).join("")}
       </tbody></table>` : ""}
       <form id="group-create" class="ag-form"><label>Új csoport neve<input name="name" maxlength="40" required></label>
         <div class="wide"><button class="btn" type="submit">Csoport létrehozása</button></div></form>

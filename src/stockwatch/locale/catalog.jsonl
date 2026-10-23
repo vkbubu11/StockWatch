@@ -2910,3 +2910,6 @@
 {"hu": "eső trend", "en": "downtrend", "de": "Abwärtstrend", "es": "tendencia bajista"}
 {"hu": "formálódó alakzat ({0})", "en": "forming pattern ({0})", "de": "sich bildende Formation ({0})", "es": "figura en formación ({0})"}
 {"hu": "short-gyanús helyzet ({0})", "en": "short-type situation ({0})", "de": "Short-verdächtige Situation ({0})", "es": "situación de tipo corto ({0})"}
+{"hu": "Kijelentkezés", "en": "Log out", "de": "Abmelden", "es": "Cerrar sesión"}
+{"hu": "Kilépés a csoportból", "en": "Leave group", "de": "Gruppe verlassen", "es": "Salir del grupo"}
+{"hu": "StockWatch Gyakorlás – Bejelentkezés", "en": "StockWatch Practice – Log in", "de": "StockWatch Training – Anmelden", "es": "StockWatch Práctica – Iniciar sesión"}
