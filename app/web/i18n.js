@@ -18,8 +18,9 @@ const LANG = (() => {
   let saved = null;
   try { saved = localStorage.getItem(LANG_KEY); } catch (_) { /* privat mod */ }
   if (saved && LANGS[saved]) return saved;
-  const nav = (navigator.language || "hu").slice(0, 2).toLowerCase();
-  return LANGS[nav] ? nav : "hu";
+  // nincs mentett valasztas: a bongeszo nyelve, ha tamogatott, kulonben angol (az alapertelmezett)
+  const nav = (navigator.language || "en").slice(0, 2).toLowerCase();
+  return LANGS[nav] ? nav : "en";
 })();
 const LOCALE = LOCALES[LANG];
 

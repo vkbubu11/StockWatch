@@ -153,11 +153,11 @@ def test_desktop_keeps_the_top_navigation(ui_server, browser):
 
 
 
-def test_unsupported_browser_language_falls_back_to_hungarian(ui_server, browser):  # noqa: F811
-    # nincs mentett nyelv, a bongeszo francia: magyar felulet, a valasztoval (#46)
+def test_unsupported_browser_language_falls_back_to_english(ui_server, browser):  # noqa: F811
+    # nincs mentett nyelv, a bongeszo francia: angol felulet (az alapertelmezett), a valasztoval (#46)
     page = _new_page(browser, ui_server, viewport={"width": 1280, "height": 900}, locale="fr-FR")
     page.goto(ui_server + "/#/learn")
     _settle(page)
-    assert page.evaluate("document.documentElement.lang") == "hu"
-    assert page.query_selector(".lang-select") and "Tanulás" in page.inner_text("h1")
+    assert page.evaluate("document.documentElement.lang") == "en"
+    assert page.query_selector(".lang-select") and "Learn" in page.inner_text("h1")
     page.close()

@@ -102,6 +102,8 @@ A domain (aldomain) A rekordja a szerverre mutasson. Domain nélkül: `.\deploy\
 > újraírja, és az `import /etc/caddy/stockwatch-learn.caddy` sor elveszik – utána az oktatási telepítő újrafuttatása
 > visszateszi.
 
+Nyilvános indulás (új gép, domain, e-mail, Google, jogi oldalak, mentés, felügyelet): [docs/PUBLIKUS-INDULAS.md](docs/PUBLIKUS-INDULAS.md).
+
 ## Lemezhasználat
 
 `python cli.py data-usage` – komponensenként, a plafonokhoz viszonyítva; `python cli.py housekeeping` – takarítás.

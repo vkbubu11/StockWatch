@@ -83,7 +83,7 @@ def test_account_flow_over_http(neon, outbox, port):
     res = _form(port, "/register", {"email": "Anna@Example.com", "password": PW, "terms": "1", "age": "1"})
     assert res.status == 303 and res.getheader("Location") == "/login?e=sent"
     link = re.search(r"/verify\?token=[\w-]+", outbox[-1][2]).group(0)
-    assert outbox[-1][2].startswith("A regisztráció") and "http://127.0.0.1:" in outbox[-1][2]
+    assert outbox[-1][2].startswith("To complete your registration") and "http://127.0.0.1:" in outbox[-1][2]   # suti nelkul: angol
     early = _form(port, "/login", {"email": "anna@example.com", "password": PW})
     assert early.status == 400 and "erősítsd meg" in early.text and early.getheader("Set-Cookie") is None
     assert _req(port, "GET", link).getheader("Location") == "/login?e=verified"

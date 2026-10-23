@@ -268,7 +268,7 @@ def make_handler(trust_proxy: bool = False):
                 morsel = SimpleCookie(self.headers.get("Cookie", "")).get("sw_lang")
             except CookieError:
                 morsel = None
-            return morsel.value if morsel and morsel.value in config.LANGUAGES else "hu"
+            return morsel.value if morsel and morsel.value in config.LANGUAGES else "en"
 
         def _post_form(self, path: str) -> None:
             form = self._form()
