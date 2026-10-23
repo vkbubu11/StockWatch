@@ -181,6 +181,12 @@ $DOMAIN {
 }
 EOF
   touch /etc/caddy/Caddyfile
+  # friss gepen a csomag mintafajlja egy ":80" udvozlooldalt szolgal ki (a puszta IP-n) - erre nincs szukseg
+  if grep -qF "The Caddyfile is an easy way to configure your Caddy web server" /etc/caddy/Caddyfile \
+     && grep -qF "root * /usr/share/caddy" /etc/caddy/Caddyfile; then
+    cp /etc/caddy/Caddyfile "/etc/caddy/Caddyfile.bak.$(date +%Y%m%d%H%M%S)"
+    printf '# A deploy/install.sh irta (a csomag mintafajlja helyett). Oldalak: import sorok.\n' > /etc/caddy/Caddyfile
+  fi
   if ! grep -qxF "import $SITE_FILE" /etc/caddy/Caddyfile; then
     cp /etc/caddy/Caddyfile "/etc/caddy/Caddyfile.bak.$(date +%Y%m%d%H%M%S)"
     printf '\nimport %s\n' "$SITE_FILE" >> /etc/caddy/Caddyfile
