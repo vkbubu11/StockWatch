@@ -13,6 +13,7 @@ import smtplib
 import ssl
 import threading
 from email.message import EmailMessage
+from email.utils import formatdate, make_msgid, parseaddr
 
 from . import config
 
@@ -36,6 +37,9 @@ def _deliver(to: str, subject: str, body: str) -> None:
         return
     msg = EmailMessage()
     msg["From"], msg["To"], msg["Subject"] = config.env_value("MAIL_FROM"), to, subject
+    # a Date es a Message-ID kotelezo fejlec (RFC 5322); hianyuk a spamszuroknel rontja a levelet
+    msg["Date"] = formatdate(usegmt=True)
+    msg["Message-ID"] = make_msgid(domain=parseaddr(msg["From"])[1].rpartition("@")[2] or None)
     msg.set_content(body)
     host, port = config.env_value("SMTP_HOST"), int(config.env_value("SMTP_PORT") or 587)
     user, password = config.env_value("SMTP_USER"), config.env_value("SMTP_PASSWORD")

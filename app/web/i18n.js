@@ -17,10 +17,8 @@ const LANG_KEY = "sw-lang";
 const LANG = (() => {
   let saved = null;
   try { saved = localStorage.getItem(LANG_KEY); } catch (_) { /* privat mod */ }
-  if (saved && LANGS[saved]) return saved;
-  // nincs mentett valasztas: a bongeszo nyelve, ha tamogatott, kulonben angol (az alapertelmezett)
-  const nav = (navigator.language || "en").slice(0, 2).toLowerCase();
-  return LANGS[nav] ? nav : "en";
+  // nincs mentett valasztas: angol (az alapertelmezett, a bongeszo nyelvetol fuggetlenul)
+  return saved && LANGS[saved] ? saved : "en";
 })();
 const LOCALE = LOCALES[LANG];
 

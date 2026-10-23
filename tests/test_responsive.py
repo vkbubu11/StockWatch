@@ -33,10 +33,13 @@ INTERACTIVE = (".btn, .seg, .bottom-nav a, .bottom-nav button, .more-list a, .la
 _TOKEN: dict[str, str] = {}
 
 
-def _new_page(browser, base: str, **kwargs):
-    """Bejelentkezett oldal (a `ui_server` felhasznalojanak munkamenet-sutijevel)."""
+def _new_page(browser, base: str, lang: str | None = "hu", **kwargs):
+    """Bejelentkezett oldal (a `ui_server` felhasznalojanak munkamenet-sutijevel); lang: a valasztott nyelv
+    (a magyar szovegeket ellenorzo tesztekhez), None: nincs valasztas."""
     page = browser.new_page(**kwargs)
     page.context.add_cookies([{"name": webauth.COOKIE, "value": _TOKEN["value"], "url": base}])
+    if lang:
+        page.add_init_script(f"try {{ localStorage.setItem('sw-lang', '{lang}'); }} catch (e) {{}}")
     return page
 
 
@@ -153,9 +156,9 @@ def test_desktop_keeps_the_top_navigation(ui_server, browser):
 
 
 
-def test_unsupported_browser_language_falls_back_to_english(ui_server, browser):  # noqa: F811
-    # nincs mentett nyelv, a bongeszo francia: angol felulet (az alapertelmezett), a valasztoval (#46)
-    page = _new_page(browser, ui_server, viewport={"width": 1280, "height": 900}, locale="fr-FR")
+def test_english_is_the_default_even_in_a_hungarian_browser(ui_server, browser):  # noqa: F811
+    # nincs mentett nyelv, a bongeszo magyar: angol felulet (az alapertelmezett), a valasztoval (#46)
+    page = _new_page(browser, ui_server, lang=None, viewport={"width": 1280, "height": 900}, locale="hu-HU")
     page.goto(ui_server + "/#/learn")
     _settle(page)
     assert page.evaluate("document.documentElement.lang") == "en"

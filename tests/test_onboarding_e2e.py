@@ -36,6 +36,7 @@ def server(env):  # noqa: F811
 
 def test_new_user_reaches_first_verdict_within_two_minutes(server, browser, outbox):  # noqa: F811
     page = browser.new_page(viewport={"width": 390, "height": 844}, locale="hu-HU", has_touch=True)
+    page.add_init_script("try { localStorage.setItem('sw-lang', 'hu'); } catch (e) {}")   # a teszt magyar szovegeket nez
     actions = 0
 
     def act(fn, *args):
