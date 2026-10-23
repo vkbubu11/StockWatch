@@ -16,7 +16,7 @@ from datetime import timedelta
 
 from . import db, i18n, mailer, webauth
 
-TERMS_VERSION = "2026-10-22"                    # az ASZF es az adatkezelesi tajekoztato verzioja (#40)
+TERMS_VERSION = "2026-10-23"                    # az ASZF es az adatkezelesi tajekoztato verzioja (#40)
 SESSION_TTL = timedelta(days=30)
 VERIFY_TTL = timedelta(hours=24)
 RESET_TTL = timedelta(hours=1)
