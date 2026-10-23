@@ -1,0 +1,12 @@
+# StockWatch Gyakorlas: a napi adatbazis-mentes idozitoje (lista: systemctl list-timers stockwatch-learn-backup)
+[Unit]
+Description=StockWatch Gyakorlas - napi adatbazis-mentes idozitoje
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=15min
+# ha a gep a megadott idoben allt, indulaskor potolja
+Persistent=true
+
+[Install]
+WantedBy=timers.target

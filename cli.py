@@ -5,6 +5,8 @@
     python cli.py practice-pool [--force]        a Gyakorlas feladatkeszletenek felepitese
     python cli.py web [--port 8765]              webes felulet a bongeszoben
     python cli.py db migrate                     az adatbazis semajanak letrehozasa / frissitese (DATABASE_URL)
+    python cli.py db backup                      adatbazis-mentes a data/backup mappaba (14 napig orzi)
+    python cli.py db restore <fajl>              visszaallitas egy mentesbol (csak ures adatbazisba)
     python cli.py data-usage                     lemezhasznalat kimutatas
     python cli.py housekeeping                   takaritas
 """
@@ -76,18 +78,29 @@ def cmd_practice_pool(args) -> int:
 
 
 def cmd_db(args) -> int:
-    """Adatbazis-migraciok (migrations/*.sql) - a kapcsolat a DATABASE_URL titokbol."""
-    from stockwatch import db
+    """Adatbazis: migraciok (migrations/*.sql), mentes es visszaallitas - a kapcsolat a DATABASE_URL titokbol."""
+    from stockwatch import backup, db
 
     housekeeping.setup_logging(load_settings())
+    if args.action == "restore" and not args.file:
+        print("Add meg a mentesfajlt: python cli.py db restore <fajl>")
+        return 2
     try:
-        applied = db.migrate()
-    except db.DatabaseUnavailable as exc:
+        if args.action == "backup":
+            result = backup.backup()
+            print(f"Mentes: {result['path']} ({result['bytes'] / 1024:.1f} KB, {sum(result['rows'].values())} sor); "
+                  f"regi mentes torolve: {len(result['removed'])}")
+        elif args.action == "restore":
+            loaded = backup.restore(Path(args.file))
+            print(f"Visszaallitva: {sum(loaded.values())} sor, {len(loaded)} tabla")
+        else:
+            applied = db.migrate()
+            print(f"Lefutott: {', '.join(applied)}" if applied else "Nincs uj migracio - a sema naprakesz.")
+    except (db.DatabaseUnavailable, ValueError, FileNotFoundError) as exc:
         print(exc)
         return 1
     finally:
         db.close()
-    print(f"Lefutott: {', '.join(applied)}" if applied else "Nincs uj migracio - a sema naprakesz.")
     return 0
 
 
@@ -146,8 +159,9 @@ def main() -> int:
                    help="HTTPS reverse proxy mogott fut (szerver): X-Forwarded-* fejlecek")
     p.set_defaults(func=cmd_web)
 
-    p = subparsers.add_parser("db", help="adatbazis: migraciok futtatasa")
-    p.add_argument("action", choices=["migrate"])
+    p = subparsers.add_parser("db", help="adatbazis: migraciok, mentes, visszaallitas")
+    p.add_argument("action", choices=["migrate", "backup", "restore"])
+    p.add_argument("file", nargs="?", help="restore: a mentesfajl (data/backup/learn-<datum>.zip)")
     p.set_defaults(func=cmd_db)
 
     p = subparsers.add_parser("data-usage", help="lemezhasznalat kimutatas")

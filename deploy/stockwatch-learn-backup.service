@@ -1,0 +1,33 @@
+# StockWatch Gyakorlas: napi adatbazis-mentes (data/backup, 14 napig) - a stockwatch-learn-backup.timer inditja.
+# Kezzel: sudo systemctl start stockwatch-learn-backup; allapot: systemctl status stockwatch-learn-backup
+# Telepites: deploy/install.sh masolja ide: /etc/systemd/system/
+[Unit]
+Description=StockWatch Gyakorlas - napi adatbazis-mentes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=stockwatch-learn
+Group=stockwatch-learn
+WorkingDirectory=/opt/stockwatch-learn
+Environment=STOCKWATCH_ENV_FILE=/etc/stockwatch-learn/stockwatch-learn.env
+Environment=HOME=/var/lib/stockwatch-learn
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/stockwatch-learn/.venv/bin/python cli.py db backup
+TimeoutStartSec=30min
+
+# Vedelem: mint a webes szolgaltatasnal
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/stockwatch-learn/data /opt/stockwatch-learn/logs
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK

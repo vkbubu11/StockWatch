@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import store
+from . import backup, store
 from .config import DATA_DIR, LOG_DIR, Settings, ensure_dirs, load_settings
 
 log = logging.getLogger(__name__)
@@ -204,6 +204,7 @@ def disk_usage(settings: Settings | None = None) -> list[UsageEntry]:
         UsageEntry("Riasztasi cooldown (entry_state.json)", _file_size(settings.entry_state_path), None),
         UsageEntry("Earnings cache (earnings.json)", _file_size(settings.earnings_path), None),
         UsageEntry("Gyakorlo feladatkeszlet (data/practice)", _practice_bytes(), int(PRACTICE_LIMIT_MB * MB)),
+        UsageEntry("Adatbazis-mentesek (data/backup)", backup.usage_bytes(), int(backup.LIMIT_MB * MB)),
     ]
 
 
@@ -367,6 +368,7 @@ def run(settings: Settings | None = None) -> dict:
         "pruned_state_entries": prune_state(settings),
         "pruned_universe_files": prune_universe(settings),
         "ledger": _prune_ledger(),
+        "pruned_backups": len(backup.prune()),
     }
     enforce_jsonl_limits(settings)
 

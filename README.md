@@ -98,6 +98,10 @@ Első alkalommal a szerveren a titokfájlba: `DATABASE_URL` (Neon), `PUBLIC_URL`
 `SMTP_*`, `MAIL_FROM` – utána `sudo stockwatch-learn-cli db migrate && sudo systemctl restart stockwatch-learn`.
 A domain (aldomain) A rekordja a szerverre mutasson. Domain nélkül: `.\deploy\open-web.ps1` (SSH-alagút, 18766).
 
+Napi adatbázis-mentés: a `stockwatch-learn-backup.timer` minden éjjel `data/backup/learn-<dátum>.zip`-et ír
+(14 napig őrzi, 50 MB-os plafonnal; `pg_dump` nem kell). Kézzel: `sudo stockwatch-learn-cli db backup`;
+visszaállítás csak üres adatbázisba: `sudo stockwatch-learn-cli db restore <fájl>`.
+
 > Ha a korábbi StockWatch telepítőjét (`main` ág, `deploy/install.sh`) újra lefuttatod, az a teljes Caddyfile-t
 > újraírja, és az `import /etc/caddy/stockwatch-learn.caddy` sor elveszik – utána az oktatási telepítő újrafuttatása
 > visszateszi.

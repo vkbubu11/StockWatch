@@ -88,7 +88,8 @@ git status                  # legyen tiszta: a feltöltő a munkakönyvtárat cs
 ```
 
 Ez feltölti a kódot (a helyi `data/` és `.env` **soha** nem megy fel), telepíti a Pythont, a függőségeket,
-a Caddy-t (HTTPS, Let's Encrypt), legenerálja a szintetikus feladatkészletet, és létrehozza az üres titokfájlt.
+a Caddy-t (HTTPS, Let's Encrypt) és a napi mentés időzítőjét, legenerálja a szintetikus feladatkészletet, és
+létrehozza az üres titokfájlt.
 Az első futás figyelmeztet, hogy a `DATABASE_URL` és társai hiányoznak – ez várható.
 
 ### 4.3 Titkok a szerveren
@@ -115,6 +116,7 @@ Mentés: `Ctrl+O`, `Enter`, `Ctrl+X`. Utána:
 ```bash
 sudo stockwatch-learn-cli db migrate        # a Neonon már lefutott: "Nincs uj migracio - a sema naprakesz."
 sudo systemctl restart stockwatch-learn
+sudo systemctl enable --now stockwatch-learn-backup.timer   # napi mentés (első telepítéskor a titkok még hiányoztak)
 ```
 
 ✅ `systemctl status stockwatch-learn` → `active (running)`.
@@ -161,6 +163,10 @@ nem érintik.
 
 GDPR: a Neon-projekt régiója legyen EU (pl. Frankfurt) – *Settings* oldal.
 
+Állapot (2026-10-23): ellenőrizve – a `production` ág `StockWatch_Learning` adatbázisa **üres** (0 fiók, minden tábla
+üres, nincs ottmaradt teszt-séma), a régió `eu-central-1` (AWS Frankfurt), Postgres 18. Indulás előtt csak akkor kell
+újra megnézni, ha azóta valaki próbafiókot hozott létre.
+
 ---
 
 ## 7. Jogi oldalak (indulás feltétele)
@@ -192,62 +198,63 @@ A három oldal (`app/web/legal/aszf.html`, `adatkezeles.html`, `sutik.html`) **t
 
 ## 8. Mentés
 
-A Neon saját visszaállítási pontjai mellett napi `pg_dump` a szerveren, és hetente egy másolat gépen kívülre.
-**A mentések megőrzése legfeljebb 30 nap** – az adatkezelési tájékoztató ezt ígéri (a törölt fiók a mentésekből is
-30 napon belül eltűnik), a saját gépre letöltött másolatokra is.
+A Neon saját visszaállítási pontjai mellett **napi mentés a szerveren** – ezt a telepítő már beállította
+(`stockwatch-learn-backup.timer`, minden éjjel 03:30 körül). A mentés az alkalmazás része (`cli.py db backup`), a
+gépre nem kell `pg_dump` vagy más adatbázis-szoftver.
 
-### 8.1 Postgres-kliens (csak kliens, adatbázis-szerver nem kerül a gépre)
+- Hely: `/opt/stockwatch-learn/data/backup/learn-<dátum>.zip` (csak a szolgáltatás felhasználója olvashatja).
+- Megőrzés: **14 nap** – a régebbiek egy sikeres mentés után automatikusan törlődnek; lemezplafon 50 MB (felette a
+  legrégebbi törlődik, a legújabb mindig megmarad). Az adatkezelési tájékoztató 30 napot ígér: a saját gépre
+  letöltött másolatokra is ez vonatkozik.
+- Sikertelen mentés nem töröl régit.
 
-A Neon Postgres verziója a konzolban látszik (pl. 17); a `pg_dump` legalább ugyanilyen verziójú legyen:
-
-```bash
-sudo apt install -y postgresql-common
-sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-sudo apt install -y postgresql-client-17
-```
-
-### 8.2 Napi mentés
+### 8.1 Ellenőrzés a telepítés után
 
 ```bash
-sudo tee /usr/local/sbin/stockwatch-learn-backup >/dev/null <<'EOF'
-#!/bin/bash
-# Napi pg_dump a Neonrol; 14 napig orzi. A kozvetlen (nem pooled) vegpontot hasznalja.
-set -euo pipefail
-url=$(sed -n 's/^DATABASE_URL=//p' /etc/stockwatch-learn/stockwatch-learn.env)
-dir=/var/lib/stockwatch-learn/backup
-install -d -m 700 "$dir"
-pg_dump --format=custom --no-owner --dbname="${url/-pooler/}" --file="$dir/learn-$(date +%F).dump"
-find "$dir" -name 'learn-*.dump' -mtime +14 -delete
-EOF
-sudo chmod 755 /usr/local/sbin/stockwatch-learn-backup
-echo '30 3 * * * stockwatch-learn /usr/local/sbin/stockwatch-learn-backup' | sudo tee /etc/cron.d/stockwatch-learn-backup
-sudo -u stockwatch-learn /usr/local/sbin/stockwatch-learn-backup && sudo ls -l /var/lib/stockwatch-learn/backup
+systemctl list-timers stockwatch-learn-backup        # mikor fut legközelebb
+sudo systemctl start stockwatch-learn-backup         # most azonnal egy mentés
+systemctl status stockwatch-learn-backup --no-pager  # "Mentes: ... sor" a naplóban
+sudo ls -l /opt/stockwatch-learn/data/backup
 ```
 
-✅ Van egy `learn-<dátum>.dump` fájl, és nem 0 bájt.
+✅ Van egy `learn-<mai dátum>.zip`, és a `systemctl --failed` nem listázza a mentést.
 
-### 8.3 Heti másolat a saját gépre
+### 8.2 Heti másolat a saját gépre (gépen kívüli példány)
 
 ```powershell
 mkdir $HOME\stockwatch-learn-backup -Force
-ssh stockwatch-learn "sudo sh -c 'install -m 600 -o ubuntu \$(ls -t /var/lib/stockwatch-learn/backup/*.dump | head -1) /home/ubuntu/latest.dump'"
-scp stockwatch-learn:latest.dump "$HOME\stockwatch-learn-backup\learn-$(Get-Date -Format yyyy-MM-dd).dump"
-ssh stockwatch-learn "rm /home/ubuntu/latest.dump"
+ssh stockwatch-learn "sudo sh -c 'install -m 600 -o ubuntu \$(ls -t /opt/stockwatch-learn/data/backup/learn-*.zip | head -1) /home/ubuntu/latest.zip'"
+scp stockwatch-learn:latest.zip "$HOME\stockwatch-learn-backup\learn-$(Get-Date -Format yyyy-MM-dd).zip"
+ssh stockwatch-learn "rm /home/ubuntu/latest.zip"
 ```
 
 A 30 napnál régebbi helyi másolatokat töröld (személyes adat: e-mail-címek). Ütemezhető a Windows Feladatütemezővel.
 
-### 8.4 Visszaállítás kipróbálása (indulás előtt egyszer, utána havonta)
+### 8.3 Visszaállítás kipróbálása (indulás előtt egyszer, utána havonta)
 
-1. Neon konzol → *Databases → New database*: `restore_test` (ugyanazon az ágon).
-2. A szerveren (a `<restore_test URL>` a Neon *Connect* ablakából, ennél az adatbázisnál, **pooler nélkül**):
+A visszaállítás csak **üres** adatbázisba megy, és előtte lefuttatja a migrációkat – az élő adatbázist nem
+írhatja felül.
+
+1. Neon konzol → *Databases → New database*: `restore_test` (ugyanazon az ágon). A *Connect* ablakból másold ki a
+   kapcsolati szövegét (ennél az adatbázisnál).
+2. A szerveren egy ideiglenes titokfájl csak erre az egy parancsra:
 
    ```bash
-   sudo -u stockwatch-learn pg_restore --no-owner --dbname='<restore_test URL>' \
-       "$(sudo sh -c 'ls -t /var/lib/stockwatch-learn/backup/*.dump | head -1')"
+   sudo -u stockwatch-learn sh -c 'umask 077; cat > /var/lib/stockwatch-learn/restore-test.env' <<'END'
+   DATABASE_URL=<a restore_test kapcsolati szövege>
+   END
+   cd /opt/stockwatch-learn && sudo -u stockwatch-learn env STOCKWATCH_ENV_FILE=/var/lib/stockwatch-learn/restore-test.env \
+       HOME=/var/lib/stockwatch-learn .venv/bin/python cli.py db restore \
+       "$(sudo sh -c 'ls -t /opt/stockwatch-learn/data/backup/learn-*.zip | head -1')"
+   sudo rm /var/lib/stockwatch-learn/restore-test.env
    ```
-3. Neon SQL Editor, `restore_test`: `SELECT count(*) FROM users;` – egyezzen az élővel.
+3. A kimenet: `Visszaallitva: N sor, 13 tabla`. Neon SQL Editor, `restore_test`: `SELECT count(*) FROM users;` –
+   egyezzen az élővel (a mentés óta regisztráltak nélkül).
 4. Töröld a `restore_test` adatbázist.
+
+Valódi katasztrófánál (az élő adatbázis elveszett): új, üres Neon-adatbázis → a titokfájlban az új `DATABASE_URL`
+→ `sudo stockwatch-learn-cli db restore <a legutóbbi learn-*.zip>` → `sudo systemctl restart stockwatch-learn`.
+A mentést azzal a kódverzióval állítsd vissza, amelyik készítette (a parancs szól, ha a migrációs állapot eltér).
 
 ---
 
@@ -291,6 +298,6 @@ A telepítő csak a kódot és a függőségeket cseréli, az új migrációkat 
 - [ ] Profil: adatletöltés (JSON), kilépés minden eszközön, fiók törlése.
 - [ ] A jogi oldalak kitöltve, „TERVEZET” sor nélkül; a lábléc linkjei működnek.
 - [ ] Információ oldal: a kapcsolati cím a jó.
-- [ ] UptimeRobot zöld; az első napi mentés elkészült; a visszaállítás egyszer kipróbálva.
+- [ ] UptimeRobot zöld; az első mentés elkészült (8.1); a visszaállítás egyszer kipróbálva (8.3).
 
 Ha minden pipa megvan: a `<URL>` megosztható.

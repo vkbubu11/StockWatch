@@ -13,6 +13,7 @@
 #   /opt/stockwatch-learn/{data,config,logs}     a szolgaltatas irhatja
 #   /etc/stockwatch-learn/stockwatch-learn.env   titkok (DATABASE_URL, SMTP...), 0600
 #   /var/lib/stockwatch-learn                    a szolgaltatas HOME-ja
+#   /opt/stockwatch-learn/data/backup            napi adatbazis-mentes (stockwatch-learn-backup.timer, 14 nap)
 set -euo pipefail
 
 NAME=stockwatch-learn
@@ -136,15 +137,16 @@ fi
 
 # --- 9. Szolgaltatas -------------------------------------------------------------
 say "systemd szolgaltatas: $NAME"
-install -m 644 "$APP_DIR/deploy/$NAME.service" /etc/systemd/system/
+install -m 644 "$APP_DIR/deploy/$NAME.service" "$APP_DIR/deploy/$NAME-backup.service"   "$APP_DIR/deploy/$NAME-backup.timer" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable "$NAME" >/dev/null
 if grep -qE '^DATABASE_URL=.+' "$ENV_FILE"; then
   systemctl restart "$NAME"
+  systemctl enable --now "$NAME-backup.timer" >/dev/null      # napi adatbazis-mentes (data/backup, 14 napig)
 else
   # adatbazis nelkul a felulet nem indulhat - ne porogjon feleslegesen ujrainditasban
   systemctl stop "$NAME"
-  warn "A felulet DATABASE_URL nelkul nem indul. Beallitas utan: sudo $NAME-cli db migrate && sudo systemctl restart $NAME"
+  warn "A felulet DATABASE_URL nelkul nem indul. Beallitas utan: sudo $NAME-cli db migrate && sudo systemctl restart $NAME && sudo systemctl enable --now $NAME-backup.timer"
 fi
 
 # --- 10. HTTPS (Caddy) ------------------------------------------------------------
@@ -206,6 +208,7 @@ cat <<EOF
   Naplo:          journalctl -u $NAME -f      (es: $APP_DIR/logs/app.log)
   Ujrainditas:    sudo systemctl restart $NAME
   Migracio:       sudo $NAME-cli db migrate
+  Mentes:         napi 03:30 (systemctl list-timers $NAME-backup); kezzel: sudo $NAME-cli db backup
   CLI parancs:    sudo $NAME-cli <parancs>   (pl. practice-pool, data-usage)
   Titkok:         sudo -u $SVC_USER nano $ENV_FILE   (utana: ujrainditas)
 EOF
