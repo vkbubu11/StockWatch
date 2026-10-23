@@ -22,7 +22,7 @@ if ($Domain -and $Domain -notmatch '^[A-Za-z0-9.-]+$') { throw "Ervenytelen doma
 $root = Split-Path -Parent $PSScriptRoot
 $pkg = Join-Path $env:TEMP "stockwatch-learn-deploy.tgz"
 $exclude = @("--exclude=./.venv", "--exclude=__pycache__", "--exclude=*.pyc", "--exclude=./.pytest_cache",
-             "--exclude=./logs", "--exclude=./data", "--exclude=./.env", "--exclude=./start.bat", "--exclude=./.git")
+             "--exclude=./logs", "--exclude=./data", "--exclude=./.env", "--exclude=./start.bat", "--exclude=./.git", "--exclude=./.claude")
 
 try {
     Write-Host "Csomagolas..." -ForegroundColor Green
