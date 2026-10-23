@@ -11,9 +11,9 @@ Időigény: kb. 3–4 óra, a jogász nélkül. Ami a jogászon múlik (7. lép�
 
 | Kérdés | Javaslat |
 |---|---|
-| Domain | **DuckDNS** aldomain (ingyenes, pl. `stockwatch-gyakorlas.duckdns.org`). Később egy saját domain (~10 USD/év) hitelesebb, és jobb a levelek kézbesítése. |
+| Domain | **`stocklearn.ddns.net`** (No-IP, ingyenes; 30 naponként meg kell erősíteni). Később egy saját domain (~10 USD/év) hitelesebb, és jobb a levelek kézbesítése. |
 | Levelezés (SMTP) | Egy **külön Gmail-fiók** alkalmazásjelszóval (pl. `stockwatch.gyakorlas@gmail.com`) – ingyenes, kb. 500 levél/nap, jól kézbesít. Ugyanez lehet a kapcsolati cím is. |
-| Szerver | Új Oracle Always Free gép **Ubuntu 24.04**-gyel (a 22.04 Pythonja túl régi). Az Ampere A1 ingyenes kerete összesen 4 OCPU + 24 GB az összes gépre: ha a mostani StockWatch-gép az egészet használja, az új gép az **E2.1.Micro** legyen (1 GB; a telepítő swapot tesz rá), vagy telepítsd a meglévő gépre (a telepítő ezt is tudja, 8766-os port). |
+| Szerver | Új Oracle Always Free gép, ugyanolyan, mint a mostani: **Ampere A1, 1 OCPU, 6 GB, Ubuntu 24.04** (a 22.04 Pythonja túl régi). Belefér az ingyenes A1-keretbe. |
 | Cloudflare | Induláskor **ne** proxyzd (szürke felhő / ne is használd). A proxy mögött minden kérés a Cloudflare IP-jéről jönne, és a gyakoriság-korlát (belépés, regisztráció) rossz IP-re számolna. |
 | Üzemeltető | Ki az adatkezelő / szolgáltató (magánszemély, egyéni vállalkozó, cég)? A neve és a címe a jogi oldalakra kerül – a jogásszal együtt döntsd el (7. lépés). |
 
@@ -21,43 +21,84 @@ Időigény: kb. 3–4 óra, a jogász nélkül. Ami a jogászon múlik (7. lép�
 
 ## 1. Oracle-gép létrehozása
 
-1. Oracle Cloud konzol → **Compute → Instances → Create instance**.
-2. **Name:** `stockwatch-learn`. **Image:** *Canonical Ubuntu 24.04* (A1-hez az aarch64, E2-höz az x86 változat).
-3. **Shape:** *Ampere A1.Flex* (1 OCPU, 6 GB – ha van szabad keret) vagy *VM.Standard.E2.1.Micro*. Mindkettő
-   „Always Free-eligible” legyen.
-   - „Out of capacity” hiba esetén: másik Availability Domain, vagy próbáld újra később.
-4. **Networking:** a meglévő VCN publikus alhálózata, **Assign a public IPv4 address: igen**.
-5. **SSH key:** *Upload public key* – a meglévő kulcs nyilvános fele (`oracle-stockwatch.key.pub`), vagy generálj
-   újat. A privát kulcs maradjon a gépeden.
-6. **Create**, majd jegyezd fel a **Public IP**-t.
-   - Opcionális: *Networking → Reserved public IPs* – így a cím a gép újralétrehozásakor sem változik.
-7. **Tűzfal (VCN):** *Networking → Virtual cloud networks → (a VCN) → Security Lists → Default* →
-   **Add Ingress Rules** – két szabály: forrás `0.0.0.0/0`, TCP, cél port **80**, illetve **443**.
-   (A gépen belüli iptables-szabályt a telepítő nyitja meg.)
-8. A saját gépeden a `C:\Users\<te>\.ssh\config` végére:
+A mostani StockWatch-gép (Ampere A1, 1 OCPU, 6 GB, Ubuntu 24.04) az ingyenes A1-keretből (összesen 4 OCPU + 24 GB)
+csak 1 OCPU-t és 6 GB-ot használ – egy ugyanilyen második gép belefér.
 
-   ```
-   Host stockwatch-learn
-       HostName <PUBLIC IP>
-       User ubuntu
-       IdentityFile ~/.ssh/oracle-stockwatch.key
-       IdentitiesOnly yes
-       ServerAliveInterval 30
-   ```
+1. <https://cloud.oracle.com> → belépés ugyanabba a fiókba. Jobb fent a régió a **home region** legyen (ingyenes gép
+   csak ott hozható létre; ugyanaz, ahol a mostani StockWatch fut).
+2. Bal felső ☰ menü → **Compute → Instances** → bal oldalt a **Compartment** ugyanaz, mint a mostani gépé →
+   **Create instance**.
+3. **Name:** `stocklearn`.
+4. **Placement:** maradhat az alapértelmezett Availability Domain.
+5. **Image and shape → Edit:**
+   - **Change image** → *Ubuntu* → **Canonical Ubuntu 24.04** (nem a *Minimal*) → *Select image*.
+   - **Change shape** → *Virtual machine* → **Ampere** → **VM.Standard.A1.Flex** → *Number of OCPUs*: **1**,
+     *Amount of memory (GB)*: **6** → *Select shape*. Mellette az „Always Free-eligible” címke látszik.
+   - (A képet a konzol az ARM-hez illő aarch64 változatra cseréli – ez rendben van.)
+6. **Networking → Edit:**
+   - *Primary network*: **Select existing virtual cloud network** → ugyanaz a VCN, mint a mostani gépé.
+   - *Subnet*: **Select existing subnet** → a publikus alhálózat (*public subnet*).
+   - **Automatically assign public IPv4 address**: bekapcsolva.
+7. **Add SSH keys:** **Upload public key files (.pub)** → `C:\Users\biote\.ssh\oracle-stockwatch.key.pub`
+   (ugyanaz a kulcs, mint a mostani gépnél; a privát fele a gépeden marad).
+8. **Boot volume:** maradhat az alapértelmezett (~47 GB). Az ingyenes keret 200 GB összesen; a mostani gép ~47 GB-ot
+   foglal.
+9. **Create.** Pár perc, amíg az állapot *Running* lesz. Az *Instance information* oldalon jegyezd fel a
+   **Public IP address**-t.
+   - **„Out of capacity for shape VM.Standard.A1.Flex”** hiba: válassz másik Availability Domaint (4. pont), vagy
+     próbáld újra órák múlva. Tartós hiánynál segít a fiók *Pay As You Go*-ra váltása (az ingyenes keretig ott sem
+     kell fizetni, de bankkártya kell, és a kereten felüli használat már pénzbe kerül).
+10. **Tűzfal (VCN):** ☰ → **Networking → Virtual cloud networks** → a VCN → **Subnets** → a publikus alhálózat →
+    **Security Lists** → *Default Security List* → **Ingress Rules**. Ha még nincs szabály a **80**-as és a
+    **443**-as portra, **Add Ingress Rules**, kétszer:
+    - *Source CIDR*: `0.0.0.0/0`, *IP Protocol*: **TCP**, *Destination Port Range*: `80`;
+    - ugyanígy `443`-mal.
+    (A gépen belüli iptables-szabályt a telepítő nyitja meg; a 22-es SSH-port alapból nyitva van.)
+11. A saját gépeden a `C:\Users\biote\.ssh\config` végére:
 
-✅ `ssh stockwatch-learn` belép, és a `lsb_release -d` kimenete `Ubuntu 24.04`.
+    ```
+    # StockWatch Gyakorlas (oktatasi kiadas)
+    Host stockwatch-learn
+        HostName <PUBLIC IP>
+        User ubuntu
+        IdentityFile ~/.ssh/oracle-stockwatch.key
+        IdentitiesOnly yes
+        ServerAliveInterval 30
+    ```
+
+12. Első belépés és frissítés:
+
+    ```powershell
+    ssh stockwatch-learn        # első alkalommal: "Are you sure you want to continue connecting?" -> yes
+    ```
+    ```bash
+    lsb_release -d && uname -m                      # Ubuntu 24.04..., aarch64
+    sudo apt update && sudo apt -y full-upgrade
+    sudo reboot                                     # utána pár perc múlva újra: ssh stockwatch-learn
+    ```
+
+✅ `ssh stockwatch-learn` belép, a gép Ubuntu 24.04, aarch64.
+
+Megjegyzés: az Oracle a nagyon kihasználatlan *Always Free* gépeket (7 napig alacsony CPU-, hálózat- és
+memóriahasználat) leállíthatja. Ilyenkor a konzolból újraindítható; *Pay As You Go* fióknál ez nem fordul elő.
 
 ---
 
-## 2. Domain (DuckDNS)
+## 2. Domain (No-IP)
 
-1. <https://www.duckdns.org> → belépés (Google / GitHub).
-2. **sub domain:** pl. `stockwatch-gyakorlas` → **add domain**.
-3. A **current ip** mezőbe az Oracle-gép publikus IP-je → **update ip**.
+A domain: **`stocklearn.ddns.net`** (No-IP, ingyenes).
 
-✅ A saját gépen: `nslookup stockwatch-gyakorlas.duckdns.org` a szerver IP-jét adja (pár perc is lehet).
+1. <https://my.noip.com> → *DNS Records* → a `stocklearn.ddns.net` sor → szerkesztés (ceruza).
+2. **IPv4 Address** (Content): az 1. lépés **Public IP**-je (nem a saját otthoni IP-d – a No-IP létrehozáskor azt
+   írja be automatikusan) → *Save*.
+3. Ehhez a hostnévhez **ne** telepíts No-IP DUC-programot, és a routeren se állítsd be: az visszaírná az otthoni IP-t.
+4. **30 naponként megerősítés:** az ingyenes No-IP hostnevet havonta meg kell erősíteni – a No-IP e-mailt küld
+   („Confirm your hostname”), a benne lévő gombra kell kattintani, különben a hostnév megszűnik és az oldal
+   elérhetetlenné válik. Tedd a naptáradba is.
 
-A továbbiakban `<DOMAIN>` = `stockwatch-gyakorlas.duckdns.org`, `<URL>` = `https://<DOMAIN>`.
+✅ A saját gépen: `nslookup stocklearn.ddns.net` az Oracle-gép IP-jét adja (a TTL 60 mp, pár perc alatt átáll).
+
+A továbbiakban `<DOMAIN>` = `stocklearn.ddns.net`, `<URL>` = `https://stocklearn.ddns.net`.
 
 ---
 
@@ -133,7 +174,8 @@ Ha nem jön levél: `journalctl -u stockwatch-learn -n 50` – az SMTP-hibát a 
 1. <https://console.cloud.google.com> → új projekt: `StockWatch Gyakorlas`.
 2. **Google Auth Platform → Branding** (régebben: *OAuth consent screen*):
    - App name: `StockWatch Practice`; User support email: a 3. lépés címe.
-   - **Authorized domains:** `<DOMAIN>`.
+   - **Authorized domains:** `<DOMAIN>`. Ha a Google nem fogadja el (a `ddns.net` közös No-IP-domain), a
+     Google-belépés egy saját domainig várhat – a szolgáltatás nélküle is teljes (e-mail + jelszó).
    - Application home page: `<URL>`; Privacy policy: `<URL>/adatkezeles`; Terms of service: `<URL>/aszf`.
    - Developer contact: a 3. lépés címe.
 3. **Audience:** User type *External* → **Publish app** (*In production*). Tesztmódban csak a felvett tesztfelhasználók
