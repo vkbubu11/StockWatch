@@ -183,6 +183,22 @@ def test_german_and_spanish_menus(site, browser, env, lang, word):  # noqa: F811
     page.close()
 
 
+def test_phone_card_labels_are_translated(site, browser, env):  # noqa: F811
+    # telefonon a tablazat kartyakka valik; a cimke (data-label) a mar leforditott fejlecbol jon
+    user = env["user"]
+    accounts.mark_onboarded(user)
+    sid = daily.start(user, env["settings"])["id"]
+    for k in range(session.DAILY_ROUNDS):
+        session.decide(user, sid, k, {"action": "skip"})
+    page = _page(browser, site, token=accounts.login("anna@example.com", PW, "127.0.0.1"))
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(site + "/#/leaderboard")
+    _settle(page)
+    labels = page.evaluate("[...document.querySelectorAll('table.cards-on-phone tbody tr:first-child td')].map(td => td.dataset.label)")
+    assert labels == ["Rank", "Nickname", "Score", "Days"]
+    page.close()
+
+
 def test_account_emails_follow_the_interface_language(neon, outbox):
     accounts.register("anna@example.com", PW, True, True, "1.1.1.1", "https://x.example", "en")
     subject, body = outbox[-1][1], outbox[-1][2]

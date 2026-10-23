@@ -770,12 +770,13 @@ function adaptTables(root) {
     if (table.classList.contains("cards-on-phone")) {
       const heads = [...table.querySelectorAll("thead th")].map((th) => th.textContent.trim());
       table.querySelectorAll("tbody tr").forEach((tr) => [...tr.children].forEach((td, i) => {
-        if (!td.dataset.label && heads[i]) td.dataset.label = heads[i];
+        if (heads[i] && td.dataset.label !== heads[i]) td.dataset.label = heads[i];   // a forditas utan is a fejlec szovege
       }));
     }
   });
 }
-new MutationObserver(() => adaptTables(view)).observe(view, { childList: true, subtree: true });
+// characterData: a forditas (i18n.js) a fejlec szoveget helyben csereli - a kartya-cimkek kovessek
+new MutationObserver(() => adaptTables(view)).observe(view, { childList: true, subtree: true, characterData: true });
 
 // Az elso utvonal-kezeles a fajl VEGEN: a kesobb deklaralt let/const-ok (pl. practiceTimer, NEWS_LABEL) csak itt
 // inicializaltak - kozvetlen betolteskor (#/practice, #/events) kulonben "before initialization" hiba jonne.
