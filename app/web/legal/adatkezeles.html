@@ -9,48 +9,47 @@
 <body>
   <header class="topbar"><a class="brand" href="/"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22l6-7 5 4 9-11"/></svg><span>StockWatch Gyakorlás</span></a></header>
   <main class="view landing legal">
-    <p class="login-error" role="note">TERVEZET – indulás előtt jogásznak át kell néznie. A [szögletes zárójeles] részeket ki kell tölteni.</p>
     <h1>Adatkezelési tájékoztató</h1>
-    <p class="muted">Verzió: 2026-10-22 (hatályos: <span class="op" translate="no">[DÁTUM]</span>)</p>
+    <p class="muted">Verzió: 2026-10-23 (hatályos: 2026-10-23)</p>
     <p class="muted small">A fordítás tájékoztató jellegű; eltérés esetén a magyar nyelvű változat az irányadó.</p>
 
     <h2>1. Adatkezelő</h2>
-    <p><span class="op" translate="no">[ÜZEMELTETŐ NEVE]</span>, <span class="op" translate="no">[CÍM]</span>, e-mail: <span class="op" translate="no">[KAPCSOLATI E-MAIL]</span>. <span class="op" translate="no">[ADATVÉDELMI TISZTVISELŐ, HA VAN]</span></p>
+    <p>Adatkezelő: <span translate="no">[ADATKEZELŐ NEVE]</span> (magánszemély), e-mail: <span translate="no">[KAPCSOLATI E-MAIL]</span></p>
+    <p>A szolgáltatást magánszemély üzemelteti, nem üzletszerűen és ellenérték nélkül. Adatvédelmi tisztviselő kijelölése nem kötelező, ezért nincs.</p>
     <h2>2. Milyen adatokat kezelünk, miért, meddig?</h2>
     <div class="table-scroll"><table class="table"><thead><tr><th>Adat</th><th>Cél</th><th>Jogalap</th><th>Megőrzés</th></tr></thead><tbody>
-      <tr><td>E-mail-cím; a jelszó scrypt-lenyomata (maga a jelszó nem); a regisztráció, az e-mail-megerősítés, az ÁSZF-elfogadás ideje és verziója; a bevezető elvégzésének ideje</td>
-        <td>fiók, belépés, kapcsolattartás (megerősítő és jelszó-visszaállító levél)</td><td>szerződés teljesítése – GDPR 6. cikk (1) b)</td>
-        <td>a fiók törléséig; a 30 napig meg nem erősített regisztráció automatikusan törlődik</td></tr>
-      <tr><td>Munkamenet: a süti tokenjének lenyomata, létrehozás, utolsó használat, lejárat, böngésző-azonosító (user agent)</td>
-        <td>bejelentkezve tartás, „kilépés minden eszközön”</td><td>szerződés teljesítése</td><td>legfeljebb 30 nap (lejárat), kilépéskor azonnal</td></tr>
-      <tr><td>E-mail-megerősítő és jelszó-visszaállító link lenyomata</td><td>a fiók igazolása, új jelszó</td><td>szerződés teljesítése</td>
-        <td>24 óra / 1 óra (lejárat); felhasználás után törlődik</td></tr>
-      <tr><td>Gyakorló körök: a döntéseid, az ítéletek és az eredmények, időbélyeggel</td><td>a szolgáltatás nyújtása, a saját haladásod</td>
-        <td>szerződés teljesítése</td><td>a fiók törléséig; felhasználónként legfeljebb 30 kör (a legrégebbi törlődik)</td></tr>
-      <tr><td>IP-cím</td><td>a túl sok belépési / regisztrációs kísérlet korlátozása; hibakeresés</td><td>jogos érdek – 6. cikk (1) f) (visszaélés-megelőzés)</td>
-        <td>a korláthoz az adatbázisban (legfeljebb 1 napig); a szervernaplóban méretkorlátos, rotált naplóban <span class="op" translate="no">[JELLEMZŐ IDŐTARTAM]</span></td></tr>
+      <tr><td>E-mail-cím; a jelszó scrypt-lenyomata (maga a jelszó nem); a regisztráció, az e-mail-megerősítés, az ÁSZF-elfogadás ideje és verziója; a bevezető elvégzésének ideje</td><td>fiók, belépés, kapcsolattartás (megerősítő és jelszó-visszaállító levél)</td><td>szerződés teljesítése – GDPR 6. cikk (1) b)</td><td>a fiók törléséig; a 30 napig meg nem erősített regisztráció automatikusan törlődik</td></tr>
+      <tr><td>Google-belépésnél: a Google-fiók állandó azonosítója és e-mail-címe</td><td>belépés Google-fiókkal</td><td>szerződés teljesítése</td><td>a fiók törléséig, vagy amíg a kapcsolatot a Profil oldalon nem bontod</td></tr>
+      <tr><td>Becenév; a létrehozott vagy választott csoportok neve és tagsága</td><td>ranglista és privát csoport-ranglista (a becenevet a többi felhasználó látja, az e-mail-címet soha)</td><td>szerződés teljesítése</td><td>a fiók törléséig, illetve amíg módosítod, vagy kilépsz a csoportból</td></tr>
+      <tr><td>Gyakorló körök és napi kihívások: a döntéseid, az ítéletek, a pontok és az eredmények, időbélyeggel; szint, XP, napi sorozat, jelvények</td><td>a szolgáltatás nyújtása, a saját haladásod, a ranglista</td><td>szerződés teljesítése</td><td>a fiók törléséig; a sima gyakorló körökből felhasználónként legfeljebb 30 (a legrégebbi törlődik), a napi kihívás körei a ranglista miatt megmaradnak</td></tr>
+      <tr><td>Munkamenet: a süti tokenjének lenyomata, létrehozás, utolsó használat, lejárat, böngésző-azonosító (user agent)</td><td>bejelentkezve tartás, „kilépés minden eszközön”</td><td>szerződés teljesítése</td><td>legfeljebb 30 nap (lejárat), kilépéskor azonnal</td></tr>
+      <tr><td>E-mail-megerősítő és jelszó-visszaállító link lenyomata</td><td>a fiók igazolása, új jelszó</td><td>szerződés teljesítése</td><td>24 óra / 1 óra (lejárat); felhasználás után törlődik</td></tr>
+      <tr><td>Google-belépés közben: egyszer használható biztonsági kód lenyomata</td><td>a belépés védelme</td><td>szerződés teljesítése</td><td>legfeljebb 10 perc</td></tr>
+      <tr><td>IP-cím</td><td>a túl sok belépési / regisztrációs kísérlet korlátozása; hibakeresés</td><td>jogos érdek – 6. cikk (1) f) (visszaélés-megelőzés)</td><td>a korláthoz az adatbázisban legfeljebb 1 napig; a webszerver méretkorlátos, rotált naplójában (legfeljebb 40 MB, a legrégebbi bejegyzések automatikusan törlődnek)</td></tr>
+      <tr><td>Ha írsz nekünk: az e-mail-címed és a levelezés tartalma</td><td>kérdés, panasz vagy visszajelzés megválaszolása</td><td>jogos érdek – GDPR 6. cikk (1) f)</td><td>az ügy lezárásától számított legfeljebb 1 évig</td></tr>
     </tbody></table></div>
+    <p>Biztonsági mentés: a fenti adatokról naponta mentés készül, amelyet 14 napig őrzünk; utána automatikusan törlődik.</p>
     <h2>3. Adatfeldolgozók</h2>
     <ul class="digest-list">
-      <li><span>Neon Inc. – adatbázis (felhő, EU: Frankfurt régió) <span class="op" translate="no">[SZERZŐDÉS / DPA]</span></span></li>
-      <li><span><span class="op" translate="no">[E-MAIL SZOLGÁLTATÓ]</span> – a megerősítő és jelszó-visszaállító levelek küldése</span></li>
-      <li><span><span class="op" translate="no">[SZERVER / TÁRHELY SZOLGÁLTATÓ]</span> – a webes szolgáltatás futtatása</span></li>
+      <li><span>Neon Inc. – adatbázis (felhő, EU: Frankfurt régió)</span></li>
+      <li><span>Oracle – a webes szolgáltatás futtatása (Oracle Cloud, EU: Frankfurt régió)</span></li>
+      <li><span>Google – a megerősítő és jelszó-visszaállító levelek küldése (Gmail), valamint a Google-belépés</span></li>
     </ul>
+    <p>Mindhárom amerikai cég. Az adatfeldolgozás a szolgáltatási feltételeik részét képező adatfeldolgozási megállapodás, harmadik országba továbbításnál pedig az EU–USA adatvédelmi keretrendszer vagy az uniós általános szerződési feltételek alapján történik.</p>
     <p>Az adatokat nem adjuk el, reklámcélra nem használjuk, és az adatfeldolgozókon kívül harmadik félnek nem továbbítjuk.</p>
     <h2>4. Korhatár</h2>
     <p>A szolgáltatás 16 éven felülieknek szól (GDPR 8. cikk; Magyarországon 16 év alatt szülői hozzájárulás kellene).</p>
-    <h2>5. Jogaid</h2>
+    <h2>5. Automatizált döntés</h2>
+    <p>Az ítéletet és a pontokat program számolja a gyakorló döntéseidből. Ennek rád nézve nincs joghatása, és nem végzünk reklámcélú profilalkotást.</p>
+    <h2>6. Jogaid</h2>
     <ul class="digest-list">
       <li><span>Hozzáférés és adathordozhatóság: a Profil oldalon minden adatodat letöltheted (JSON).</span></li>
-      <li><span>Törlés: a Profil oldalon a fiókodat és minden adatodat véglegesen törölheted; az adatbázisból azonnal,
-        a biztonsági mentésekből legkésőbb 30 napon belül tűnnek el.</span></li>
-      <li><span>Helyesbítés, korlátozás, tiltakozás: írj a <span class="op" translate="no">[KAPCSOLATI E-MAIL]</span> címre; 30 napon belül válaszolunk.</span></li>
-      <li><span>Panasz: Nemzeti Adatvédelmi és Információszabadság Hatóság (NAIH), 1055 Budapest, Falk Miksa u. 9–11.,
-        www.naih.hu; vagy bírósághoz fordulhatsz.</span></li>
+      <li><span>Törlés: a Profil oldalon a fiókodat és minden adatodat véglegesen törölheted; az adatbázisból azonnal, a biztonsági mentésekből legkésőbb 14 napon belül tűnnek el.</span></li>
+      <li><span>Helyesbítés, korlátozás, tiltakozás: írj a <span translate="no">[KAPCSOLATI E-MAIL]</span> címre; 30 napon belül válaszolunk.</span></li>
+      <li><span>Panasz: Nemzeti Adatvédelmi és Információszabadság Hatóság (NAIH), 1055 Budapest, Falk Miksa u. 9–11., www.naih.hu; vagy bírósághoz fordulhatsz.</span></li>
     </ul>
-    <h2>6. Biztonság</h2>
-    <p>Titkosított kapcsolat (HTTPS); a jelszó és a tokenek csak lenyomatként tárolódnak; a munkamenet-süti HttpOnly és
-      SameSite=Strict. A sütikről: <a href="/sutik">sütitájékoztató</a>.</p>
+    <h2>7. Biztonság</h2>
+    <p>Titkosított kapcsolat (HTTPS); a jelszó és a tokenek csak lenyomatként tárolódnak; a munkamenet-süti HttpOnly és SameSite=Strict. A sütikről: <a href="/sutik">sütitájékoztató</a>.</p>
   </main>
   <footer class="footer">Oktatási célú gyakorlás múltbeli / szimulált adaton. <strong>Nem befektetési tanács.</strong>
     · <a href="/aszf">ÁSZF</a> · <a href="/adatkezeles">Adatkezelési tájékoztató</a> · <a href="/sutik">Sütik</a></footer>

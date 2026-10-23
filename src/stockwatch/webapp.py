@@ -380,6 +380,9 @@ def make_handler(trust_proxy: bool = False):
                     contact = config.env_value("CONTACT_EMAIL")       # egy forras: az Informacio oldal is ezt mutatja
                     if contact:
                         text = text.replace("[KAPCSOLATI E-MAIL]", html.escape(contact))
+                    # az adatkezelo neve a szerver titokfajljabol (a repo nyilvanos); nelkule semleges megnevezes
+                    text = text.replace("[ADATKEZELŐ NEVE]", html.escape(config.env_value("OPERATOR_NAME")
+                                                                         or "a szolgáltatás üzemeltetője"))
                     return self._send(200, text.encode("utf-8"), STATIC_TYPES[".html"])
                 user = self._user()
                 if user is None:

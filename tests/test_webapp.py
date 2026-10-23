@@ -190,10 +190,17 @@ def test_resend_over_http(neon, outbox, port):
 
 def test_contact_email_on_legal_pages_and_session(neon, port, monkeypatch):
     real = webapp.config.env_value
-    monkeypatch.setattr(webapp.config, "env_value", lambda key: "hello@gyakorlas.example" if key == "CONTACT_EMAIL" else real(key))
+    values = {"CONTACT_EMAIL": "hello@gyakorlas.example", "OPERATOR_NAME": "Minta Anna"}
+    monkeypatch.setattr(webapp.config, "env_value", lambda key: values[key] if key in values else real(key))
     for page in ("/aszf", "/adatkezeles"):
         text = _req(port, "GET", page).text
         assert "hello@gyakorlas.example" in text and "[KAPCSOLATI E-MAIL]" not in text
+    assert "Minta Anna" in _req(port, "GET", "/adatkezeles").text
+    for page in ("/aszf", "/adatkezeles", "/sutik"):                     # nincs kitoltetlen hely, nincs TERVEZET
+        text = _req(port, "GET", page).text
+        assert "TERVEZET" not in text and not re.search(r"\[[A-ZÁÉÍÓÖŐÚÜŰ][^\]]*\]", text), page
+    values.pop("OPERATOR_NAME")
+    assert "a szolgáltatás üzemeltetője" in _req(port, "GET", "/adatkezeles").text
     make_user()
     cookie = _form(port, "/login", {"email": "anna@example.com", "password": PW}).getheader("Set-Cookie").split(";")[0]
     assert json.loads(_req(port, "GET", "/api/session", headers={"Cookie": cookie}).text)["contact"] == "hello@gyakorlas.example"

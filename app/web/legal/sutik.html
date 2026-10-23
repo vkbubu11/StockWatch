@@ -9,9 +9,8 @@
 <body>
   <header class="topbar"><a class="brand" href="/"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22l6-7 5 4 9-11"/></svg><span>StockWatch Gyakorlás</span></a></header>
   <main class="view landing legal">
-    <p class="login-error" role="note">TERVEZET – indulás előtt jogásznak át kell néznie. A [szögletes zárójeles] részeket ki kell tölteni.</p>
     <h1>Sütitájékoztató</h1>
-    <p class="muted">Verzió: 2026-10-22 (hatályos: <span class="op" translate="no">[DÁTUM]</span>)</p>
+    <p class="muted">Verzió: 2026-10-23 (hatályos: 2026-10-23)</p>
     <p class="muted small">A fordítás tájékoztató jellegű; eltérés esetén a magyar nyelvű változat az irányadó.</p>
 
     <p>Csak a működéshez feltétlenül szükséges sütit használunk, ezért ehhez nem kell hozzájárulás. Analitikai, reklám- vagy
@@ -21,6 +20,7 @@
       <tr><td><code>sw-theme</code>, <code>sw-lang</code></td><td>a böngésző helyi tárolója (localStorage), nem süti</td>
         <td>a választott téma és nyelv megjegyzése; a szerverre nem kerül</td><td>amíg a böngészőben nem törlöd</td></tr>
       <tr><td><code>sw_lang</code></td><td>süti (SameSite=Lax)</td><td>a választott nyelv, hogy a levelek is ezen a nyelven menjenek</td><td>1 év</td></tr>
+      <tr><td><code>sw_oauth</code></td><td>süti (HttpOnly, SameSite=Lax, HTTPS-en Secure)</td><td>csak Google-belépésnél: a belépés védelme (egyszer használható biztonsági kód)</td><td>10 perc, vagy a belépés végéig</td></tr>
     </tbody></table></div>
   </main>
   <footer class="footer">Oktatási célú gyakorlás múltbeli / szimulált adaton. <strong>Nem befektetési tanács.</strong>
