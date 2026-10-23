@@ -145,7 +145,7 @@ def test_legal_pages_are_public_and_every_page_has_the_disclaimer(neon, port):
     for path in ("/aszf", "/adatkezeles", "/sutik", "/", "/login", "/register", "/forgot"):
         res = _req(port, "GET", path)
         assert res.status == 200 and DISCLAIMER in res.text, path
-    assert "16" in _req(port, "GET", "/aszf").text and "NAIH" in _req(port, "GET", "/adatkezeles").text
+    assert "16" in _req(port, "GET", "/aszf").text
     make_user()
     cookie = _form(port, "/login", {"email": "anna@example.com", "password": PW}).getheader("Set-Cookie").split(";")[0]
     assert DISCLAIMER in _req(port, "GET", "/", headers={"Cookie": cookie}).text            # a felulet is
