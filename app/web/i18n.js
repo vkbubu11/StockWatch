@@ -28,7 +28,7 @@ const I18N = (() => {
   const done = new WeakMap();             // csomopont -> az altalunk beirt szoveg (ne forditsuk ujra)
   const missing = new Set();              // ami nem fordult (a tesztek olvassak: window.__i18nMissing)
   window.__i18nMissing = missing;
-  const ATTRS = ["title", "placeholder", "aria-label"];
+  const ATTRS = ["title", "placeholder", "aria-label", "alt"];
   const SKIP = new Set(["SCRIPT", "STYLE", "TEXTAREA", "CODE", "PRE"]);
   const norm = (s) => s.replace(/\s+/g, " ").trim();
   const LETTER = /[A-Za-zÀ-ž]/;
@@ -236,6 +236,8 @@ const I18N = (() => {
 
   function start() {
     document.documentElement.lang = LANG;
+    // nyelvenkenti kepek (a kezdooldal kepernyokepei): data-lang-src="/img/x-{lang}.png"
+    for (const img of document.querySelectorAll("img[data-lang-src]")) img.src = img.dataset.langSrc.replace("{lang}", LANG);
     // a szerver is tudja (pl. a megerosito level nyelve); nem titok, nem azonosit
     document.cookie = `sw_lang=${LANG}; Path=/; Max-Age=31536000; SameSite=Lax`;
     picker();

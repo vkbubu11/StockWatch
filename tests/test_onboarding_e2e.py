@@ -3,15 +3,12 @@ a belepesen, a 3 lepeses bevezeton es a probafeladaton at eljut az iteletig - bo
 
 A "2 percen belul" becslese: kattintasonkent / mezonkent INTERACTION_S mp, plusz a bevezeto szovegenek elolvasasa
 READ_WPM szo / perc tempoval - ennek 2 perc alatt kell maradnia.
-LANDING_SHOTS=<mappa>: a feladat- es az iteletoldal kepernyokepe a kezdooldalhoz (app/web/img).
 """
 from __future__ import annotations
 
-import os
 import re
 import threading
 from http.server import ThreadingHTTPServer
-from pathlib import Path
 
 import pytest
 
@@ -65,19 +62,11 @@ def test_new_user_reaches_first_verdict_within_two_minutes(server, browser, outb
     words += len(page.inner_text(".onboard").split())
     act(page.click, "#trial")
     page.wait_for_selector("#pr-dform")
-    shots = os.environ.get("LANDING_SHOTS")
-    if shots:
-        Path(shots).mkdir(parents=True, exist_ok=True)
-        page.wait_for_timeout(300)
-        page.screenshot(path=str(Path(shots) / "feladat.png"), full_page=False)
     act(page.click, "#pr-dform button[type=submit]")                    # az alapertelmezett long, 2 ATR stoppal
     act(page.click, "#pr-skipanim")
     page.wait_for_selector(".pr-verdict-label")
     assert page.inner_text(".pr-verdict-label") in ("Jó döntés", "Szerencsés", "Balszerencsés", "Rossz döntés")
     assert "pont" in page.inner_text(".pr-points")
-    if shots:
-        page.evaluate("document.querySelector('.pr-verdict').closest('section').scrollIntoView({block: 'start'})")
-        page.screenshot(path=str(Path(shots) / "itelet.png"), full_page=False)
     estimate = actions * INTERACTION_S + words / READ_WPM * 60
     print(f"elso ertekelt dontesig: {actions} muvelet + {words} szo = ~{estimate:.0f} mp")
     assert estimate <= BUDGET_S, f"{actions} muvelet + {words} szo = {estimate:.0f} mp"

@@ -54,7 +54,7 @@ def _form(port, path, fields, headers=None):
 def test_http_security_without_login(port):
     res = _req(port, "GET", "/")                                       # nyilvanos kezdooldal (#39)
     assert res.status == 200 and 'href="/register"' in res.text and "app.js" not in res.text
-    shot = _req(port, "GET", "/img/feladat.png")                       # a kezdooldal kepei is nyilvanosak
+    shot = _req(port, "GET", "/img/feladat-en.png")                       # a kezdooldal kepei is nyilvanosak
     assert shot.status == 200 and shot.getheader("Content-Type") == "image/png"
     assert _req(port, "GET", "/img/../app.js").status in (303, 404)
     assert _req(port, "GET", "/app.js").status == 303                  # a tobbi oldal nem nyilvanos
