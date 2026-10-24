@@ -164,3 +164,18 @@ def test_english_is_the_default_even_in_a_hungarian_browser(ui_server, browser):
     assert page.evaluate("document.documentElement.lang") == "en"
     assert page.query_selector(".lang-select") and "Learn" in page.inner_text("h1")
     page.close()
+
+
+def test_lesson_figure_is_styled_like_the_practice_chart(ui_server, browser):  # noqa: F811
+    # a lecke abraja is a practiceChart rajzolja: stilus nelkul az EMA fekete folt lenne, a gyertya szintelen
+    page = _new_page(browser, ui_server, viewport={"width": 1280, "height": 900}, locale="hu-HU")
+    page.goto(ui_server + "/#/learn/1")
+    page.wait_for_selector("#lesson-chart path.ema")
+    _settle(page)
+    style = page.evaluate("""() => {
+        const ema = getComputedStyle(document.querySelector('#lesson-chart path.ema'));
+        const candle = getComputedStyle(document.querySelector('#lesson-chart .candle.up rect'));
+        return [ema.fill, ema.stroke, candle.fill];
+    }""")
+    assert style[0] == "none" and style[1] != "none" and style[2] not in ("rgb(0, 0, 0)", "none"), style
+    page.close()
