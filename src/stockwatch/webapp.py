@@ -41,6 +41,12 @@ PUBLIC_FILES = ("/style.css", "/i18n.js")             # bejelentkezes nelkul is 
 AUTH_PAGES = ("/login", "/register", "/forgot", "/reset", "/resend")
 LEGAL_PAGES = {"/aszf": "aszf.html", "/adatkezeles": "adatkezeles.html", "/sutik": "sutik.html"}   # nyilvanos (#40)
 LESSON_RE = re.compile(r"/api/lessons/(\d{1,2})(/start)?")
+# admin felulet (#58): nem adminnak minden /admin es /api/admin utvonal 404
+ADMIN_FILES = {"/admin": "index.html", "/admin/": "index.html", "/admin/admin.js": "admin.js"}
+ADMIN_GET = re.compile(r"/api/admin/(state|overview|users|users/(\d{1,12})|content|groups|system|audit)")
+ADMIN_POST = re.compile(r"/api/admin/(verify|logout|users/(\d{1,12})/(resend|suspend|unsuspend|reset_nickname|delete|export)"
+                        r"|lessons|lessons/restore|daily/replace|pool/rebuild|groups/(\d{1,12})/(revoke_code|delete))")
+CLIENT_ERRORS = webauth.RateLimit("ip-client-error", 20, 60 * 60)   # a bongeszos hibaszamlalo (#48) IP-nkent
 PRACTICE_SESSION_RE = re.compile(r"/api/practice/session/([a-z]{12})/(task/(\d{1,2})(/decision)?|summary)")
 
 # az urlapok visszajelzesei (?e=kod): (fajta, szoveg)
@@ -112,7 +118,7 @@ def practice_action(action: str, body: dict, user_id: int) -> dict:
         seed = body.get("seed")
         created = practice.create(user_id, load_settings(), seed=int(seed) if seed not in (None, "") else None,
                                   rounds=int(body.get("rounds") or 20), mix=body.get("mix") or None,
-                                  code=str(body.get("code") or "").strip() or None)
+                                  code=str(body.get("code") or "").strip() or None, kinds_mix=body.get("kinds") or None)
         return {"session": created}
     if action == "delete":
         if not practice.delete(user_id, str(body.get("id") or "")):
@@ -358,7 +364,10 @@ def make_handler(trust_proxy: bool = False):
             url = urlparse(self.path)
             path, query = url.path, parse_qs(url.query)
             try:
+                if path == "/admin" or path.startswith(("/admin/", "/api/admin/")):
+                    return self._admin_get(path, query)
                 if path in AUTH_PAGES:
+                    self._pageview(path)
                     return self._page(path.lstrip("/"), message=NOTICES.get(query.get("e", [""])[0]),
                                       token=query.get("token", [""])[0])
                 if path in ("/auth/google/start", "/auth/google/callback"):
@@ -383,17 +392,19 @@ def make_handler(trust_proxy: bool = False):
                     # az adatkezelo neve a szerver titokfajljabol (a repo nyilvanos); nelkule semleges megnevezes
                     text = text.replace("[ADATKEZELŐ NEVE]", html.escape(config.env_value("OPERATOR_NAME")
                                                                          or "a szolgáltatás üzemeltetője"))
+                    self._pageview(path)
                     return self._send(200, text.encode("utf-8"), STATIC_TYPES[".html"])
                 user = self._user()
                 if user is None:
                     if path.startswith("/api/"):
                         return self._error(401, "Bejelentkezes szukseges")
                     if path == "/":                                    # nyilvanos kezdooldal (#39)
+                        self._pageview("/")
                         return self._send(200, (WEB_DIR / "landing.html").read_bytes(), STATIC_TYPES[".html"])
                     return self._redirect("/login")
                 if path == "/api/session":
                     return self._json({k: user[k] for k in ("email", "onboarded", "nickname", "has_password", "google")}
-                                      | {"google_available": google_auth.configured(),
+                                      | {"admin": user.get("role") == "admin", "google_available": google_auth.configured(),
                                          "contact": config.env_value("CONTACT_EMAIL")})
                 if path == "/api/daily":
                     from . import daily
@@ -456,18 +467,120 @@ def make_handler(trust_proxy: bool = False):
                         return self._error(404, str(exc))
                     except ValueError as exc:
                         return self._error(400, str(exc))
+                if path in ("", "/"):
+                    self._pageview("/app")
                 return self._static(path)
             except db.DatabaseUnavailable:
                 return self._error(503, "Az adatbazis most nem erheto el - probald ujra par masodperc mulva.")
             except Exception:
                 log.exception("Hiba a keres kiszolgalasa kozben: %s", path)
+                self._count_error(path)
                 return self._error(500, "Szerverhiba")
+
+        def _pageview(self, path: str) -> None:
+            """Sutimentes oldalmegtekintes (#48): az oldal, a hivatkozo domain, az eszkoz - robot nem szamit."""
+            from . import analytics
+
+            agent = self.headers.get("User-Agent", "")
+            if not analytics.is_bot(agent):
+                analytics.track_later("pageview", path=path, device=analytics.device(agent),
+                                      ref=analytics.ref_host(self.headers.get("Referer"), self.headers.get("Host")))
+
+        def _count_error(self, path: str) -> None:
+            from . import analytics
+
+            analytics.track_later("server_error", path=re.sub(r"[a-z]{12}", ":id", path)[:80])
+
+        def _not_found(self, api: bool) -> None:
+            if api:
+                return self._error(404, "Nem talalhato")
+            self._send(404, "Nem található.".encode("utf-8"), "text/plain; charset=utf-8")
+
+        # -- admin (#58) -----------------------------------------------
+        def _admin_get(self, path: str, query: dict) -> None:
+            from . import admin, analytics
+
+            user = self._user()
+            if not admin.is_admin(user):
+                return self._not_found(path.startswith("/api/"))
+            if path in ADMIN_FILES:
+                target = WEB_DIR / "admin" / ADMIN_FILES[path]
+                return self._send(200, target.read_bytes(), STATIC_TYPES[target.suffix])
+            m = ADMIN_GET.fullmatch(path)
+            if m is None:
+                return self._not_found(True)
+            if m.group(1) == "state":
+                return self._json(admin.state(user))
+            if not admin.verified(user):
+                return self._error(403, "Kétlépcsős azonosítás szükséges.")
+            admin.touch(webauth.session_token(self))
+            what = m.group(1)
+            if what == "overview":
+                days = int(query.get("days", ["30"])[0] or 30)
+                return self._json(analytics.overview(max(1, min(days, 400))))
+            if what == "users":
+                return self._json(admin.users(query.get("q", [""])[0]))
+            if m.group(2):
+                return self._json(admin.user_detail(int(m.group(2))))
+            if what == "content":
+                from .practice import sampler
+                from .practice import store as practice_store
+
+                return self._json({"lessons": admin.lessons_state(), "daily": admin.daily_preview(),
+                                   "pool": sampler.pool_info(practice_store.load_pool()),
+                                   "rebuilding": admin._POOL_LOCK.locked()})
+            if what == "groups":
+                return self._json(admin.groups_list())
+            if what == "system":
+                return self._json(admin.system())
+            return self._json(admin.audit_log())
+
+        def _admin_post(self, path: str) -> None:
+            from . import admin
+
+            user = self._user()
+            if not admin.is_admin(user):
+                self._discard_body()
+                return self._not_found(True)
+            m = ADMIN_POST.fullmatch(path)
+            length = int(self.headers.get("Content-Length", "0") or 0)
+            if m is None or length > 1_000_000:
+                self._discard_body()
+                return self._not_found(True) if m is None else self._error(413, "Tul nagy keres")
+            body = json.loads(self.rfile.read(length) or b"{}")
+            if not isinstance(body, dict):
+                return self._error(400, "Ervenytelen keres")
+            token = webauth.session_token(self)
+            what = m.group(1)
+            if what == "verify":
+                if not admin.verify(user, token, str(body.get("code") or "")):
+                    return self._error(400, "Hibás vagy már felhasznált kód.")
+                return self._json({"ok": True})
+            if not admin.verified(user):
+                return self._error(403, "Kétlépcsős azonosítás szükséges.")
+            if what == "logout":
+                with db.connection() as conn:
+                    conn.execute("UPDATE sessions SET admin_at = NULL WHERE token_hash = %s", (accounts._h(token),))
+                return self._json({"ok": True})
+            admin.touch(token)
+            if m.group(2):
+                return self._json(admin.user_action(user, int(m.group(2)), m.group(3), self._base_url()))
+            if m.group(4):
+                return self._json(admin.group_action(user, int(m.group(4)), m.group(5)))
+            if what == "lessons":
+                return self._json(admin.save_lessons(user, body.get("data"), str(body.get("note") or "")))
+            if what == "lessons/restore":
+                return self._json(admin.restore_lessons(user, int(body.get("id") or 0)))
+            if what == "daily/replace":
+                return self._json(admin.replace_daily(user, str(body.get("day") or "")))
+            return self._json(admin.rebuild_pool(user))
 
         def _static(self, path: str) -> None:
             name = "index.html" if path in ("", "/") else path.lstrip("/")
             target = (WEB_DIR / name).resolve()
             # utvonal-bejaras ellen: csak az app/web mappabol szolgalunk ki; az urlap-sablon nem fajl
-            if WEB_DIR.resolve() not in target.parents or not target.is_file() or target.name == "auth.html":
+            if (WEB_DIR.resolve() not in target.parents or not target.is_file() or target.name == "auth.html"
+                    or (WEB_DIR / "admin").resolve() in target.parents):
                 return self._error(404, "Nem talalhato")
             ctype = STATIC_TYPES.get(target.suffix, "application/octet-stream")
             self._send(200, target.read_bytes(), ctype)
@@ -491,6 +604,15 @@ def make_handler(trust_proxy: bool = False):
                 if self.headers.get("X-StockWatch") != "1":
                     self._discard_body()
                     return self._error(403, "Hianyzo X-StockWatch fejlec")
+                if path.startswith("/api/admin/"):
+                    return self._admin_post(path)
+                if path == "/api/client-error":                         # bongeszos JS-hiba szamlalo (#48), nevtelen
+                    from . import analytics
+
+                    self._discard_body()
+                    if CLIENT_ERRORS.hit(webauth.client_ip(self, trust_proxy)):
+                        analytics.track_later("js_error")
+                    return self._json({"ok": True})
                 user = self._user()
                 if user is None:
                     self._discard_body()
@@ -556,6 +678,7 @@ def make_handler(trust_proxy: bool = False):
                 return self._error(503, "Az adatbazis most nem erheto el - probald ujra par masodperc mulva.")
             except Exception:
                 log.exception("POST hiba: %s", path)
+                self._count_error(path)
                 return self._error(500, "Szerverhiba")
 
     return Handler

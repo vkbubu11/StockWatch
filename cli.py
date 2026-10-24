@@ -7,6 +7,7 @@
     python cli.py db migrate                     az adatbazis semajanak letrehozasa / frissitese (DATABASE_URL)
     python cli.py db backup                      adatbazis-mentes a data/backup mappaba (14 napig orzi)
     python cli.py db restore <fajl>              visszaallitas egy mentesbol (csak ures adatbazisba)
+    python cli.py admin grant|revoke|reset-totp <e-mail>   admin szerepkor / TOTP alaphelyzet (#58)
     python cli.py data-usage                     lemezhasznalat kimutatas
     python cli.py housekeeping                   takaritas
 """
@@ -87,7 +88,10 @@ def cmd_db(args) -> int:
         return 2
     try:
         if args.action == "backup":
+            from stockwatch import analytics
+
             result = backup.backup()
+            print(f"Regi esemeny torolve (13 honap felett): {analytics.prune()}")   # napi karbantartas (#48)
             print(f"Mentes: {result['path']} ({result['bytes'] / 1024:.1f} KB, {sum(result['rows'].values())} sor); "
                   f"regi mentes torolve: {len(result['removed'])}")
         elif args.action == "restore":
@@ -102,6 +106,25 @@ def cmd_db(args) -> int:
     finally:
         db.close()
     return 0
+
+
+def cmd_admin(args) -> int:
+    """Admin szerepkor (a felulet csak ellenorzott e-mailu, TOTP-val belepo adminnak nyilik meg)."""
+    from stockwatch import admin, db
+
+    housekeeping.setup_logging(load_settings())
+    try:
+        if args.action == "reset-totp":
+            ok = admin.reset_totp(args.email)
+        else:
+            ok = admin.grant(args.email, "admin" if args.action == "grant" else None)
+    except db.DatabaseUnavailable as exc:
+        print(exc)
+        return 1
+    finally:
+        db.close()
+    print("Kesz." if ok else "Nincs ilyen felhasznalo.")
+    return 0 if ok else 1
 
 
 def cmd_data_usage(args) -> int:
@@ -163,6 +186,11 @@ def main() -> int:
     p.add_argument("action", choices=["migrate", "backup", "restore"])
     p.add_argument("file", nargs="?", help="restore: a mentesfajl (data/backup/learn-<datum>.zip)")
     p.set_defaults(func=cmd_db)
+
+    p = subparsers.add_parser("admin", help="admin felulet (#58): szerepkor kiosztasa / visszavonasa, TOTP alaphelyzet")
+    p.add_argument("action", choices=["grant", "revoke", "reset-totp"])
+    p.add_argument("email")
+    p.set_defaults(func=cmd_admin)
 
     p = subparsers.add_parser("data-usage", help="lemezhasznalat kimutatas")
     p.set_defaults(func=cmd_data_usage)

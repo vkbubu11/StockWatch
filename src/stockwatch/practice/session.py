@@ -16,9 +16,9 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
-from .. import indicators, market, progress
+from .. import analytics, indicators, market, progress
 from ..config import Settings, load_settings
-from . import sampler, scoring, store, synthetic
+from . import kinds, sampler, scoring, store, synthetic
 from .templates import STRATEGY_LABELS, Line
 
 FEW = 10
@@ -119,9 +119,11 @@ def public(session: dict) -> dict:
 
 def create(user_id: int, settings: Settings | None = None, seed: int | None = None,
            rounds: int = 20, mix: dict | None = None, code: str | None = None,
-           only: dict | None = None, lesson: int | None = None, daily: str | None = None) -> dict:
+           only: dict | None = None, lesson: int | None = None, daily: str | None = None,
+           kinds_mix: dict | None = None) -> dict:
     """Uj kor. `only` es `lesson`: a tanulasi ut (#33) celzott feladatsora (learning.py); `daily`: a napi
-    kihivas napja (daily.py)."""
+    kihivas napja (daily.py); `kinds_mix`: feladattipus -> suly (#49; None: csak dontes). shortcut: a megosztasi
+    kod a tipusokat nem tartalmazza - vegyes kort csak a dontesi feladatokra reprodukal."""
     settings = settings or load_settings()
     pool = store.load_pool()
     if not pool:
@@ -136,6 +138,12 @@ def create(user_id: int, settings: Settings | None = None, seed: int | None = No
     if not 0 <= int(seed) < sampler.SEED_MAX:
         raise ValueError("seed: 0 es 2^31 kozott")
     picks = sampler.sample(pool, int(seed), int(rounds), mix, only)
+    weights = kinds.normalize_kinds(kinds_mix)
+    rng = np.random.default_rng([int(seed), 49])                  # a tipusok sorsolasa a seedbol, kulon folyamban
+    names, probs = list(weights), list(weights.values())
+    for n, pick in enumerate(picks):
+        kind = names[int(rng.choice(len(names), p=probs))]
+        picks[n] = pick | {"kind": kind} | (kinds.get(kind).make(pick, rng, settings) if kind != "decision" else {})
     session = {"id": store.new_id(), "created": _now(), "seed": int(seed), "rounds": int(rounds),
                "mix": sampler.normalize_mix(mix), "pool_fingerprint": pool["fingerprint"],
                "code": sampler.share_code(int(seed), pool["fingerprint"], int(rounds)), "warning": warning, "lesson": lesson,
@@ -186,7 +194,22 @@ def shown(symbol: str, day: str) -> dict:
 
 
 def reveal(task: dict) -> dict:
-    return task["result"] | {"category": task["category"], "source": task["source"], "decision": task["decision"]}         | shown(task["symbol"], task["date"])
+    return task["result"] | {"category": task["category"], "source": task["source"], "decision": task["decision"],
+                             "kind": task.get("kind") or "decision"} | shown(task["symbol"], task["date"])
+
+
+def decision_tasks(tasks: list[dict]) -> list[dict]:
+    """A kor-statisztika (scoring.summary) csak a dontesi feladatokbol szamol; a tobbi tipus kulon (kinds_summary)."""
+    return [t for t in tasks if (t.get("kind") or "decision") == "decision"]
+
+
+def kinds_summary(tasks: list[dict]) -> dict:
+    out: dict[str, list[float]] = {}
+    for t in tasks:
+        kind = t.get("kind") or "decision"
+        if kind != "decision" and t.get("decision"):
+            out.setdefault(kind, []).append(float((t.get("result") or {}).get("quality", t.get("quality")) or 0.0))
+    return {k: {"n": len(v), "mean_quality": round(float(np.mean(v)), 3)} for k, v in out.items()}
 
 
 def task_payload(user_id: int, session_id: str, k: int, settings: Settings | None = None) -> dict:
@@ -195,42 +218,64 @@ def task_payload(user_id: int, session_id: str, k: int, settings: Settings | Non
     task = _task(session, k)
     df, i = _frame(task, settings)
     out = {"session": session["id"], "k": k, "rounds": len(session["tasks"]), "task_id": task["task_id"],
-           "chart": hidden_chart(df, i), "max_days": sampler.MAX_DAYS, "decided": task.get("decision") is not None}
+           "chart": hidden_chart(df, i), "max_days": sampler.MAX_DAYS, "decided": task.get("decision") is not None,
+           "kind": task.get("kind") or "decision", "prompt": (task.get("params") or {}).get("prompt")}
     if out["decided"] and not hidden(session):
         out["reveal"] = reveal(task)
     return out
 
 
-def decide(user_id: int, session_id: str, k: int, body: dict, settings: Settings | None = None) -> dict:
-    settings = settings or load_settings()
-    try:
-        decision = Decision(**(body or {}))
-    except ValidationError as exc:                   # a felhasznalonak csak az elso, emberi szovegu hiba
-        raise ValueError(str(exc.errors()[0]["msg"]).removeprefix("Value error, ")) from None
-    session = _load(session_id, user_id)
-    task = _task(session, k)
+def _check_open(session: dict, task: dict) -> None:
     if task.get("decision") is not None:
         raise ValueError("A dontes mar rogzitve - nem modosithato.")
     if deadline(session) and datetime.now(timezone.utc) > deadline(session):
         raise ValueError("A napi kihivas ideje lejart.")
-    # a (masodpercekig tarto) ertekeles zar nelkul fut; zar alatt csak az ujraellenorzes es a mentes
+
+
+def _evaluate(session: dict, task: dict, k: int, body: dict, settings: Settings) -> tuple[dict, dict, dict]:
+    """(valasz, ertekeles, pont) - a feladat tipusa szerint (#49)."""
+    kind = task.get("kind") or "decision"
+    if kind != "decision":
+        module = kinds.get(kind)
+        answer = module.validate(body or {}, task["params"]["prompt"])
+        _check_open(session, task)
+        df, i = _frame(task, settings)
+        result = module.evaluate(task, df, i, answer, settings)
+        result["review"] = {"verdict": kinds.verdict(result["quality"])}
+        return answer, result, kinds.points(result["quality"], settings)
+    try:
+        decision = Decision(**(body or {}))
+    except ValidationError as exc:                   # a felhasznalonak csak az elso, emberi szovegu hiba
+        raise ValueError(str(exc.errors()[0]["msg"]).removeprefix("Value error, ")) from None
+    _check_open(session, task)
     df, i = _frame(task, settings)
     mctx = market.load_context(settings, refresh=False, allow_network=False)
     dates = market.HistoricalEarnings(settings, allow_network=False).dates(task["symbol"])
     result = scoring.evaluate(task["symbol"], df, i, decision.model_dump(), settings, seed=session["seed"] * 100 + k,
                               mctx=mctx, earnings_dates=dates, breakout=task.get("breakout"))
-    points = progress.score((result.get("review") or {}).get("verdict"), settings)
+    return decision.model_dump(), result, progress.score((result.get("review") or {}).get("verdict"), settings)
+
+
+def decide(user_id: int, session_id: str, k: int, body: dict, settings: Settings | None = None) -> dict:
+    settings = settings or load_settings()
+    session = _load(session_id, user_id)
+    task = _task(session, k)
+    # a (masodpercekig tarto) ertekeles zar nelkul fut; zar alatt csak az ujraellenorzes es a mentes
+    answer, result, points = _evaluate(session, task, k, body, settings)
     with store.editing(session_id, user_id) as (session, save, conn):
         task = _task(session, k)
         if task.get("decision") is not None:
             raise ValueError("A dontes mar rogzitve - nem modosithato.")
         task["result"] = result | {"points": points}
         task["points"] = points["points"]
-        task["decision"] = decision.model_dump()
+        task["quality"] = result.get("quality")
+        task["decision"] = answer
         task["decided_at"] = _now()
         if all(t.get("decision") for t in session["tasks"]):
-            session["summary"] = scoring.summary(session["tasks"])
+            session["summary"] = scoring.summary(decision_tasks(session["tasks"]))
         save(k)
+        analytics.track("decision", user_id, conn, kind=task.get("kind") or "decision", daily=bool(session.get("daily")),
+                        lesson=session.get("lesson"))
         prog = progress.record(conn, user_id, points["points"], progress.today())
     if session.get("lesson") and session.get("summary"):
         from .. import learning                      # a tanulasi ut (#33) szintje teljesult-e
@@ -291,8 +336,10 @@ def summary_payload(user_id: int, session_id: str) -> dict:
     session = _load(session_id, user_id)
     if hidden(session):                          # napi kihivas kozben: csak az allapot, eredmeny nelkul
         return {"session": public(session), "hidden": True}
-    s = scoring.summary(session["tasks"])
-    tasks = [{"k": k, "decided": t.get("decision") is not None} | (
+    s = scoring.summary(decision_tasks(session["tasks"]))
+    tasks = [{"k": k, "decided": t.get("decision") is not None, "kind": t.get("kind") or "decision"} | (
+        shown(t["symbol"], t["date"]) | {"quality": t.get("quality"), "points": t.get("points")}
+        if t.get("decision") and (t.get("kind") or "decision") != "decision" else {}) | (
         shown(t["symbol"], t["date"]) | {"category": t["category"], "source": t["source"],
          "action": scoring.side_of(t["decision"]) or "skip", "r": (t["result"].get("user") or {}).get("r"),
          "verdict": ((t["result"].get("review") or {}).get("verdict") or {}).get("category"),
@@ -301,10 +348,12 @@ def summary_payload(user_id: int, session_id: str) -> dict:
                         for x in t["result"]["strategies"] if x.get("signaled")],
          "reference_r": t["result"]["reference"].get("r"), "baseline_r": t["result"]["baseline"].get("mean_r"),
          "points": t.get("points")}
-        if t.get("decision") else {}) for k, t in enumerate(session["tasks"])]
+        if t.get("decision") and (t.get("kind") or "decision") == "decision" else {})
+        for k, t in enumerate(session["tasks"])]
     from .. import learning
 
-    return {"session": public(session), "summary": s, "lines": lines(s), "tasks": tasks,
+    return {"session": public(session), "summary": s, "lines": lines(s) if s["decided"] else [], "tasks": tasks,
+            "kinds": kinds_summary(session["tasks"]),
             "lesson": learning.record(user_id, session) if session.get("lesson") else None}
 
 

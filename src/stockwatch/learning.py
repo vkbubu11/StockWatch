@@ -12,7 +12,9 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from . import db
+import psycopg
+
+from . import analytics, db
 from .config import Settings
 from .practice import session as practice
 from .practice import synthetic
@@ -22,12 +24,61 @@ GOOD = ("good", "unlucky")                       # a szabaly szerint indokolt do
 LESSONS_PATH = Path(__file__).with_name("locale") / "lessons.hu.json"
 
 
+def validate(data) -> list[dict]:
+    """A leckek szerkezete (a leckeszerkeszto, #58, csak ervenyeset ment): szintek 1-tol folyamatosan, szoveg,
+    abra (ismert alakzat vagy trend), feladatsor (helyzetszam, kategoria-szuro, feladattipusok)."""
+    from .practice import kinds, sampler
+
+    if not isinstance(data, list) or not data:
+        raise ValueError("A leckek listaja ures vagy nem lista.")
+    if [x.get("level") if isinstance(x, dict) else None for x in data] != list(range(1, len(data) + 1)):
+        raise ValueError("A szintek 1-tol folyamatosan szamozodjanak (level).")
+    for x in data:
+        n = x["level"]
+        if not isinstance(x.get("title"), str) or not x["title"].strip():
+            raise ValueError(f"{n}. szint: hianyzo cim (title).")
+        for key in ("paragraphs", "points"):
+            if not isinstance(x.get(key), list) or not all(isinstance(s, str) and s.strip() for s in x[key]) or not x[key]:
+                raise ValueError(f"{n}. szint: {key} - nem ures szovegek listaja kell.")
+        if not isinstance(x.get("caption"), str):
+            raise ValueError(f"{n}. szint: hianyzo abrafelirat (caption).")
+        fig = x.get("figure")
+        if not isinstance(fig, dict) or not (fig.get("kind") == "trend" or fig.get("pattern") in synthetic.TEMPLATES):
+            raise ValueError(f"{n}. szint: az abra (figure) {{'kind': 'trend'}} vagy ismert alakzat (pattern) legyen.")
+        tasks = x.get("tasks")
+        if not isinstance(tasks, dict) or not isinstance(tasks.get("rounds"), int) \
+                or not 1 <= tasks["rounds"] <= sampler.MAX_ROUNDS:
+            raise ValueError(f"{n}. szint: a feladatsor helyzetszama (tasks.rounds) 1 es {sampler.MAX_ROUNDS} kozott.")
+        only = tasks.get("only")
+        if not isinstance(only, dict) or not only or set(only) - set(sampler.CATEGORIES) \
+                or not all(v is None or (isinstance(v, list) and all(isinstance(s, str) for s in v)) for v in only.values()):
+            raise ValueError(f"{n}. szint: rossz feladat-szuro (tasks.only): kategoria -> null vagy forrasok listaja; "
+                             f"kategoriak: {', '.join(sampler.CATEGORIES)}.")
+        if "kinds" in tasks:
+            try:
+                kinds.normalize_kinds(tasks["kinds"])
+            except (ValueError, TypeError, AttributeError):
+                raise ValueError(f"{n}. szint: rossz feladattipus-sulyok (tasks.kinds).") from None
+    return data
+
+
+def stored(lang: str = "hu") -> tuple[int, list] | None:
+    """A leckeszerkeszto legutobbi verzioja (id, adat), vagy None (adatbazis nelkul is: None)."""
+    try:
+        with db.connection() as conn:
+            row = conn.execute("SELECT id, data FROM lesson_versions WHERE lang = %s ORDER BY id DESC LIMIT 1",
+                               (lang,)).fetchone()
+    except (db.DatabaseUnavailable, psycopg.Error):                     # pl. a migracio elott: a fajl ervenyes
+        return None
+    return (row[0], row[1]) if row else None
+
+
 @lru_cache(maxsize=1)
 def lessons() -> tuple[dict, ...]:
-    data = json.loads(LESSONS_PATH.read_text(encoding="utf-8"))
-    if [x["level"] for x in data] != list(range(1, len(data) + 1)):
-        raise ValueError(f"{LESSONS_PATH.name}: a szintek 1-tol folyamatosan szamozodnak")
-    return tuple(data)
+    """A leckek: a szerkesztett legujabb verzio (#58), kulonben a fajl. A mentes a gyorsitotarat uriti."""
+    version = stored()
+    data = version[1] if version else json.loads(LESSONS_PATH.read_text(encoding="utf-8"))
+    return tuple(validate(data))
 
 
 def lesson(level: int) -> dict:
@@ -90,7 +141,10 @@ def start(user_id: int, level: int, settings: Settings | None = None) -> dict:
     """A szint celzott feladatsora (egy uj gyakorlo kor)."""
     _require_unlocked(user_id, level)
     tasks = lesson(level)["tasks"]
-    return practice.create(user_id, settings, rounds=tasks["rounds"], only=tasks["only"], lesson=level)
+    created = practice.create(user_id, settings, rounds=tasks["rounds"], only=tasks["only"], lesson=level,
+                              kinds_mix=tasks.get("kinds"))
+    analytics.track("lesson_start", user_id, level=level)
+    return created
 
 
 def record(user_id: int, session: dict) -> dict | None:
@@ -102,6 +156,10 @@ def record(user_id: int, session: dict) -> dict | None:
     share = round(sum(v in GOOD for v in verdicts) / len(verdicts), 3)
     passed = share >= PASS_SHARE
     with db.connection() as conn:
+        before = conn.execute("SELECT completed_at IS NOT NULL FROM lesson_progress WHERE user_id = %s AND level = %s",
+                              (user_id, level)).fetchone()
+        if passed and not (before and before[0]):                      # az elso teljesites (#48)
+            analytics.track("lesson_pass", user_id, conn, level=level)
         conn.execute("INSERT INTO lesson_progress (user_id, level, best_share, completed_at) "
                      "VALUES (%s, %s, %s, CASE WHEN %s THEN now() END) ON CONFLICT (user_id, level) DO UPDATE SET "
                      "best_share = greatest(lesson_progress.best_share, EXCLUDED.best_share), "

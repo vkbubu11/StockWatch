@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>StockWatch Gyakorlás – Admin</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/admin">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22l6-7 5 4 9-11"/></svg>
+      <span>Admin</span>
+    </a>
+    <div class="topbar-right">
+      <a class="btn" href="/">Az alkalmazás</a>
+      <button id="adm-logout" class="btn" type="button" hidden>Admin kilépés</button>
+    </div>
+  </header>
+  <main id="adm" class="view" aria-live="polite"><div class="loading">Betöltés…</div></main>
+  <script src="/admin/admin.js"></script>
+</body>
+</html>

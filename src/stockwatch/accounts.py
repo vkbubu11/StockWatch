@@ -14,7 +14,7 @@ import re
 import secrets
 from datetime import timedelta
 
-from . import db, i18n, mailer, webauth
+from . import analytics, db, i18n, mailer, webauth
 
 TERMS_VERSION = "2026-10-23"                    # az ASZF es az adatkezelesi tajekoztato verzioja (#40)
 SESSION_TTL = timedelta(days=30)
@@ -112,6 +112,8 @@ def register(email: str, password: str, accepted_terms: bool, age_ok: bool, ip: 
         row = conn.execute(
             "INSERT INTO users (email, password_hash, terms_version, terms_accepted_at) VALUES (%s, %s, %s, now()) "
             "ON CONFLICT ((lower(email))) DO NOTHING RETURNING id", (email, password_hash, TERMS_VERSION)).fetchone()
+        if row is not None:
+            analytics.track("register", row[0], conn, method="password")
         if row is None:
             row = conn.execute("SELECT id FROM users WHERE lower(email) = %s AND email_verified_at IS NULL",
                                (email,)).fetchone()
@@ -140,6 +142,7 @@ def verify_email(token: str) -> bool:
         if row:
             conn.execute("UPDATE users SET email_verified_at = coalesce(email_verified_at, now()) WHERE id = %s",
                          (row[0],))
+            analytics.track("verify", row[0], conn)
     return row is not None
 
 
@@ -164,10 +167,14 @@ def login(email: str, password: str, ip: str, user_agent: str = "") -> str | Non
                            "Nézd meg a spam mappát, vagy kérj újat lent: „Nem kaptad meg a megerősítő levelet?”")
     ACCOUNT_LOGIN.clear(key)
     with db.connection() as conn:
-        return _new_session(conn, row[0], user_agent)
+        token = _new_session(conn, row[0], user_agent)
+        analytics.track("login", row[0], conn, method="password")
+        return token
 
 
 def _new_session(conn, user_id: int, user_agent: str) -> str:
+    if conn.execute("SELECT suspended_at IS NOT NULL FROM users WHERE id = %s", (user_id,)).fetchone()[0]:
+        raise AccountError("A fiókod fel van függesztve. Kérdés esetén írj a kapcsolati címre.")      # admin (#58)
     token = secrets.token_urlsafe(32)
     conn.execute("DELETE FROM sessions WHERE expires_at < now()")
     conn.execute("INSERT INTO sessions (token_hash, user_id, expires_at, user_agent) VALUES (%s, %s, now() + %s, %s)",
@@ -183,12 +190,12 @@ def session_user(token: str | None) -> dict | None:
         return None
     with db.connection() as conn:
         row = conn.execute("UPDATE sessions s SET last_used_at = now() FROM users u WHERE s.token_hash = %s "
-                           "AND s.expires_at > now() AND u.id = s.user_id "
+                           "AND s.expires_at > now() AND u.id = s.user_id AND u.suspended_at IS NULL "
                            "RETURNING u.id, u.email, u.onboarded_at IS NOT NULL, u.nickname, u.password_hash IS NOT NULL, "
-                           "EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = u.id AND i.provider = 'google')",
-                           (_h(token),)).fetchone()
+                           "EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = u.id AND i.provider = 'google'), "
+                           "u.role, s.admin_at", (_h(token),)).fetchone()
     return {"id": row[0], "email": row[1], "onboarded": row[2], "nickname": row[3], "has_password": row[4],
-            "google": row[5]} if row else None
+            "google": row[5], "role": row[6], "admin_at": row[7]} if row else None
 
 
 def mark_onboarded(user_id: int) -> None:
@@ -255,9 +262,16 @@ def delete_account(user_id: int, password: str) -> bool:
             return False
     elif not webauth.verify_password(password, row[0]):
         return False
-    with db.connection() as conn:
-        conn.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    erase(user_id)
     return True
+
+
+def erase(user_id: int) -> None:
+    """A fiok es minden adata (kaszkad); az esemenyek anonimizalva maradnak (#48)."""
+    with db.connection() as conn:
+        anon = analytics.anonymize(conn, user_id)
+        analytics._insert(conn, "account_delete", anon, {})
+        conn.execute("DELETE FROM users WHERE id = %s", (user_id,))
 
 
 def export(user_id: int) -> dict:
@@ -298,7 +312,9 @@ def google_login(subject: str, email: str, link_user: int | None, terms: bool, u
         if row:
             if link_user is not None:
                 return ("linked", None) if row[0] == link_user else ("taken", None)
-            return "session", _new_session(conn, row[0], user_agent)
+            token = _new_session(conn, row[0], user_agent)
+            analytics.track("login", row[0], conn, method="google")
+            return "session", token
         if link_user is not None:
             conn.execute("INSERT INTO user_identities (provider, subject, user_id, email) VALUES ('google', %s, %s, %s)",
                          (subject, link_user, email))
@@ -312,6 +328,8 @@ def google_login(subject: str, email: str, link_user: int | None, terms: bool, u
             "VALUES (%s, NULL, now(), %s, now()) RETURNING id", (email, TERMS_VERSION)).fetchone()[0]
         conn.execute("INSERT INTO user_identities (provider, subject, user_id, email) VALUES ('google', %s, %s, %s)",
                      (subject, user_id, email))
+        for name in ("register", "verify", "login"):
+            analytics.track(name, user_id, conn, method="google")
         return "session", _new_session(conn, user_id, user_agent)
 
 

@@ -108,6 +108,21 @@ visszaállítás csak üres adatbázisba: `sudo stockwatch-learn-cli db restore 
 
 Nyilvános indulás (új gép, domain, e-mail, Google, jogi oldalak, mentés, felügyelet): [docs/PUBLIKUS-INDULAS.md](docs/PUBLIKUS-INDULAS.md).
 
+## Admin felület
+
+`/admin` – felhasználók, tartalom (leckeszerkesztő verziókkal, napi kihívás, feladatkészlet), csoportok, mutatók
+(tölcsér, aktív felhasználók, kohorsz-visszatérés), rendszerállapot és audit-napló. Csak admin szerepkörrel és
+kétlépcsős azonosítással (TOTP – pl. Google Authenticator) érhető el; mindenki más 404-et kap.
+
+```bash
+sudo stockwatch-learn-cli admin grant te@pelda.hu        # admin szerepkör (a fiók legyen megerősített)
+sudo stockwatch-learn-cli admin reset-totp te@pelda.hu   # elveszett hitelesítő alkalmazás
+sudo stockwatch-learn-cli admin revoke te@pelda.hu
+```
+
+Az első belépéskor az oldal megmutatja a TOTP-kulcsot (és egy linket a hitelesítő alkalmazáshoz); az első helyes
+kód után a kulcs többé nem látszik.
+
 ## Lemezhasználat
 
 `python cli.py data-usage` – komponensenként, a plafonokhoz viszonyítva; `python cli.py housekeeping` – takarítás.

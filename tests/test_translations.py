@@ -199,6 +199,41 @@ def test_phone_card_labels_are_translated(site, browser, env):  # noqa: F811
     page.close()
 
 
+def test_task_kinds_are_translated(site, browser, env):  # noqa: F811
+    # a feladattipusok (#50-#53) urlapjai, ertekelese es a kor osszegzese angolul (a nemet / spanyol ugyanabbol a katalogusbol)
+    from .test_kinds import _answer
+
+    accounts.mark_onboarded(env["user"])
+    page = _page(browser, site, token=accounts.login("anna@example.com", PW, "127.0.0.1"))
+    page.set_viewport_size({"width": 390, "height": 844})
+    missing: set[str] = set()
+    for kind in ("stop", "pattern", "levels", "sizing"):
+        for seed in (1, 2):
+            sid = session.create(env["user"], env["settings"], seed=seed, rounds=1, kinds_mix={kind: 1})["id"]
+            _visit(page, f"{site}/#/practice/{sid}", missing)
+            session.decide(env["user"], sid, 0, _answer(session.task_payload(env["user"], sid, 0)))
+            _visit(page, f"{site}/#/practice/{sid}", missing)                    # a kor kesz: az osszegzes
+            page.goto("about:blank")
+            page.goto(f"{site}/#/practice")
+            _settle(page)
+            missing |= _missing(page)
+    sid = session.create(env["user"], env["settings"], seed=4, rounds=1, kinds_mix={"stop": 1})["id"]
+    page.goto("about:blank")
+    page.goto(f"{site}/#/practice/{sid}")
+    page.wait_for_selector("#pr-dform")
+    page.fill("input[name=stop]", "150")
+    page.click("#pr-dform button[type=submit]")
+    page.wait_for_timeout(600)
+    missing |= _missing(page)
+    page.close()
+    missing = {m for m in missing if re.search(r"[A-Za-zÀ-ž]{2}", re.sub(TECH, "", m)) and m not in TICKERS}
+    dump = os.environ.get("I18N_MISSING")
+    if dump:
+        with open(dump, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(sorted(missing)))
+    assert not missing, f"{len(missing)} forditatlan szoveg, pl.: {sorted(missing)[:15]}"
+
+
 def test_account_emails_follow_the_interface_language(neon, outbox):
     accounts.register("anna@example.com", PW, True, True, "1.1.1.1", "https://x.example", "en")
     subject, body = outbox[-1][1], outbox[-1][2]

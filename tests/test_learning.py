@@ -40,6 +40,9 @@ def test_targeted_tasks_match_the_level_theme(user, pool):
         tasks = store.load_session(created["id"], user)["tasks"]
         assert len(tasks) == item["tasks"]["rounds"]
         for t in tasks:
+            if t["kind"] != "decision":                          # a tobbi feladattipus (#49) a lecke kerese szerint
+                assert t["kind"] in (item["tasks"].get("kinds") or {}), (item["level"], t["kind"])
+                continue
             assert t["category"] in only, (item["level"], t["category"])
             assert only[t["category"]] is None or t["source"] in only[t["category"]], (item["level"], t["source"])
 

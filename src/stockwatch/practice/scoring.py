@@ -293,6 +293,14 @@ def user_trade(feat: pd.DataFrame, i: int, decision: dict, scale: float, cost: f
     return user, params
 
 
+def future_bars(df: pd.DataFrame, i: int, scale: float) -> list[dict]:
+    """A dontes utani gyertyak (normalizalt aron) a felfedeshez."""
+    end = min(i + FUTURE_BARS, len(df) - 1)
+    return [{"i": k - i, "o": round(float(df["open"].iloc[k]) * scale, 2), "h": round(float(df["high"].iloc[k]) * scale, 2),
+             "l": round(float(df["low"].iloc[k]) * scale, 2), "c": round(float(df["close"].iloc[k]) * scale, 2)}
+            for k in range(i + 1, end + 1)]
+
+
 def evaluate(symbol: str, df: pd.DataFrame, i: int, decision: dict, settings: Settings, seed: int,
              mctx: market.MarketContext | None = None, earnings_dates: list | None = None,
              breakout: dict | None = None) -> dict:
@@ -320,10 +328,7 @@ def evaluate(symbol: str, df: pd.DataFrame, i: int, decision: dict, settings: Se
         breakout or {"strategy": "breakout", "signaled": False},          # a keszletbol (breakouts.py)
         short_compare(symbol, df, i, scale, settings, mctx, earnings_dates, cost, mirrored, borrow),
     ]
-    end = min(i + FUTURE_BARS, len(df) - 1)
-    future = [{"i": k - i, "o": round(float(df["open"].iloc[k]) * scale, 2), "h": round(float(df["high"].iloc[k]) * scale, 2),
-               "l": round(float(df["low"].iloc[k]) * scale, 2), "c": round(float(df["close"].iloc[k]) * scale, 2)}
-              for k in range(i + 1, end + 1)]
+    future = future_bars(df, i, scale)
     result = {"user": user, "strategies": strategies, "cost_bps": cost, "borrow_bps": borrow,
               "reference": {"r": round(reference, 3) if reference is not None else None} | REFERENCE,
               "baseline": baseline(feat, atr, eligible(df), i, max(params["stop_atr"], 0.05), params["target_atr"],

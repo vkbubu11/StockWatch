@@ -62,7 +62,7 @@ def load_pool() -> dict | None:
 # Korok (adatbazis)
 # ---------------------------------------------------------------------------
 SESSION_COLS = "id, created_at, seed, rounds, mix, pool_fingerprint, code, warning, summary, lesson, daily"
-TASK_COLS = "k, task_id, symbol, day, category, source, breakout, decision, decided_at, points"
+TASK_COLS = "k, task_id, symbol, day, category, source, breakout, decision, decided_at, points, kind, params, quality"
 
 
 def _check(session_id: str) -> None:
@@ -83,9 +83,10 @@ def _session(row, tasks: list[dict]) -> dict:
 
 
 def _task(row, result: bytes | None) -> dict:
-    k, task_id, symbol, day, category, source, breakout, decision, decided_at, points = row
+    k, task_id, symbol, day, category, source, breakout, decision, decided_at, points, kind, params, quality = row
     task = {"task_id": task_id, "symbol": symbol, "date": f"{day:%Y-%m-%d}", "category": category, "source": source,
-            "breakout": breakout, "decision": decision, "points": points,
+            "breakout": breakout, "decision": decision, "points": points, "kind": kind, "params": params,
+            "quality": quality,
             "result": json.loads(gzip.decompress(result)) if result is not None else None}
     return task | ({"decided_at": _iso(decided_at)} if decided_at else {})
 
@@ -125,14 +126,15 @@ def _save(conn, session: dict, user_id: int, only: list[int] | None = None) -> N
                      ((res or {}).get("review") or {}).get("verdict", {}).get("category") if res else None,
                      ((res or {}).get("user") or {}).get("r") if res else None, t.get("decided_at"),
                      gzip.compress(json.dumps(res, ensure_ascii=False).encode("utf-8")) if res is not None else None,
-                     t.get("points"), ((res or {}).get("user") or {}).get("stop_atr") if res else None))
+                     t.get("points"), ((res or {}).get("user") or {}).get("stop_atr") if res else None,
+                     t.get("kind") or "decision", Jsonb(t["params"]) if t.get("params") else None, t.get("quality")))
     with conn.cursor() as cur:
         cur.executemany(
             "INSERT INTO practice_tasks (session_id, k, task_id, symbol, day, category, source, breakout, decision, "
-            "verdict, r, decided_at, result, points, stop_atr) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-            "%s, %s) ON CONFLICT (session_id, k) DO UPDATE SET decision = EXCLUDED.decision, verdict = EXCLUDED.verdict, "
-            "r = EXCLUDED.r, decided_at = EXCLUDED.decided_at, result = EXCLUDED.result, points = EXCLUDED.points, "
-            "stop_atr = EXCLUDED.stop_atr", rows)
+            "verdict, r, decided_at, result, points, stop_atr, kind, params, quality) VALUES (%s, %s, %s, %s, %s, %s, %s, "
+            "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (session_id, k) DO UPDATE SET decision = EXCLUDED.decision, "
+            "verdict = EXCLUDED.verdict, r = EXCLUDED.r, decided_at = EXCLUDED.decided_at, result = EXCLUDED.result, "
+            "points = EXCLUDED.points, stop_atr = EXCLUDED.stop_atr, quality = EXCLUDED.quality", rows)
 
 
 def create_session(session: dict, user_id: int) -> None:

@@ -84,7 +84,8 @@ def record(conn, user_id: int, points: int, day: date) -> dict:
 def _earned(conn, user_id: int) -> list[str]:
     recent = conn.execute(
         "SELECT t.decision->>'action', t.verdict, t.stop_atr FROM practice_tasks t JOIN practice_sessions s "
-        "ON s.id = t.session_id WHERE s.user_id = %s AND t.decision IS NOT NULL ORDER BY t.decided_at DESC LIMIT 40",
+        "ON s.id = t.session_id WHERE s.user_id = %s AND t.decision IS NOT NULL AND t.kind = 'decision' "
+        "ORDER BY t.decided_at DESC LIMIT 40",          # a jelvenyek a dontesi feladatokbol (a tobbinek nincs iranya)
         (user_id,)).fetchall()
     out = []
     if any(action == "short" for action, _, _ in recent):

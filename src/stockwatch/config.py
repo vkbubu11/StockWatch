@@ -424,6 +424,7 @@ class PracticeSettings(BaseModel):
     tight_stop_atr: float = 1.0         # ennel szorosabb stop: "tul szoros" jelzes
     min_rr: float = 1.0                 # ennel kisebb cel/kockazat arany: jelzes
     better_r: float = 0.5               # a "jobb stop" osszevetes csak legalabb ennyi R javulasnal jelenik meg
+    levels_tolerance_atr: float = 0.5   # szint- es trendvonal-feladat (#52): ennyi ATR-en belul "eltalalt"
     # a feladatok forrasa: synthetic (practice/synthetic.py, adatlicenc nelkul) | real (letoltott arfolyam -
     # nyilvanos szolgaltatasban csak licencelt forrasbol)
     source: str = "synthetic"

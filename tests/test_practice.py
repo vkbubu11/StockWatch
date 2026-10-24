@@ -21,7 +21,7 @@ import pytest
 from stockwatch import entry_research as er
 from stockwatch import accounts, i18n, market, meanrev, webapp, webauth
 from stockwatch.config import PullbackParams, Settings
-from stockwatch.practice import breakouts, sampler, scoring, session, store
+from stockwatch.practice import breakouts, sampler, scoring, session, store, synthetic
 from stockwatch.practice.templates import TEMPLATES
 
 from . import agent_synthetic as syn
@@ -46,8 +46,9 @@ def frames() -> dict[str, pd.DataFrame]:
 @pytest.fixture
 def env(monkeypatch, user):
     data = frames()
-    monkeypatch.setattr(sampler, "load_prices",
-                        lambda symbol, settings: data[symbol].loc[:sampler.VISIBLE_END].copy() if symbol in data else None)
+    # a teszt-tickerek a sajat sorukbol; a szintetikus papirok (pl. az alakzat-feladat, #51) a generatorbol
+    monkeypatch.setattr(sampler, "load_prices", lambda symbol, settings: data[symbol].loc[:sampler.VISIBLE_END].copy()
+                        if symbol in data else synthetic.frame(symbol) if synthetic.is_synthetic(symbol) else None)
     monkeypatch.setattr(sampler, "universe", lambda settings: list(TICKERS))
     ctx = market.MarketContext({"QQQ": data["QQQ"], "^GSPC": data["^GSPC"]}, frozenset(TICKERS), frozenset())
     monkeypatch.setattr(market, "load_context", lambda settings, refresh=True, allow_network=None: ctx)

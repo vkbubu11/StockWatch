@@ -748,3 +748,12 @@ pre, code { overflow-wrap: anywhere; }
 .landing-shots figure { margin: 0; text-align: center; }
 .landing-shots img { width: 100%; max-width: 300px; height: auto; border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
 .landing-shots figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }
+
+/* feladattipusok (#50-#53): valaszlehetosegek racsban, a chart erintesre / kattintasra var */
+.ag-form .pr-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.pr-options .seg { min-height: 44px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: inherit; font: inherit; cursor: pointer; padding: 8px 10px; }
+.pr-options .seg.on { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+svg.pr-input { cursor: crosshair; }
+/* admin felulet (#58): a fulek telefonon tobb sorba torhetnek */
+.adm-tabs { display: flex; flex-wrap: wrap; margin-bottom: 12px; }
+.adm-tabs .seg { min-height: 40px; }

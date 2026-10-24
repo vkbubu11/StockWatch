@@ -37,6 +37,14 @@ async function api(path, options = {}) {
   return data;
 }
 
+// bongeszos hibaszamlalo (#48): csak a darabszam (uzenet es adat nelkul), oldalbetoltesenkent legfeljebb harom
+let reportedErrors = 0;
+const reportError = () => {
+  if (reportedErrors++ < 3) fetch("/api/client-error", { method: "POST", headers: { "X-StockWatch": "1" }, body: "{}", keepalive: true }).catch(() => {});
+};
+window.addEventListener("error", reportError);
+window.addEventListener("unhandledrejection", reportError);
+
 function bindRowLinks() {
   view.querySelectorAll("tr[data-href]").forEach((tr) => tr.addEventListener("click", () => { location.hash = tr.dataset.href; }));
 }
@@ -261,7 +269,8 @@ async function pageLeaderboard() {
 async function pageProfile() {
   const [s, g] = await Promise.all([api("/api/session"), api("/api/progress")]);
   view.innerHTML = `
-    <div class="page-head"><h1>Profil</h1><span class="muted" translate="no">${esc(s.email)}</span></div>
+    <div class="page-head"><h1>Profil</h1><span class="muted" translate="no">${esc(s.email)}</span>
+      ${s.admin ? `<a class="btn" href="/admin">Admin felület</a>` : ""}</div>
     <div class="kpis">
       <div class="kpi"><div class="label">Szint</div><div class="value">${g.level}</div><div class="sub">${g.level_xp} / ${g.next} XP a következőig</div></div>
       <div class="kpi"><div class="label">XP</div><div class="value">${g.xp}</div><div class="sub">a döntések minősége szerint – nincs pénzbeli értéke</div></div>
@@ -351,6 +360,9 @@ const PR_SIDE = { long: "Long", short: "Short", enter: "Long", skip: "Kihagyás"
 // itelet: szin + ikon + szoveg (nem csak szin)
 const PR_VERDICT = { good: ["Jó döntés", "ok", "✓"], lucky: ["Szerencsés", "warn", "≈"], unlucky: ["Balszerencsés", "info", "↺"], bad: ["Rossz döntés", "bad", "✗"] };
 const PR_LEVEL = { stop: ["Stop", "var(--down)"], target: ["Cél", "var(--up)", true], limit: ["Limit", "var(--info)"],
+  ref_stop: ["Referencia-stop", "var(--info)", true], struct: ["Szerkezeti szint", "var(--muted)", true], trigger: ["Trigger", "var(--warn)"],
+  p_target: ["Mért cél", "var(--up)", true], support: ["Support", "var(--up)", true], resistance: ["Rezisztencia", "var(--down)", true],
+  mine: ["A te vonalad", "var(--info)"], entry_level: ["Belépő", "var(--info)"],
   sma200: ["SMA200", "var(--ema200)", true], high20: ["20 napos csúcs", "var(--muted)", true], low20: ["20 napos mélypont", "var(--muted)", true] };
 const PR_STATUS = { unfilled: "a limit nem teljesült", open: "nyitva maradt", filtered: "a szűrők kizárták", unknown: "a labor még nem értékelte" };
 const rCls = (r) => (r == null ? "" : r > 0 ? "up" : r < 0 ? "down" : "");
@@ -380,6 +392,7 @@ async function pagePractice(msg = "") {
         <label>Formálódó alakzat (%)<input name="m_pattern" type="number" min="0" value="${d.defaults.mix.pattern}"></label>
         <label>Short-gyanús (%)<input name="m_short" type="number" min="0" value="${d.defaults.mix.short ?? 0}"></label>
         <label>Semmi különös (%)<input name="m_nothing" type="number" min="0" value="${d.defaults.mix.nothing}"></label>
+        <label>Feladattípus<select name="kind">${Object.entries(PR_KIND).map(([key, label]) => `<option value="${key}">${esc(label)}</option>`).join("")}<option value="mixed">Vegyes</option></select></label>
         <div class="wide"><button class="btn primary" type="submit">Kör indítása</button> <span id="pr-msg" class="small"></span>
           <span class="muted small">Megosztási kóddal a helyzetek száma és sorrendje a kódból jön.</span></div>
       </form></div></section>` : ""}
@@ -394,7 +407,8 @@ async function pagePractice(msg = "") {
     ev.preventDefault();
     const v = (n) => form.elements[n].value.trim();
     const body = { rounds: Number(v("rounds")), seed: v("seed") === "" ? null : Number(v("seed")), code: v("code") || null,
-      mix: { strategy: Number(v("m_strategy")), pattern: Number(v("m_pattern")), short: Number(v("m_short")), nothing: Number(v("m_nothing")) } };
+      mix: { strategy: Number(v("m_strategy")), pattern: Number(v("m_pattern")), short: Number(v("m_short")), nothing: Number(v("m_nothing")) },
+      kinds: v("kind") === "mixed" ? PR_MIXED : { [v("kind")]: 1 } };
     try { const r = await api("/api/practice/session", { method: "POST", body: JSON.stringify(body) }); location.hash = `#/practice/${r.session.id}`; }
     catch (e) { const m = $("#pr-msg"); m.className = "msg err small"; m.textContent = e.message; }
   });
@@ -412,7 +426,9 @@ function practiceChart(svg, bars, opt = {}) {
   const all = bars.concat(future);
   const W = Math.max(320, svg.parentElement.clientWidth);
   const H = W < 600 ? 340 : 420;
-  const pad = { l: 8, r: 64, t: 12, b: 24 };
+  // a jobb margo a leghosszabb szint-cimkehez igazodik (legfeljebb 112 px)
+  const longest = Math.max(0, ...(opt.levels || []).map((h) => String(h.label || "").length));
+  const pad = { l: 8, r: Math.min(112, Math.max(64, 14 + 6.4 * longest)), t: 12, b: 24 };
   const volH = Math.round(H * 0.14);
   const priceH = H - pad.t - pad.b - volH - 8;
   const slots = bars.length + (opt.future ? opt.future.length : 0);
@@ -420,6 +436,7 @@ function practiceChart(svg, bars, opt = {}) {
   const x = (j) => pad.l + step * j + step / 2;
   let lo = Infinity, hi = -Infinity;
   all.forEach((k) => { lo = Math.min(lo, k.l); hi = Math.max(hi, k.h); });
+  (opt.segments || []).forEach((s) => { lo = Math.min(lo, s.v1, s.v2); hi = Math.max(hi, s.v1, s.v2); });
   const levels = (opt.levels || []).filter((h) => h.v != null && Number.isFinite(h.v));
   levels.forEach((h) => { lo = Math.min(lo, h.v); hi = Math.max(hi, h.v); });
   const span = hi - lo || 1;
@@ -453,15 +470,22 @@ function practiceChart(svg, bars, opt = {}) {
     if (m.k == null || j >= all.length || m.v == null) return;
     parts.push(`<circle cx="${x(j)}" cy="${y(m.v)}" r="4.5" fill="${m.color}" stroke="var(--surface)" stroke-width="1.5"><title>${esc(m.label)}</title></circle>`);
   });
-  levels.forEach((h) => {
+  (opt.segments || []).forEach((s) => {
+    parts.push(`<line class="hline ${s.dash ? "dash" : ""}" x1="${x(zero + s.k1)}" y1="${y(s.v1)}" x2="${x(zero + s.k2)}" y2="${y(s.v2)}" stroke="${s.color}"/>`);
+  });
+  let prevLabel = -Infinity;                       // az egymashoz kozeli cimkek nem fedik egymast
+  levels.slice().sort((a, b) => b.v - a.v).forEach((h) => {
     const yy = y(h.v);
+    const ly = Math.max(yy, prevLabel + 18);
+    prevLabel = ly;
     parts.push(`<line class="hline ${h.dash ? "dash" : ""}" x1="${pad.l}" x2="${W - pad.r}" y1="${yy}" y2="${yy}" stroke="${h.color}"/>`);
-    parts.push(`<rect class="hlabel-bg" x="${W - pad.r + 1}" y="${yy - 9}" width="${pad.r - 2}" height="18" rx="4" fill="${h.color}"/>`);
-    parts.push(`<text class="hlabel" x="${W - pad.r + 5}" y="${yy + 4}" fill="#fff">${esc(h.label)}</text>`);
+    parts.push(`<rect class="hlabel-bg" x="${W - pad.r + 1}" y="${ly - 9}" width="${pad.r - 2}" height="18" rx="4" fill="${h.color}"/>`);
+    parts.push(`<text class="hlabel" x="${W - pad.r + 5}" y="${ly + 4}" fill="#fff">${esc(h.label)}</text>`);
   });
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.setAttribute("height", H);
   svg.innerHTML = parts.join("");
+  svg.__map = { lo, hi, padT: pad.t, priceH, step, padL: pad.l, zero, W, H };     // erintes -> (nap, ar): chartPoint
 }
 
 async function pagePracticeSession(id) {
@@ -484,6 +508,7 @@ function practiceLevels(f) {
 async function pagePracticeTask(id, k, sess) {
   clearInterval(practiceTimer);
   const t = await api(`/api/practice/session/${id}/task/${k}`);
+  if (t.kind && t.kind !== "decision") { await pageKindTask(id, k, sess, t); return; }
   const atr = t.chart.atr || 1;
   view.innerHTML = `
     <div class="page-head"><a href="${sess.daily ? "#/daily" : "#/practice"}" class="muted">← ${sess.daily ? "Napi kihívás" : "Gyakorlás"}</a><h1>Helyzet ${k + 1} / ${t.rounds}</h1>
@@ -687,6 +712,196 @@ function practiceOutcome(k, t, rev, sess) {
       <span class="muted small">Nem befektetési tanács. Szimulált kötés múltbeli adaton.</span></div></div></section>`;
 }
 
+// ---------------------------------------------------------------------------
+// Feladattipusok (#49-#53): stop, alakzat, szintek / trendvonal, pozicioméret
+// ---------------------------------------------------------------------------
+const PR_KIND = { decision: "Döntés", stop: "Tedd le a stopot", pattern: "Melyik alakzat ez?", levels: "Szintek és trendvonal", sizing: "Pozícióméret" };
+const PR_MIXED = { decision: 1, stop: 1, pattern: 1, levels: 1, sizing: 1 };
+const PR_KIND_MARK = { entry: ["Belépés", "var(--info)"], exit: ["Kilépés", "var(--down)"], p_start: ["Az alakzat kezdete", "var(--warn)"],
+  p_end: ["Utolsó pivot", "var(--warn)"] };
+
+// a chart egy pontja (k: nap a dontes napjahoz kepest, v: normalizalt ar) egy egeres / erintes esemenybol
+function chartPoint(svg, ev) {
+  const m = svg.__map;
+  if (!m) return null;
+  const r = svg.getBoundingClientRect();
+  const px = (ev.clientX - r.left) * (m.W / r.width), py = (ev.clientY - r.top) * (m.H / r.height);
+  const j = Math.round((px - m.padL - m.step / 2) / m.step);
+  const v = m.hi - ((py - m.padT) / m.priceH) * (m.hi - m.lo);
+  return { k: Math.max(-m.zero, Math.min(0, j - m.zero)), v: Math.round(v * 100) / 100, pxPerPrice: m.priceH / (m.hi - m.lo) };
+}
+
+// erintes / kattintas / huzas a charton (pointer esemenyek: eger es erintokepernyo egyutt)
+function chartInput(svg, onDown, onMove) {
+  svg.style.touchAction = "none";
+  svg.classList.add("pr-input");
+  let pressed = false;
+  svg.addEventListener("pointerdown", (ev) => { pressed = true; svg.setPointerCapture(ev.pointerId); const p = chartPoint(svg, ev); if (p) onDown(p); });
+  svg.addEventListener("pointermove", (ev) => { if (!pressed || !onMove) return; const p = chartPoint(svg, ev); if (p) onMove(p); });
+  const up = () => { pressed = false; };
+  svg.addEventListener("pointerup", up);
+  svg.addEventListener("pointercancel", up);
+}
+
+function kindLevels(list) {
+  return (list || []).map((h) => {
+    const m = PR_LEVEL[h.kind] || [h.kind, "var(--muted)"];
+    return { v: h.v, label: m[0], color: m[1], dash: !!m[2] };
+  });
+}
+
+function kindSegments(list) {
+  return (list || []).map((s) => ({ ...s, color: s.kind === "ref" ? "var(--up)" : "var(--info)", dash: s.kind === "ref" }));
+}
+
+function kindMarks(list) {
+  return (list || []).filter((m) => m.k != null).map((m) => {
+    const d = PR_KIND_MARK[m.kind] || [m.kind, "var(--muted)"];
+    return { k: m.k, v: m.v, label: d[0], color: m.kind === "exit" ? (m.r > 0 ? "var(--up)" : "var(--down)") : d[1] };
+  });
+}
+
+// tipusonkent: a feladat urlapja (HTML) es a kezeloje ({ read: valasz, reset? })
+const KIND_UI = {
+  stop: {
+    html: (t) => `<p>${t.prompt.side === "long" ? "Long belépés a következő nyitáson." : "Short belépés a következő nyitáson."}
+      Érintsd meg vagy kattintsd a chartot a stop helyén; húzással finomíthatod.</p>
+      <label>Stop<input name="stop" type="number" step="0.01" inputmode="decimal"></label>
+      <div class="wide"><span id="pr-risk" class="small muted"></span></div>`,
+    bind(t, form, svg, show) {
+      const atr = t.chart.atr || 1, sign = t.prompt.side === "long" ? 1 : -1;
+      const set = (v) => { form.elements.stop.value = fmtIn(v); update(); };
+      const update = () => {
+        const v = Number(form.elements.stop.value);
+        const ok = form.elements.stop.value !== "" && Number.isFinite(v);
+        $("#pr-risk").textContent = ok ? `Stop-távolság: ${fmt((sign * (100 - v)) / atr, 2)} ATR` : "";
+        show({ levels: ok ? [{ v, label: "Stop", color: "var(--down)" }] : [] });
+      };
+      form.elements.stop.addEventListener("input", update);
+      chartInput(svg, (p) => set(p.v), (p) => set(p.v));
+      update();
+      return () => ({ stop: form.elements.stop.value === "" ? null : Number(form.elements.stop.value) });
+    },
+  },
+  pattern: {
+    html: (t) => `<p>Melyik alakzat formálódott a chart végén?</p>
+      <div class="wide pr-options" role="radiogroup" aria-label="Alakzat">${t.prompt.options.map((o) =>
+        `<button type="button" class="seg" role="radio" aria-checked="false" data-choice="${esc(o.key)}">${esc(o.label)}</button>`).join("")}</div>`,
+    bind(t, form) {
+      let choice = null;
+      form.querySelectorAll("[data-choice]").forEach((b) => b.addEventListener("click", () => {
+        if (b.disabled) return;
+        choice = b.dataset.choice;
+        form.querySelectorAll("[data-choice]").forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-checked", x === b); });
+      }));
+      return () => ({ choice });
+    },
+  },
+  levels: {
+    html: (t) => (t.prompt.mode === "levels"
+      ? `<p>Érintsd meg a chartot a legfontosabb vízszintes szinteknél (legfeljebb ${t.prompt.max}). Egy meglévő vonal megérintése törli.</p>`
+      : `<p>${t.prompt.side === "lows" ? "Emelkedő trend: kösd össze a mélypontokat." : "Csökkenő trend: kösd össze a csúcsokat."}
+          Két érintés: a trendvonal két pontja.</p>`)
+      + `<div class="wide"><button class="btn" type="button" id="pr-undo">Visszavonás</button> <span id="pr-drawn" class="small muted"></span></div>`,
+    bind(t, form, svg, show) {
+      const mode = t.prompt.mode;
+      let lines = [], pts = [];
+      const update = () => {
+        if (mode === "levels") {
+          show({ levels: lines.map((v) => ({ v, label: "Vonal", color: "var(--info)" })) });
+          $("#pr-drawn").textContent = lines.length ? `Vonalak: ${lines.map((v) => fmt(v, 2)).join(", ")}` : "";
+        } else {
+          show({ levels: [], segments: pts.length === 2 ? [{ k1: pts[0].k, v1: pts[0].v, k2: pts[1].k, v2: pts[1].v, color: "var(--info)" }] : [],
+            marks: pts.map((p) => ({ k: p.k, v: p.v, label: "Pont", color: "var(--info)" })) });
+          $("#pr-drawn").textContent = `${pts.length} / 2 pont`;
+        }
+      };
+      chartInput(svg, (p) => {
+        if (mode === "levels") {
+          const near = lines.findIndex((v) => Math.abs(v - p.v) * p.pxPerPrice < 10);
+          if (near >= 0) lines.splice(near, 1);
+          else if (lines.length < t.prompt.max) lines.push(p.v);
+        } else {
+          pts = pts.length >= 2 ? [p] : pts.concat([p]);
+        }
+        update();
+      });
+      $("#pr-undo").addEventListener("click", () => { if (mode === "levels") lines.pop(); else pts.pop(); update(); });
+      update();
+      return () => (mode === "levels" ? { lines } : { points: pts.map((p) => [p.k, p.v]) });
+    },
+  },
+  sizing: {
+    html: (t) => {
+      const p = t.prompt;
+      return `<p>${p.side === "long" ? "Long" : "Short"} kötés. Számla: <strong>${fmt(p.account, 0)} $</strong>, kockázat kötésenként: <strong>${fmt(p.risk_pct, 1)}%</strong>.<br>
+        Belépő: <strong>${fmt(p.entry, 2)} $</strong>, stop: <strong>${fmt(p.stop, 2)} $</strong>${p.target ? `, cél: <strong>${fmt(p.target, 2)} $</strong>` : ""}.</p>
+        <label>Darabszám<input name="shares" type="text" inputmode="numeric" autocomplete="off"></label>
+        <label>Kockázat ($)<input name="risk" type="text" inputmode="decimal" autocomplete="off"></label>
+        ${p.target ? `<label>Cél / kockázat (R)<input name="rr" type="text" inputmode="decimal" autocomplete="off"></label>` : ""}`;
+    },
+    bind(t, form, svg, show) {
+      const p = t.prompt;
+      show({ levels: [{ v: p.entry, label: "Belépő", color: "var(--info)" }, { v: p.stop, label: "Stop", color: "var(--down)" }]
+        .concat(p.target ? [{ v: p.target, label: "Cél", color: "var(--up)", dash: true }] : []) });
+      return () => ({ shares: form.elements.shares.value.trim(), risk: form.elements.risk.value.trim(),
+        ...(p.target ? { rr: form.elements.rr.value.trim() } : {}) });
+    },
+  },
+};
+
+async function pageKindTask(id, k, sess, t) {
+  view.innerHTML = `
+    <div class="page-head"><a href="${sess.lesson ? "#/learn" : "#/practice"}" class="muted">← ${sess.lesson ? "Tanulás" : "Gyakorlás"}</a><h1>Helyzet ${k + 1} / ${t.rounds}</h1>
+      <span class="muted">Az utolsó látható záró = 100; a vízszintes tengely kereskedési napokban (0 = a döntés napja). ATR (14): ${fmt(t.chart.atr, 2)}</span></div>
+    <section class="card chart-card"><div class="chart-legend"><span><span class="swatch" style="background:var(--ema20)"></span> EMA20</span>
+      <span><span class="swatch" style="background:var(--ema50)"></span> EMA50</span><span><span class="swatch" style="background:var(--ema200)"></span> EMA200</span></div>
+      <div class="card-body"><svg id="pr-chart" role="img" aria-label="Rejtett chart"></svg></div></section>
+    <section class="card" id="pr-decision"><h2>${esc(PR_KIND[t.kind] || t.kind)}</h2><div class="card-body">
+      <form id="pr-dform" class="ag-form">${KIND_UI[t.kind].html(t)}
+        <div class="wide"><button class="btn primary" type="submit">Válasz rögzítése</button> <span class="muted small">A válasz után nem módosítható.</span> <span id="pr-err" class="small"></span></div>
+      </form></div></section>
+    <div id="pr-reveal"></div>`;
+  const svg = $("#pr-chart");
+  const form = $("#pr-dform");
+  let chartOpt = {};
+  const draw = () => practiceChart(svg, t.chart.bars, chartOpt);
+  const show = (o) => { chartOpt = o; draw(); };
+  if (chartRO) chartRO.disconnect();
+  chartRO = new ResizeObserver(() => draw());
+  chartRO.observe(svg.parentElement);
+  draw();
+  const read = KIND_UI[t.kind].bind(t, form, svg, show);
+  if (t.decided) { showKindReveal(id, k, t, t.reveal, show, sess); return; }
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    try {
+      const r = await api(`/api/practice/session/${id}/task/${k}/decision`, { method: "POST", body: JSON.stringify(read()) });
+      showKindReveal(id, k, t, { ...r.reveal, progress: r.progress }, show, r.session);
+    } catch (e) { const m = $("#pr-err"); m.className = "msg err small"; m.textContent = e.message; }
+  });
+}
+
+function showKindReveal(id, k, t, rev, show, sess) {
+  const form = $("#pr-dform");
+  form.querySelectorAll("input, select, button").forEach((el) => { el.disabled = true; });
+  const svg = $("#pr-chart");
+  svg.style.touchAction = "";
+  svg.classList.remove("pr-input");
+  show({ levels: kindLevels(rev.levels), segments: kindSegments(rev.segments), marks: kindMarks(rev.marks),
+    future: rev.future && rev.future.length ? rev.future : undefined, shown: (rev.future || []).length });
+  const good = rev.quality >= 0.6;
+  const last = sess ? sess.done : k + 1 >= t.rounds;
+  $("#pr-reveal").innerHTML = `<section class="card"><h2>Értékelés</h2><div class="card-body">
+      <div class="pr-verdict ${good ? "ok" : "bad"}" role="status"><span class="pr-verdict-icon" aria-hidden="true">${good ? "✓" : "✗"}</span>
+        <div><div class="pr-verdict-label">Értékelés: ${fmt(rev.quality * 100, 0)}%</div></div></div>
+      ${practicePoints(rev)}
+      <ul class="digest-list">${rev.lines.map((l) => `<li><span>${esc(l.text)}</span></li>`).join("")}</ul></div></section>
+    <section class="card"><div class="card-body"><div class="digest-controls"><button class="btn primary" id="pr-next" type="button">${last ? "Összegzés" : "Következő helyzet"}</button>
+      <span class="muted small">Nem befektetési tanács. Gyakorlás szimulált adaton.</span></div></div></section>`;
+  $("#pr-next").addEventListener("click", () => pagePracticeSession(id));
+}
+
 function renderPracticeSummary(p) {
   const s = p.summary;
   const lines = `<ul class="digest-list">${p.lines.map((l) => `<li><span>${esc(l.text)}</span></li>`).join("")}</ul>`;
@@ -703,11 +918,14 @@ function renderPracticeSummary(p) {
         <div class="small">Jó vagy balszerencsés döntés: ${fmt(ls.share * 100, 0)}% (kell: ${fmt(ls.needed * 100, 0)}%).</div></div></div>
       <div class="digest-controls">${ls.next ? `<a class="btn primary" href="#/learn/${ls.next}">Tovább a ${ls.next}. szintre</a>` : ""}
         <a class="btn" href="#/learn/${ls.level}">${ls.passed ? "A lecke újra" : "Újrapróbálom"}</a></div></div></section>` : "";
+  const kindsBox = Object.keys(p.kinds || {}).length ? `<section class="card"><h2>Feladattípusok</h2><div class="card-body"><ul class="digest-list">
+      ${Object.entries(p.kinds).map(([key, v]) => `<li><span>${esc(PR_KIND[key] || key)}: ${v.n} feladat, átlagos értékelés ${fmt(v.mean_quality * 100, 0)}%</span></li>`).join("")}
+    </ul></div></section>` : "";
   view.innerHTML = `
     <div class="page-head"><a href="${ls ? "#/learn" : "#/practice"}" class="muted">← ${ls ? "Tanulás" : "Gyakorlás"}</a><h1>A kör összegzése</h1>
       <span class="muted">Megosztási kód: <code>${esc(p.session.code)}</code> – ugyanazzal a feladatkészlettel ugyanazt a helyzetsort adja.</span></div>
-    ${lessonBox}${dailyBox}
-    <div class="kpis">
+    ${lessonBox}${dailyBox}${kindsBox}
+    ${s.decided ? `<div class="kpis">
       <div class="kpi"><div class="label">Teljesült kötés</div><div class="value">${s.filled}</div><div class="sub">${s.entered} belépési döntés, ${s.skipped} kihagyás</div></div>
       <div class="kpi"><div class="label">Nyerési arány</div><div class="value">${s.win == null ? "–" : `${fmt(s.win * 100, 1)}%`}</div><div class="sub">átlag ${signed(s.mean_r, 2, " R")}</div></div>
       <div class="kpi"><div class="label">Véletlen alapvonal</div><div class="value ${rCls(s.baseline_r)}">${signed(s.baseline_r, 2, " R")}</div><div class="sub">ugyanazokon a papírokon</div></div>
@@ -716,14 +934,15 @@ function renderPracticeSummary(p) {
         <div class="sub">jó döntés · szerencsés ${s.verdicts.lucky} · balszerencsés ${s.verdicts.unlucky} · rossz ${s.verdicts.bad}</div></div>` : ""}
     </div>
     <section class="card"><h2>Összefoglaló</h2><div class="card-body">${lines}</div></section>
-    <section class="card"><h2>Stop-távolság (ATR)</h2><div class="card-body"><div class="parts">${buckets}</div></div></section>
+    <section class="card"><h2>Stop-távolság (ATR)</h2><div class="card-body"><div class="parts">${buckets}</div></div></section>` : ""}
     <section class="card"><h2>Helyzetek</h2><div class="card-body"><div class="table-scroll"><table class="table"><thead><tr><th>#</th><th>Papír</th><th>Dátum</th><th>Helyzet</th><th>Döntés</th><th>Ítélet</th><th>Eredmény</th><th>Stratégiák</th><th>Referencia</th><th>Alapvonal</th></tr></thead><tbody>
-      ${p.tasks.map((t) => `<tr><td>${t.k + 1}</td><td class="ticker">${esc(t.symbol || "")}</td><td>${esc(t.date || "")}</td><td>${esc(PR_CAT[t.category] || "")}</td>
+      ${p.tasks.map((t) => (t.kind && t.kind !== "decision" ? `<tr><td>${t.k + 1}</td><td class="ticker">${esc(t.symbol || "")}</td><td>${esc(t.date || "")}</td>
+        <td>${esc(PR_KIND[t.kind] || t.kind)}</td><td>–</td><td>${t.quality != null ? `${fmt(t.quality * 100, 0)}%` : "–"}</td><td colspan="4" class="muted small">${t.points != null ? `+${t.points} pont` : ""}</td></tr>` : `<tr><td>${t.k + 1}</td><td class="ticker">${esc(t.symbol || "")}</td><td>${esc(t.date || "")}</td><td>${esc(PR_CAT[t.category] || "")}</td>
         <td>${t.action ? esc(PR_SIDE[t.action] || t.action) : "–"}</td>
         <td>${t.verdict && PR_VERDICT[t.verdict] ? `<span class="pill plain ${PR_VERDICT[t.verdict][1]}"><span aria-hidden="true">${PR_VERDICT[t.verdict][2]}</span> <span>${esc(PR_VERDICT[t.verdict][0])}</span></span>` : "–"}</td>
         <td class="num ${rCls(t.r)}">${t.r != null ? signed(t.r, 2, " R") : t.status ? esc(PR_STATUS[t.status] || t.status) : "–"}</td>
         <td class="small">${(t.strategies || []).map((x) => `${esc(PR_STRAT[x.strategy] || x.strategy)}: ${x.r != null ? signed(x.r, 2, " R") : esc(PR_STATUS[x.status] || "–")}`).join(" · ") || "–"}</td>
-        <td class="num ${rCls(t.reference_r)}">${signed(t.reference_r, 2, " R")}</td><td class="num ${rCls(t.baseline_r)}">${signed(t.baseline_r, 2, " R")}</td></tr>`).join("")}
+        <td class="num ${rCls(t.reference_r)}">${signed(t.reference_r, 2, " R")}</td><td class="num ${rCls(t.baseline_r)}">${signed(t.baseline_r, 2, " R")}</td></tr>`)).join("")}
     </tbody></table></div></div></section>`;
 }
 

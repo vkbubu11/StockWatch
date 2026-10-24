@@ -85,10 +85,12 @@ def neon(_neon_url, monkeypatch):
 
     monkeypatch.setattr(db, "url", lambda: _neon_url)
     with db.connection() as conn:                  # elotte is: egy megszakadt teszt maradeka ne zavarjon
-        conn.execute("TRUNCATE users, practice_sessions, rate_hits, oauth_states RESTART IDENTITY CASCADE")
+        conn.execute("TRUNCATE users, practice_sessions, rate_hits, oauth_states, events, admin_audit, lesson_versions, "
+                     "daily_overrides RESTART IDENTITY CASCADE")
     yield
     with db.connection() as conn:
-        conn.execute("TRUNCATE users, practice_sessions, rate_hits, oauth_states RESTART IDENTITY CASCADE")
+        conn.execute("TRUNCATE users, practice_sessions, rate_hits, oauth_states, events, admin_audit, lesson_versions, "
+                     "daily_overrides RESTART IDENTITY CASCADE")
 
 
 def make_user(email: str = "anna@example.com", password: str = "helyes-lo-elem-tuzfal", verified: bool = True) -> int:

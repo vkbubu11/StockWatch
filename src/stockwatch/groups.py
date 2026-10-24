@@ -12,7 +12,7 @@ import secrets
 
 import psycopg
 
-from . import db, webauth
+from . import analytics, db, webauth
 
 CODE_LEN = 8
 CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz"       # szam es konnyen osszetevesztheto betu (i, l, o) nelkul
@@ -55,6 +55,7 @@ def create(user_id: int, name: str) -> dict:
             except psycopg.errors.UniqueViolation:
                 continue
         conn.execute("INSERT INTO group_members (group_id, user_id) VALUES (%s, %s)", (gid, user_id))
+        analytics.track("group_create", user_id, conn)
     return next(g for g in mine(user_id) if g["id"] == gid)
 
 
@@ -74,6 +75,7 @@ def join(user_id: int, code: str) -> dict:
         if conn.execute("SELECT count(*) FROM group_members WHERE group_id = %s", (gid,)).fetchone()[0] >= MAX_MEMBERS:
             raise ValueError("Ez a csoport megtelt.")
         conn.execute("INSERT INTO group_members (group_id, user_id) VALUES (%s, %s)", (gid, user_id))
+        analytics.track("group_join", user_id, conn)
     return next(g for g in mine(user_id) if g["id"] == gid)
 
 

@@ -140,7 +140,7 @@ def test_phone_reaches_every_view_in_two_taps(ui_server, browser):
     assert page.get_attribute(".more-list a[href='#/info']", "aria-current") == "page"
     page.click(".bottom-nav a[href='#/practice']")                            # also sav: egy koppintas
     _settle(page)
-    assert page.is_visible("#pr-form")
+    page.wait_for_selector("#pr-form", state="visible")       # a hashchange utan a nezet kesobb toltodik be
     page.close()
 
 

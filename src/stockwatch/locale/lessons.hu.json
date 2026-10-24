@@ -45,7 +45,7 @@
     ],
     "figure": {"pattern": "Emelkedo haromszog"},
     "caption": "Szintetikus példa: vízszintes rezisztencia és emelkedő mélypontok.",
-    "tasks": {"rounds": 6, "only": {"pattern": null, "nothing": null}}
+    "tasks": {"rounds": 6, "only": {"pattern": null, "nothing": null}, "kinds": {"decision": 1, "levels": 1}}
   },
   {
     "level": 4,
@@ -61,7 +61,7 @@
     ],
     "figure": {"pattern": "Dupla alj"},
     "caption": "Szintetikus példa: dupla alj, nyakvonallal és az utána következő mozgással.",
-    "tasks": {"rounds": 6, "only": {"pattern": null}}
+    "tasks": {"rounds": 6, "only": {"pattern": null}, "kinds": {"decision": 1, "pattern": 1}}
   },
   {
     "level": 5,
@@ -77,7 +77,7 @@
     ],
     "figure": {"pattern": "Bull zaszlo"},
     "caption": "Szintetikus példa: zászló – a stop a zászló alja alatt, a cél a rúd magasságából.",
-    "tasks": {"rounds": 6, "only": {"strategy": null, "pattern": null}}
+    "tasks": {"rounds": 6, "only": {"strategy": null, "pattern": null}, "kinds": {"decision": 1, "stop": 1}}
   },
   {
     "level": 6,
@@ -125,7 +125,7 @@
     ],
     "figure": {"pattern": "Fej-vall"},
     "caption": "Szintetikus példa: fej-váll alakzat és nyakvonal.",
-    "tasks": {"rounds": 6, "only": {"short": null}}
+    "tasks": {"rounds": 6, "only": {"short": null}, "kinds": {"decision": 1, "pattern": 1}}
   },
   {
     "level": 9,
@@ -141,7 +141,7 @@
     ],
     "figure": {"kind": "trend"},
     "caption": "Szintetikus példa: ugyanaz a papír, eltérő volatilitású időszakok.",
-    "tasks": {"rounds": 8, "only": {"strategy": null, "pattern": null, "short": null, "nothing": null}}
+    "tasks": {"rounds": 8, "only": {"strategy": null, "pattern": null, "short": null, "nothing": null}, "kinds": {"decision": 1, "sizing": 1}}
   },
   {
     "level": 10,

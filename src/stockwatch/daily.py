@@ -14,7 +14,7 @@ from datetime import date, timedelta
 
 import psycopg
 
-from . import db, groups, progress
+from . import analytics, db, groups, progress
 from .config import Settings
 from .practice import sampler, store
 from .practice import session as practice
@@ -26,6 +26,13 @@ NICK_RE = re.compile(r"^[\w .\-]{3,20}$")
 
 def seed_for(day: date, fingerprint: str) -> int:
     return int(hashlib.sha1(f"daily|{day:%Y-%m-%d}|{fingerprint}".encode()).hexdigest()[:8], 16) % sampler.SEED_MAX
+
+
+def day_seed(day: date, fingerprint: str) -> int:
+    """A nap helyzetsoranak seedje: az admin csereje (#58, daily_overrides), kulonben seed_for."""
+    with db.connection() as conn:
+        row = conn.execute("SELECT seed FROM daily_overrides WHERE day = %s", (day,)).fetchone()
+    return int(row[0]) if row else seed_for(day, fingerprint)
 
 
 def status(user_id: int, day: date | None = None) -> dict:
@@ -48,8 +55,10 @@ def start(user_id: int, settings: Settings | None = None, day: date | None = Non
     if not pool:
         raise ValueError("Meg nincs feladatkeszlet.")
     try:
-        return practice.create(user_id, settings, seed=seed_for(day, pool["fingerprint"]), rounds=practice.DAILY_ROUNDS,
-                               daily=key)
+        created = practice.create(user_id, settings, seed=day_seed(day, pool["fingerprint"]),
+                                  rounds=practice.DAILY_ROUNDS, daily=key)
+        analytics.track("daily_start", user_id, day=key)
+        return created
     except psycopg.errors.UniqueViolation:            # egyszerre ket indulas: a masik mar letrehozta
         return practice.public(store.load_session(store.daily_session(user_id, key), user_id))
 
