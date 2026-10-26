@@ -1,0 +1,30 @@
+{
+  "ecp_version": "1.0",
+  "name": "StockWatch Practice",
+  "url": "{URL}/",
+  "kind": "website",
+  "summary": "Free educational web app for practising stock chart reading with blind decisions and a verdict on decision quality. Simulated data, not investment advice.",
+  "capabilities": [
+    {"id": "learn-chart-reading", "description": "10-level learning path: candles and trend, moving averages, support and resistance, patterns, stops and R, pullbacks, breakouts, shorts, risk management.", "url": "{URL}/about"},
+    {"id": "practice-decisions", "description": "Hidden normalized charts; decide skip / long / short with a stop and get a step-by-step verdict.", "url": "{URL}/register"},
+    {"id": "daily-challenge", "description": "The same 5 charts for everyone each day, with a leaderboard and private groups.", "url": "{URL}/register"}
+  ],
+  "interaction": {
+    "public_api": false,
+    "account_required": true,
+    "signup": "{URL}/register",
+    "price": "free",
+    "languages": ["en", "de", "es", "hu"]
+  },
+  "resources": [
+    {"name": "llms.txt", "url": "{URL}/llms.txt", "type": "text/plain"},
+    {"name": "ai.json", "url": "{URL}/ai.json", "type": "application/json"},
+    {"name": "about", "url": "{URL}/about", "type": "text/html"}
+  ],
+  "policies": {
+    "terms": "{URL}/aszf",
+    "privacy": "{URL}/adatkezeles",
+    "disclaimer": "Educational practice only. Not investment advice. No real money, no trading signals or tips."
+  },
+  "contact": {"email": "{CONTACT}"}
+}

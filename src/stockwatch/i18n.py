@@ -196,6 +196,29 @@ def catalog(lang: str) -> Catalog | None:
     return Catalog(data) if data else None
 
 
+_TEXT_NODE = re.compile(r">([^<>]+)<")
+_ATTR = re.compile(r'\b(alt|title|placeholder|aria-label)="([^"]*)"')
+
+
+def translate_html(page: str, lang: str) -> str:
+    """Egy (inline szkript nelkuli) HTML-oldal forditasa a szerveren: a szovegcsomopontok es az alt / title /
+    placeholder / aria-label attributumok a katalogusbol. A JavaScriptet nem futtato robotok (kereso, AI) is a
+    latogato nyelven latjak az oldalt; a bongeszo (i18n.js) a data-lang-done jelolest latva nem forditja ujra."""
+    if lang == "hu" or catalog(lang) is None:
+        return page
+
+    def tr(text: str) -> str:
+        core = " ".join(text.split())
+        if not re.search(r"[A-Za-zÀ-ž]{2}", core):
+            return text
+        out = translate(core, lang)
+        return text if out == core else text[: len(text) - len(text.lstrip())] + out + text[len(text.rstrip()):]
+
+    page = _TEXT_NODE.sub(lambda m: ">" + tr(m.group(1)) + "<", page)
+    page = _ATTR.sub(lambda m: f'{m.group(1)}="{tr(m.group(2))}"', page)
+    return re.sub(r'<html lang="[a-z]+"', f'<html lang="{lang}" data-lang-done="{lang}"', page, count=1)
+
+
 def translate(text: str | None, lang: str) -> str | None:
     """Soronkenti forditas; magyar nyelvnel vagy hianyzo katalogusnal valtozatlan."""
     cat = catalog(lang)

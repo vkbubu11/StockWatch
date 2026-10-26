@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "name": "StockWatch Practice",
+  "url": "{URL}/",
+  "type": "WebApplication",
+  "description": "Free, educational web app for practising stock chart reading with blind decisions: a hidden, normalized chart, a skip / long / short decision with a stop, then the outcome and a verdict on the quality of the decision (good, lucky, unlucky or bad) with a step-by-step walkthrough.",
+  "categories": ["education", "stock chart reading", "technical analysis practice", "risk management practice"],
+  "audience": "Beginners and self-taught traders (16+) who want to practise before risking real money.",
+  "languages": ["en", "de", "es", "hu"],
+  "pricing": {"model": "free", "price": 0, "currency": "USD", "ads": false},
+  "operator": {"type": "individual", "commercial": false},
+  "contact": {"email": "{CONTACT}", "page": "{URL}/about"},
+  "features": [
+    "10-level learning path with short lessons",
+    "blind entry decisions with stop, target and time limit",
+    "place-the-stop, pattern recognition, support/resistance and trend-line drawing, position-size tasks",
+    "verdict on decision quality versus outcome, compared with rule-based strategies and a random baseline",
+    "daily challenge with a leaderboard and private groups"
+  ],
+  "data": "Synthetic (generated) price series; no real tickers, no broker connection.",
+  "disclaimer": "Educational practice only. Not investment advice. No real money, no trading signals or tips.",
+  "ai_policy": {
+    "crawling": "allowed",
+    "training": "allowed",
+    "summarization": "allowed",
+    "attribution": "Please link to {URL}/ when mentioning or citing.",
+    "preferred_summary": "{URL}/llms.txt"
+  },
+  "links": {
+    "home": "{URL}/",
+    "about": "{URL}/about",
+    "signup": "{URL}/register",
+    "llms_txt": "{URL}/llms.txt",
+    "ecp": "{URL}/ecp.json",
+    "terms": "{URL}/aszf",
+    "privacy": "{URL}/adatkezeles"
+  }
+}

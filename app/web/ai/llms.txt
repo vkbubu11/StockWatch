@@ -1,0 +1,33 @@
+# StockWatch Practice
+
+> Free, educational web app for practising stock chart reading with blind decisions. You get a hidden, normalized chart (no ticker, no date), decide skip, long or short with a mandatory stop, then see what happened and get a verdict on the quality of the decision – good, lucky, unlucky or bad – with a step-by-step walkthrough. Simulated data, no real money, not investment advice.
+
+Key facts:
+
+- Price: free. No ads, no payments, no payment data stored.
+- Operator: a private individual, non-commercial. No broker, investment firm or advertiser behind it.
+- Audience: beginners and self-taught traders (16+) who want to practise chart reading and risk management before risking real money.
+- Learning path: 10 levels with short lessons and targeted exercises – candles and trend, moving averages, support and resistance, bullish patterns, stop placement and R, pullbacks and RSI, breakouts, shorts and bearish patterns, risk management and position size, mixed exam.
+- Task types: blind entry decisions (skip / long / short with stop, target and time limit), "place the stop", "which pattern is this?", drawing support / resistance and trend lines, position-size and risk calculation.
+- Feedback: each decision is judged by the rules known at decision time and by the outcome, so a profitable trade can still be a bad decision; compared with rule-based strategies and a random baseline.
+- Daily challenge: everyone gets the same 5 charts each day; leaderboard by decision quality (nicknames only); private groups for a class or friends.
+- Data: synthetic (generated) price series – no real tickers, nothing to look up, no broker connection, no trading signals or tips.
+- Languages: English, German, Spanish, Hungarian. Works on phone and desktop.
+- Privacy: no advertising or tracking cookies; visits are counted without cookies on our own server.
+
+## Pages
+
+- [Home]({URL}/): overview, screenshots and free sign-up
+- [About and contact]({URL}/about): how it works, who runs it, FAQ, contact
+- [Sign up]({URL}/register): free account (email or Google)
+- [Terms]({URL}/aszf)
+- [Privacy notice]({URL}/adatkezeles)
+
+## Machine-readable
+
+- [ai.json]({URL}/ai.json): site identity and AI usage policy
+- [ecp.json]({URL}/ecp.json): manifest for AI agents
+
+## Contact
+
+- Email: {CONTACT}

@@ -229,6 +229,7 @@ const I18N = (() => {
     sel.innerHTML = Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${k === LANG ? "selected" : ""}>${k.toUpperCase()} · ${v}</option>`).join("");
     sel.addEventListener("change", () => {
       try { localStorage.setItem(LANG_KEY, sel.value); } catch (_) { /* privat mod */ }
+      document.cookie = `sw_lang=${sel.value}; Path=/; Max-Age=31536000; SameSite=Lax`;   // a szerver is ezen a nyelven adja
       location.reload();
     });
     box.prepend(sel);
@@ -241,7 +242,14 @@ const I18N = (() => {
     // a szerver is tudja (pl. a megerosito level nyelve); nem titok, nem azonosit
     document.cookie = `sw_lang=${LANG}; Path=/; Max-Age=31536000; SameSite=Lax`;
     picker();
-    if (LANG === "hu") return;
+    // a szerver mar leforditotta (kezdooldal, Rolunk): nincs teendo; ha mas nyelven adta (regi suti), egyszer ujratolt
+    const done = document.documentElement.dataset.langDone;
+    if (done && done !== LANG) {
+      let again = false;
+      try { again = sessionStorage.getItem("sw-relang") === LANG; sessionStorage.setItem("sw-relang", LANG); } catch (_) { again = true; }
+      if (!again) { location.reload(); return; }
+    }
+    if (LANG === "hu" || done === LANG) return;
     // a katalogus betolteseig a felulet rejtve (ne villanjon fel magyarul); hiba eseten magyarul jelenik meg
     document.documentElement.classList.add("i18n-loading");
     fetch(`i18n/${LANG}.json`, { cache: "no-store" })

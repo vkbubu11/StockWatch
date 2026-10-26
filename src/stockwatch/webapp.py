@@ -40,6 +40,10 @@ STATIC_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; ch
 PUBLIC_FILES = ("/style.css", "/i18n.js")             # bejelentkezes nelkul is (+ /i18n/<nyelv>.json, urlapok)
 AUTH_PAGES = ("/login", "/register", "/forgot", "/reset", "/resend")
 LEGAL_PAGES = {"/aszf": "aszf.html", "/adatkezeles": "adatkezeles.html", "/sutik": "sutik.html"}   # nyilvanos (#40)
+# AI-felfedezes (GEO): nyilvanos, gepi olvasasra; a {URL} es a {CONTACT} a szerver beallitasaibol
+AI_FILES = {"/llms.txt": "llms.txt", "/ai.json": "ai.json", "/.well-known/ai.json": "ai.json", "/ecp.json": "ecp.json",
+            "/.well-known/ecp.json": "ecp.json"}
+SITEMAP = ("/", "/about", "/register", "/login", "/aszf", "/adatkezeles", "/sutik")
 LESSON_RE = re.compile(r"/api/lessons/(\d{1,2})(/start)?")
 # admin felulet (#58): nem adminnak minden /admin es /api/admin utvonal 404
 ADMIN_FILES = {"/admin": "index.html", "/admin/": "index.html", "/admin/admin.js": "admin.js"}
@@ -384,6 +388,11 @@ def make_handler(trust_proxy: bool = False):
                     return self._json(i18n.entries(m.group(1)))
                 if path in PUBLIC_FILES or posixpath.normpath(path).startswith("/img/"):   # a kezdooldal kepei
                     return self._static(path)
+                if path in AI_FILES or path in ("/robots.txt", "/sitemap.xml"):
+                    return self._discovery(path)
+                if path == "/about":                                   # nyilvanos: rolunk es kapcsolat
+                    self._pageview(path)
+                    return self._localized("about.html")
                 if path in LEGAL_PAGES:
                     text = (WEB_DIR / "legal" / LEGAL_PAGES[path]).read_text(encoding="utf-8")
                     contact = config.env_value("CONTACT_EMAIL")       # egy forras: az Informacio oldal is ezt mutatja
@@ -400,7 +409,7 @@ def make_handler(trust_proxy: bool = False):
                         return self._error(401, "Bejelentkezes szukseges")
                     if path == "/":                                    # nyilvanos kezdooldal (#39)
                         self._pageview("/")
-                        return self._send(200, (WEB_DIR / "landing.html").read_bytes(), STATIC_TYPES[".html"])
+                        return self._localized("landing.html")
                     return self._redirect("/login")
                 if path == "/api/session":
                     return self._json({k: user[k] for k in ("email", "onboarded", "nickname", "has_password", "google")}
@@ -476,6 +485,33 @@ def make_handler(trust_proxy: bool = False):
                 log.exception("Hiba a keres kiszolgalasa kozben: %s", path)
                 self._count_error(path)
                 return self._error(500, "Szerverhiba")
+
+        def _localized(self, name: str) -> None:
+            """Nyilvanos oldal a latogato nyelven, a szerveren forditva (a JavaScriptet nem futtato robotok is igy
+            latjak; valasztas nelkul angolul)."""
+            from . import i18n
+
+            text = (WEB_DIR / name).read_text(encoding="utf-8")
+            text = text.replace("[KAPCSOLATI E-MAIL]", html.escape(config.env_value("CONTACT_EMAIL") or ""))
+            self._send(200, i18n.translate_html(text, self._lang()).encode("utf-8"), STATIC_TYPES[".html"])
+
+        def _discovery(self, path: str) -> None:
+            """llms.txt, ai.json, ecp.json (gyoker es /.well-known), robots.txt, sitemap.xml."""
+            base = self._base_url()
+            if path == "/robots.txt":
+                body = f"User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\n\nSitemap: {base}/sitemap.xml\n"
+                return self._send(200, body.encode("utf-8"), "text/plain; charset=utf-8")
+            if path == "/sitemap.xml":
+                urls = "".join(f"<url><loc>{html.escape(base + p)}</loc></url>" for p in SITEMAP)
+                body = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>'
+                return self._send(200, body.encode("utf-8"), "application/xml; charset=utf-8")
+            name = AI_FILES[path]
+            contact = config.env_value("CONTACT_EMAIL") or ""
+            if name.endswith(".json"):
+                contact = json.dumps(contact)[1:-1]
+            text = (WEB_DIR / "ai" / name).read_text(encoding="utf-8").replace("{URL}", base).replace("{CONTACT}", contact)
+            ctype = "application/json; charset=utf-8" if name.endswith(".json") else "text/plain; charset=utf-8"
+            return self._send(200, text.encode("utf-8"), ctype)
 
         def _pageview(self, path: str) -> None:
             """Sutimentes oldalmegtekintes (#48): az oldal, a hivatkozo domain, az eszkoz - robot nem szamit."""
