@@ -758,3 +758,4 @@ svg.pr-input { cursor: crosshair; }
 /* admin felulet (#58): a fulek telefonon tobb sorba torhetnek */
 .adm-tabs { display: flex; flex-wrap: wrap; margin-bottom: 12px; }
 .adm-tabs .seg { min-height: 40px; }
+.auth-google { display: block; width: 100%; text-align: center; }

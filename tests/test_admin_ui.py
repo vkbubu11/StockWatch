@@ -35,7 +35,7 @@ def test_admin_page_on_a_phone(site, browser, env):  # noqa: F811
     page.context.add_cookies([{"name": webauth.COOKIE, "value": accounts.login("root@example.com", PW, "127.0.0.1"), "url": site}])
     page.goto(site + "/admin")
     page.wait_for_selector("#totp")
-    secret = page.inner_text("code").strip()
+    secret = page.inner_text("#totp-key").replace(" ", "")              # negyes csoportokban latszik
     page.fill("input[name=code]", admin.totp(secret, int(time.time() // admin.TOTP_STEP)))
     page.click("#totp button[type=submit]")
     page.wait_for_selector(".adm-tabs")

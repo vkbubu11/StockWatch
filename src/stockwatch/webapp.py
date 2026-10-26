@@ -172,17 +172,19 @@ def auth_form(page: str, email: str = "", token: str = "", google: bool = False)
                                     + _field("password", f"Új jelszó (legalább {webauth.MIN_PASSWORD} karakter)",
                                              "password", "new-password", extra=pw_min + " autofocus")
                                     + '<button class="btn primary" type="submit">Jelszó beállítása</button>')
-    extra = ""
+    top = ""                                          # a Google-lehetoseg felul (gyors regisztracio / belepes)
     if google and page == "login":
-        extra = '<p class="auth-or">vagy</p><a class="btn" href="/auth/google/start">Folytatás Google-lel</a>'
+        top = ('<a class="btn primary auth-google" href="/auth/google/start">Folytatás Google-lel</a>'
+               '<p class="auth-or">vagy e-mail-címmel</p>')
     elif google and page == "register":
-        extra = ('<p class="auth-or">vagy Google-fiókkal</p><form method="get" action="/auth/google/start" class="field">'
-                 '<input type="hidden" name="terms" value="1">'
-                 '<label class="check"><input type="checkbox" name="age" value="1" required> <span>Elfogadom az '
-                 '<a href="/aszf" target="_blank">ÁSZF-et</a> és az <a href="/adatkezeles" target="_blank">adatkezelési '
-                 'tájékoztatót</a>, és elmúltam 16 éves.</span></label>'
-                 '<button class="btn" type="submit">Regisztráció Google-lel</button></form>')
-    return title, (f'<form method="post" action="/{page}" class="field">{body}</form>{extra}'
+        top = ('<form method="get" action="/auth/google/start" class="field">'
+               '<input type="hidden" name="terms" value="1">'
+               '<label class="check"><input type="checkbox" name="age" value="1" required> <span>Elfogadom az '
+               '<a href="/aszf" target="_blank">ÁSZF-et</a> és az <a href="/adatkezeles" target="_blank">adatkezelési '
+               'tájékoztatót</a>, és elmúltam 16 éves.</span></label>'
+               '<button class="btn primary auth-google" type="submit">Gyors regisztráció Google-fiókkal</button></form>'
+               '<p class="auth-or">vagy e-mail-címmel</p>')
+    return title, (f'{top}<form method="post" action="/{page}" class="field">{body}</form>'
                    f'<p class="auth-links">{links[page]}</p>')
 
 

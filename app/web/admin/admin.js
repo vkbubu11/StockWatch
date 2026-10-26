@@ -45,12 +45,26 @@ async function login() {
   if (s.verified) return start();
   main.innerHTML = `<section class="card"><h2>Kétlépcsős azonosítás</h2><div class="card-body">
     ${s.enrolled ? `<p>Írd be a hitelesítő alkalmazás (pl. Google Authenticator, Aegis) 6 jegyű kódját.</p>`
-      : `<p>Első belépés: add hozzá a fiókot a hitelesítő alkalmazáshoz. Telefonon érintsd meg a linket, vagy írd be kézzel a kulcsot.</p>
-        <p><a class="btn" href="${esc(s.uri)}">Megnyitás a hitelesítő alkalmazásban</a></p>
-        <p>Kulcs: <code style="word-break:break-all">${esc(s.secret)}</code><br><span class="muted small">Fiók: ${esc(s.email)} · 30 másodperces, 6 jegyű kód. A kulcs az első helyes kód után többé nem látszik.</span></p>`}
-    <form id="totp" class="ag-form"><label>Kód<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
+      : `<p>Első belépés: add hozzá a fiókot egy hitelesítő alkalmazáshoz.</p>
+        <ol>
+          <li>Telepíts egy hitelesítő alkalmazást: Google Authenticator, Microsoft Authenticator vagy Aegis.</li>
+          <li>Az alkalmazásban: <strong>+</strong> → <strong>Beállítási kulcs megadása</strong> (Enter a setup key).
+            Fiók neve: <em>StockWatch admin</em> · kulcs: az alábbi · típus: <strong>időalapú</strong>.</li>
+          <li>Írd be lent az alkalmazás 6 jegyű kódját.</li>
+        </ol>
+        <p>Kulcs: <code id="totp-key" style="word-break:break-all;font-size:1.1em">${esc(s.secret.replace(/(.{4})(?=.)/g, "$1 "))}</code>
+          <button class="btn" type="button" id="totp-copy">Másolás</button></p>
+        <p class="muted small">Fiók: ${esc(s.email)} · 30 másodperces, 6 jegyű kód. A kulcs az első helyes kód után többé nem látszik.<br>
+          Alternatíva: <a href="${esc(s.uri)}">megnyitás a telefon alapértelmezett kódkezelőjében</a> – iPhone-on ez gyakran a Jelszavak app;
+          az is jó, ha ott megjelenik a 6 jegyű kód.</p>`}
+    <form id="totp" class="ag-form"><label>Kód<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required></label>
       <div class="wide"><button class="btn primary" type="submit">Belépés</button> <span id="adm-msg" class="small"></span></div></form>
   </div></section>`;
+  const copy = document.getElementById("totp-copy");
+  if (copy) copy.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(s.secret); copy.textContent = "Másolva"; }
+    catch (_) { getSelection().selectAllChildren(document.getElementById("totp-key")); }   // kezzel masolhato
+  });
   document.getElementById("totp").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     try { await api("/api/admin/verify", { code: ev.target.elements.code.value }); start(); } catch (e) { msg(e.message, false); }
