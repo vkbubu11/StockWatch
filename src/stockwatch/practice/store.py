@@ -61,7 +61,7 @@ def load_pool() -> dict | None:
 # ---------------------------------------------------------------------------
 # Korok (adatbazis)
 # ---------------------------------------------------------------------------
-SESSION_COLS = "id, created_at, seed, rounds, mix, pool_fingerprint, code, warning, summary, lesson, daily"
+SESSION_COLS = "id, created_at, seed, rounds, mix, pool_fingerprint, code, warning, summary, lesson, daily, duel"
 TASK_COLS = "k, task_id, symbol, day, category, source, breakout, decision, decided_at, points, kind, params, quality"
 
 
@@ -75,10 +75,10 @@ def _iso(value) -> str | None:
 
 
 def _session(row, tasks: list[dict]) -> dict:
-    sid, created, seed, rounds, mix, fingerprint, code, warning, summary, lesson, daily = row
+    sid, created, seed, rounds, mix, fingerprint, code, warning, summary, lesson, daily, duel = row
     out = {"id": sid, "created": _iso(created), "seed": seed, "rounds": rounds, "mix": mix,
            "pool_fingerprint": fingerprint, "code": code, "warning": warning, "lesson": lesson,
-           "daily": f"{daily:%Y-%m-%d}" if daily else None, "tasks": tasks}
+           "daily": f"{daily:%Y-%m-%d}" if daily else None, "duel": duel, "tasks": tasks}
     return out | ({"summary": summary} if summary is not None else {})
 
 
@@ -110,11 +110,11 @@ def load_session(session_id: str, user_id: int) -> dict | None:
 def _save(conn, session: dict, user_id: int, only: list[int] | None = None) -> None:
     conn.execute(
         "INSERT INTO practice_sessions (id, user_id, seed, rounds, mix, pool_fingerprint, code, warning, summary, lesson, "
-        "daily) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO UPDATE SET summary = EXCLUDED.summary "
+        "daily, duel) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO UPDATE SET summary = EXCLUDED.summary "
         "WHERE practice_sessions.user_id = EXCLUDED.user_id",
         (session["id"], user_id, session["seed"], session["rounds"], Jsonb(session["mix"]), session["pool_fingerprint"],
          session["code"], session.get("warning"), Jsonb(session["summary"]) if session.get("summary") else None,
-         session.get("lesson"), session.get("daily")))
+         session.get("lesson"), session.get("daily"), session.get("duel")))
     rows = []
     for k, t in enumerate(session["tasks"]):
         if only is not None and k not in only:
@@ -143,8 +143,9 @@ def create_session(session: dict, user_id: int) -> None:
     a regi napi korok felfedes-blobja (result) torolheto, a pont oszlop marad."""
     with db.connection() as conn:
         _save(conn, session, user_id)
-        conn.execute("DELETE FROM practice_sessions WHERE user_id = %s AND daily IS NULL AND id NOT IN (SELECT id "
-                     "FROM practice_sessions WHERE user_id = %s AND daily IS NULL ORDER BY created_at DESC, id LIMIT %s)",
+        conn.execute("DELETE FROM practice_sessions WHERE user_id = %s AND daily IS NULL AND duel IS NULL AND id NOT IN "
+                     "(SELECT id FROM practice_sessions WHERE user_id = %s AND daily IS NULL AND duel IS NULL "
+                     "ORDER BY created_at DESC, id LIMIT %s)",
                      (user_id, user_id, MAX_SESSIONS))
 
 
@@ -168,7 +169,8 @@ def daily_session(user_id: int, day: str) -> str | None:
 def delete_session(session_id: str, user_id: int) -> bool:
     _check(session_id)
     with db.connection() as conn:
-        return conn.execute("DELETE FROM practice_sessions WHERE id = %s AND user_id = %s",
+        # a parbaj kore (#55) nem torolheto: torles + ujra elfogadas = a helyzetsor ismetlese az eredmeny ismereteben
+        return conn.execute("DELETE FROM practice_sessions WHERE id = %s AND user_id = %s AND duel IS NULL",
                             (session_id, user_id)).rowcount > 0
 
 

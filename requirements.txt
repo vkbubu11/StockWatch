@@ -21,5 +21,8 @@ PyYAML>=6.0
 pydantic>=2.7.0
 python-dotenv>=1.0.0
 
+# --- Megosztható kártya (#57) ---
+Pillow>=10
+
 # --- Teszt ---
 pytest>=8.2.0

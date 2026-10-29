@@ -51,6 +51,9 @@ ADMIN_GET = re.compile(r"/api/admin/(state|overview|users|users/(\d{1,12})|conte
 ADMIN_POST = re.compile(r"/api/admin/(verify|logout|users/(\d{1,12})/(resend|suspend|unsuspend|reset_nickname|delete|export)"
                         r"|lessons|lessons/restore|daily/replace|pool/rebuild|groups/(\d{1,12})/(revoke_code|delete))")
 CLIENT_ERRORS = webauth.RateLimit("ip-client-error", 20, 60 * 60)   # a bongeszos hibaszamlalo (#48) IP-nkent
+DUEL_LINK_RE = re.compile(r"/d/([a-z]{12})")             # parbaj-meghivo (#55); belepes utan ide vissza
+DUEL_RE = re.compile(r"/api/duels/([a-z]{12})(?:/(accept|revoke|rematch))?")
+SHARE_RE = re.compile(r"/s/([a-z]{12})(\.png)?")      # megosztott eredmeny (#57): nyilvanos oldal es kartya
 PRACTICE_SESSION_RE = re.compile(r"/api/practice/session/([a-z]{12})/(task/(\d{1,2})(/decision)?|summary)")
 
 # az urlapok visszajelzesei (?e=kod): (fajta, szoveg)
@@ -71,6 +74,8 @@ NOTICES = {
     "googleterms": ("error", "Új fiókhoz fogadd el az ÁSZF-et és az adatkezelési tájékoztatót, majd folytasd Google-lel."),
     "googlefail": ("error", "A Google-belépés nem sikerült – próbáld újra."),
     "googletaken": ("error", "Ez a Google-fiók már egy másik fiókhoz kapcsolódik."),
+    "duel": ("info", "Párbaj-meghívót kaptál. Lépj be, és a párbaj megnyílik. Ha még nincs fiókod, regisztrálj, erősítsd "
+                     "meg az e-mail-címedet, majd nyisd meg újra a meghívó linkjét."),
 }
 
 
@@ -139,7 +144,8 @@ def _field(name: str, label: str, kind: str, autocomplete: str, value: str = "",
             f'autocomplete="{autocomplete}" value="{html.escape(value)}" required {extra}>')
 
 
-def auth_form(page: str, email: str = "", token: str = "", google: bool = False) -> tuple[str, str]:
+def auth_form(page: str, email: str = "", token: str = "", google: bool = False, source: str = "",
+              next_path: str = "") -> tuple[str, str]:
     """(cim, urlap) a belepes / regisztracio / elfelejtett jelszo / uj jelszo oldalhoz; `google`: a Google-gomb is."""
     pw_min = f'minlength="{webauth.MIN_PASSWORD}" maxlength="{webauth.MAX_PASSWORD}"'
     links = {"login": '<a href="/register">Regisztráció</a><a href="/forgot">Elfelejtett jelszó</a>'
@@ -150,6 +156,8 @@ def auth_form(page: str, email: str = "", token: str = "", google: bool = False)
     if page == "login":
         title, body = "Bejelentkezés", (_field("email", "E-mail-cím", "email", "username", email, "autofocus")
                                   + _field("password", "Jelszó", "password", "current-password")
+                                  + (f'<input type="hidden" name="next" value="{next_path}">'
+                                     if DUEL_LINK_RE.fullmatch(next_path) else "")
                                   + '<button class="btn primary" type="submit">Bejelentkezés</button>')
     elif page == "register":
         title, body = "Regisztráció", (
@@ -160,7 +168,9 @@ def auth_form(page: str, email: str = "", token: str = "", google: bool = False)
               '<a href="/aszf" target="_blank">ÁSZF-et</a> és az <a href="/adatkezeles" target="_blank">adatkezelési '
               'tájékoztatót</a>.</span></label>'
             + '<label class="check"><input type="checkbox" name="age" value="1" required> <span>Elmúltam 16 éves.</span>'
-              '</label><button class="btn primary" type="submit">Regisztráció</button>')
+              '</label><button class="btn primary" type="submit">Regisztráció</button>'
+            # honnan jott (#57): suti nelkul, rejtett mezoben; csak ismert ertek
+            + ('<input type="hidden" name="src" value="share">' if source == "share" else ""))
     elif page == "resend":
         title, body = "Új megerősítő link", (_field("email", "E-mail-cím", "email", "username", email, "autofocus")
                                              + '<button class="btn primary" type="submit">Új link küldése</button>')
@@ -188,8 +198,9 @@ def auth_form(page: str, email: str = "", token: str = "", google: bool = False)
                    f'<p class="auth-links">{links[page]}</p>')
 
 
-def auth_page(page: str, message: tuple[str, str] | None = None, email: str = "", token: str = "") -> bytes:
-    title, form = auth_form(page, email, token, google_auth.configured())
+def auth_page(page: str, message: tuple[str, str] | None = None, email: str = "", token: str = "",
+              source: str = "", next_path: str = "") -> bytes:
+    title, form = auth_form(page, email, token, google_auth.configured(), source, next_path)
     notice = (f'<p class="login-{"error" if message[0] == "error" else "info"}" role="alert">{html.escape(message[1])}</p>'
               if message else "")
     text = (WEB_DIR / "auth.html").read_text(encoding="utf-8")
@@ -292,12 +303,13 @@ def make_handler(trust_proxy: bool = False):
             try:
                 if path == "/login":
                     token = accounts.login(email, form.get("password", ""), ip, self.headers.get("User-Agent", ""))
+                    next_path = form.get("next", "")
                     if not token:
-                        return self._page("login", 400, NOTICES["bad"], email=email)
-                    return self._redirect("/", self._cookie(token))
+                        return self._page("login", 400, NOTICES["bad"], email=email, next_path=next_path)
+                    return self._redirect(next_path if DUEL_LINK_RE.fullmatch(next_path) else "/", self._cookie(token))
                 if path == "/register":
                     accounts.register(email, form.get("password", ""), form.get("terms") == "1", form.get("age") == "1",
-                                      ip, self._base_url(), self._lang())
+                                      ip, self._base_url(), self._lang(), "share" if form.get("src") == "share" else None)
                     return self._redirect("/login?e=sent")
                 if path == "/forgot":
                     accounts.request_reset(email, ip, self._base_url(), self._lang())
@@ -312,7 +324,8 @@ def make_handler(trust_proxy: bool = False):
             except accounts.RateLimited as exc:
                 return self._page(page, 429, ("error", str(exc)), email=email)
             except accounts.AccountError as exc:
-                return self._page(page, 400, ("error", str(exc)), email=email, token=form.get("token", ""))
+                return self._page(page, 400, ("error", str(exc)), email=email, token=form.get("token", ""),
+                                  source=form.get("src", ""))
 
         def _google(self, path: str, query: dict) -> None:
             """/auth/google/start es /callback (#43)."""
@@ -375,7 +388,8 @@ def make_handler(trust_proxy: bool = False):
                 if path in AUTH_PAGES:
                     self._pageview(path)
                     return self._page(path.lstrip("/"), message=NOTICES.get(query.get("e", [""])[0]),
-                                      token=query.get("token", [""])[0])
+                                      token=query.get("token", [""])[0], source=query.get("src", [""])[0],
+                                      next_path=query.get("next", [""])[0])
                 if path in ("/auth/google/start", "/auth/google/callback"):
                     return self._google(path, query)
                 if path == "/verify":
@@ -405,7 +419,12 @@ def make_handler(trust_proxy: bool = False):
                                                                          or "a szolgáltatás üzemeltetője"))
                     self._pageview(path)
                     return self._send(200, text.encode("utf-8"), STATIC_TYPES[".html"])
+                m = SHARE_RE.fullmatch(path)
+                if m:
+                    return self._share(m.group(1), bool(m.group(2)))
                 user = self._user()
+                if DUEL_LINK_RE.fullmatch(path):                       # a meghivo link: a parbaj oldala (belepve)
+                    return self._redirect(f"/#/duel/{path[3:]}" if user else f"/login?e=duel&next={path}")
                 if user is None:
                     if path.startswith("/api/"):
                         return self._error(401, "Bejelentkezes szukseges")
@@ -436,12 +455,32 @@ def make_handler(trust_proxy: bool = False):
                     from . import groups
 
                     return self._json(groups.mine(user["id"]))
+                if path == "/api/shares":
+                    from . import shares
+
+                    return self._json(shares.mine(user["id"]))
+                if path == "/api/review":
+                    from . import repetition
+
+                    return self._json({"queue": repetition.queue(user["id"]), "weaknesses": repetition.weaknesses(user["id"])})
+                if path == "/api/duels":
+                    from . import duels
+
+                    return self._json(duels.mine(user["id"]))
+                m = DUEL_RE.fullmatch(path)
+                if m and not m.group(2):
+                    from . import duels
+
+                    try:
+                        return self._json(duels.view(user["id"], m.group(1)))
+                    except LookupError as exc:
+                        return self._error(404, str(exc))
                 if path == "/api/practice":
                     return self._json(practice_payload(user["id"]))
                 if path == "/api/progress":
-                    from . import progress
+                    from . import calibration, progress
 
-                    return self._json(progress.summary(user["id"]))
+                    return self._json(progress.summary(user["id"]) | {"calibration": calibration.for_user(user["id"])})
                 if path == "/api/lessons":
                     from . import learning
 
@@ -495,6 +534,36 @@ def make_handler(trust_proxy: bool = False):
 
             text = (WEB_DIR / name).read_text(encoding="utf-8")
             text = text.replace("[KAPCSOLATI E-MAIL]", html.escape(config.env_value("CONTACT_EMAIL") or ""))
+            self._send(200, i18n.translate_html(text, self._lang()).encode("utf-8"), STATIC_TYPES[".html"])
+
+        def _share(self, share_id: str, image: bool) -> None:
+            """Megosztott eredmeny (#57): a linkelonezet (og) es a kep a megoszto nyelven, a lathato oldal a
+            latogatoen; visszavont vagy ismeretlen azonosito: 404."""
+            from . import analytics, i18n, shares
+
+            share = shares.get(share_id)
+            if share is None:
+                return self._not_found(False)
+            if image:
+                return self._send(200, shares.png(share, share["lang"]), "image/png")
+            if not analytics.is_bot(self.headers.get("User-Agent", "")):
+                analytics.track_later("share_view", kind=share["kind"])
+            og, t = shares.lines(share, share["lang"]), shares.lines(share, self._lang())
+            esc, base = html.escape, self._base_url()
+            group = share["data"].get("group")
+            cta = "Próbáld ki a mai kihívást" if share["kind"] == "daily" else "Próbáld ki ingyen"
+            content = (f'<h1>{esc(t["player"])}</h1><h2>{esc(t["title"])}</h2>'
+                       f'<p><strong>{esc(t["headline"])}</strong></p><p>{esc(t["marks"])} {esc(t["sub"])}</p>'
+                       + (f'<p><span>Csatlakozz a csoportunkhoz:</span> <strong>{esc(group["name"])}</strong></p>'
+                          f'<p><span>Meghívókód:</span> <code>{esc(group["code"])}</code></p>' if group else "")
+                       + f'<p><a class="btn primary" href="/register?src=share">{cta}</a></p>'
+                       f'<p class="muted">{esc(t["disclaimer"])}</p>')
+            fields = {"{TITLE}": f'{og["player"]} – {og["title"]}', "{DESCRIPTION}": f'{og["headline"]} · {og["sub"]}. {og["disclaimer"]}',
+                      "{IMAGE}": f"{base}/s/{share['id']}.png", "{URL}": f"{base}/s/{share['id']}",
+                      "{ALT}": f'{t["title"]}: {t["headline"]}'}
+            text = (WEB_DIR / "share.html").read_text(encoding="utf-8").replace("<!--CONTENT-->", content)
+            for key, value in fields.items():
+                text = text.replace(key, esc(value))
             self._send(200, i18n.translate_html(text, self._lang()).encode("utf-8"), STATIC_TYPES[".html"])
 
         def _discovery(self, path: str) -> None:
@@ -683,6 +752,35 @@ def make_handler(trust_proxy: bool = False):
                         getattr(groups, action)(user["id"], int(body.get("id") or 0))
                         return self._json({"ok": True})
                     return self._error(404, "Nem talalhato")
+                if path == "/api/review/start":
+                    from . import repetition
+
+                    return self._json({"session": repetition.start(user["id"], load_settings())})
+                if path == "/api/duels/create":
+                    from . import duels
+
+                    kinds = body.get("kinds") if isinstance(body.get("kinds"), dict) else None
+                    created = duels.create(user["id"], load_settings(), int(body.get("rounds") or 5), kinds)
+                    return self._json(created | {"url": f"{self._base_url()}/d/{created['id']}"})
+                m = DUEL_RE.fullmatch(path)
+                if m and m.group(2):
+                    from . import duels
+
+                    if m.group(2) == "revoke":
+                        duels.revoke(user["id"], m.group(1))
+                        return self._json({"ok": True})
+                    created = getattr(duels, m.group(2))(user["id"], m.group(1), load_settings())
+                    return self._json(created | {"url": f"{self._base_url()}/d/{created['id']}"})
+                if path in ("/api/share", "/api/share/revoke"):
+                    from . import shares
+
+                    if path == "/api/share":
+                        sid = shares.create(user["id"], str(body.get("kind") or ""), str(body.get("ref") or ""), self._lang(),
+                                            int(body["group"]) if body.get("group") else None)["id"]
+                        return self._json({"id": sid, "url": f"{self._base_url()}/s/{sid}"})
+                    if not shares.revoke(user["id"], str(body.get("id") or "")):
+                        return self._error(404, "Nincs ilyen megosztás.")
+                    return self._json({"ok": True})
                 if path == "/api/profile/nickname":
                     from . import daily
 

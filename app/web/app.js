@@ -64,7 +64,7 @@ function niceTicks(lo, hi, count) {
 async function route() {
   const hash = location.hash || "#/";
   const tab = hash.startsWith("#/info") ? "info" : hash.startsWith("#/profile") ? "profile"
-    : hash.startsWith("#/practice") ? "practice" : hash.startsWith("#/daily") ? "daily"
+    : hash.startsWith("#/practice") ? "practice" : hash.startsWith("#/daily") || hash.startsWith("#/duel") ? "daily"
     : hash.startsWith("#/leaderboard") ? "leaderboard" : "learn";
   document.querySelectorAll(".tabs a, .bottom-nav a, .more-list a").forEach((a) => {
     a.classList.toggle("active", a.dataset.tab === tab);
@@ -75,13 +75,14 @@ async function route() {
   view.innerHTML = `<div class="loading">Betöltés…</div>`;      // a regi nezet ne latszodjon az uj adat helyett
   try {
     const pm = hash.match(/^#\/practice\/([a-z]{12})$/);
+    const dm = hash.match(/^#\/duel\/([a-z]{12})$/);
     const me = await whoami();
-    if (!me.onboarded && !pm) { pageWelcome(Number((hash.match(/^#\/welcome\/(\d)$/) || [0, 0])[1])); return; }
+    if (!me.onboarded && !pm && !dm) { pageWelcome(Number((hash.match(/^#\/welcome\/(\d)$/) || [0, 0])[1])); return; }
     const lm = hash.match(/^#\/learn\/(\d{1,2})$/);
     if (tab === "info") pageInfo(me.contact);
     else if (tab === "learn") { if (lm) await pageLesson(Number(lm[1])); else await pageLearn(); }
     else if (tab === "profile") await pageProfile();
-    else if (tab === "daily") await pageDaily();
+    else if (tab === "daily") { if (dm) await pageDuel(dm[1]); else await pageDaily(); }
     else if (tab === "leaderboard") await pageLeaderboard();
     else if (pm) await pagePracticeSession(pm[1]);
     else await pagePractice();
@@ -193,7 +194,7 @@ async function pageLesson(level) {
 // Napi kihivas es ranglista (#35)
 // ---------------------------------------------------------------------------
 async function pageDaily() {
-  const d = await api("/api/daily");
+  const [d, duelList] = await Promise.all([api("/api/daily"), api("/api/duels")]);
   const s = d.session;
   const state = !s ? "new" : d.hidden ? "running" : "done";
   view.innerHTML = `
@@ -204,11 +205,100 @@ async function pageDaily() {
         : state === "running" ? `<a class="btn primary" href="#/practice/${esc(s.id)}">Folytatás (${s.decided} / ${s.rounds})</a>
             <span class="badge watch">Beadás: ${esc(new Date(s.deadline).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" }))}-ig</span>`
         : `<a class="btn primary" href="#/practice/${esc(s.id)}">A mai eredményem</a> <span class="badge go">Kész</span>`}
-      <a class="btn" href="#/leaderboard">Ranglista</a></div></div></section>`;
+      <a class="btn" href="#/leaderboard">Ranglista</a></div></div></section>
+    ${duelSection(duelList)}`;
+  bindRowLinks();
+  wireDuelForm();
   const btn = $("#daily-start");
   if (btn) btn.addEventListener("click", async () => {
     const r = await api("/api/daily/start", { method: "POST", body: "{}" });
     location.hash = `#/practice/${r.session.id}`;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Parbaj (#55): ugyanaz a helyzetsor ket jatekosnak; a masik eredmenye a sajat kor befejezese utan
+// ---------------------------------------------------------------------------
+const DUEL_RESULT = { win: ["Nyertél", "go"], loss: ["Vesztettél", "fail"], draw: ["Döntetlen", "watch"] };
+
+function duelSection(list) {
+  return `<section class="card"><h2>Párbaj</h2><div class="card-body">
+    <p class="muted small">Hívj ki valakit: ugyanazokat a helyzeteket kapjátok ugyanabban a sorrendben, 72 órátok van rá. A másik eredményét a saját köröd befejezése után látod; aki a határidőig nem fejezi be, veszít.</p>
+    <form id="duel-form" class="ag-form">
+      <label>Helyzetek<select name="rounds"><option value="5">5</option><option value="10">10</option></select></label>
+      <label>Feladattípus<select name="kind">${Object.entries(PR_KIND).map(([key, label]) => `<option value="${key}">${esc(label)}</option>`).join("")}<option value="mixed">Vegyes</option></select></label>
+      <div class="wide"><button class="btn primary" type="submit">Párbaj indítása</button> <span id="duel-msg" class="small" role="status"></span></div></form>
+    ${list.length ? `<table class="table cards-on-phone"><thead><tr><th>Indult</th><th>Ellenfél</th><th>Helyzetek</th><th>Eredmény</th></tr></thead><tbody>
+      ${list.map((x) => `<tr class="clickable" data-href="#/duel/${esc(x.id)}"><td class="small">${when(x.created)}</td>
+        <td>${x.opponent ? `<span translate="no">${esc(x.opponent)}</span>` : `<span class="muted">még nincs</span>`}</td><td class="num">${x.rounds}</td>
+        <td>${x.revoked ? `<span class="muted">visszavonva</span>` : x.result ? `<span class="badge ${DUEL_RESULT[x.result][1]}">${DUEL_RESULT[x.result][0]}</span>` : `<span class="muted">folyamatban</span>`}</td></tr>`).join("")}
+    </tbody></table>` : ""}</div></section>`;
+}
+
+function wireDuelForm() {
+  const form = $("#duel-form");
+  if (!form) return;
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const kind = form.elements.kind.value;
+    try {
+      const r = await api("/api/duels/create", { method: "POST", body: JSON.stringify({ rounds: Number(form.elements.rounds.value),
+        kinds: kind === "mixed" ? PR_MIXED : { [kind]: 1 } }) });
+      location.hash = `#/duel/${r.id}`;
+    } catch (e) { const m = $("#duel-msg"); m.className = "msg err small"; m.textContent = e.message; }
+  });
+}
+
+const duelBrief = (b) => (!b ? "–" : (b.kind && b.kind !== "decision"
+  ? `${esc(PR_KIND[b.kind] || b.kind)}: ${b.quality != null ? `${fmt(b.quality * 100, 0)}%` : "–"}`
+  : `${esc(PR_SIDE[b.action] || b.action || "–")}${b.verdict && PR_VERDICT[b.verdict] ? ` <span class="pill plain ${PR_VERDICT[b.verdict][1]}"><span aria-hidden="true">${PR_VERDICT[b.verdict][2]}</span> <span>${esc(PR_VERDICT[b.verdict][0])}</span></span>` : ""}`)
+  + (b.points != null ? ` <span class="muted small">+${b.points}</span>` : ""));
+
+async function pageDuel(id) {
+  const d = await api(`/api/duels/${id}`);
+  const accept = `<button class="btn primary" id="duel-accept" type="button">Elfogadom, játszom</button>`;
+  if (d.invite) {
+    view.innerHTML = `<div class="page-head"><a href="#/daily" class="muted">← Napi kihívás</a><h1>Párbaj-meghívó</h1></div>
+      <section class="card"><div class="card-body"><p><strong translate="no">${esc(d.challenger)}</strong> <span>kihívott egy párbajra.</span></p>
+        <p>${d.rounds} helyzet, ugyanazok ugyanabban a sorrendben. Határidő: ${when(d.expires)}.</p>
+        <div class="digest-controls">${accept}</div></div></section>`;
+  } else {
+    const m = d.me;
+    const link = `${location.origin}/d/${d.id}`;
+    const mine = !m ? accept : m.decided < m.total && !d.over ? `<a class="btn primary" href="#/practice/${esc(m.session)}">Folytatás (${m.decided} / ${m.total})</a>`
+      : `<a class="btn" href="#/practice/${esc(m.session)}">A köröm</a> <span class="muted">${m.finished ? `kész: ${m.points} pont` : "nem fejeződött be időben"}</span>`;
+    view.innerHTML = `<div class="page-head"><a href="#/daily" class="muted">← Napi kihívás</a><h1>Párbaj</h1>
+        <span class="muted">${d.opponent ? `<span>Ellenfél:</span> <span translate="no">${esc(d.opponent)}</span>` : "Még nincs ellenfél."} · ${d.rounds} helyzet · határidő: ${when(d.expires)}</span></div>
+      ${d.revoked ? `<section class="card"><div class="card-body"><p>A meghívót visszavontad.</p></div></section>` : ""}
+      ${d.side === "challenger" && !d.other.accepted && !d.revoked && !d.over ? `<section class="card"><h2>Meghívó link</h2><div class="card-body">
+        <p class="muted small">Küldd el annak, akit kihívsz. Az első elfogadó lesz az ellenfeled; addig visszavonhatod.</p>
+        <p><code translate="no">${esc(link)}</code></p>
+        <div class="digest-controls"><button class="btn primary" id="duel-copy" type="button">Link másolása</button>
+          <button class="btn" id="duel-revoke" type="button">Visszavonás</button> <span id="duel-msg" class="small" role="status"></span></div></div></section>` : ""}
+      <section class="card"><div class="card-body"><div class="digest-controls">${mine}</div>
+        <p>${!d.other.accepted ? "Az ellenfél még nem fogadta el." : d.other.finished ? "Az ellenfél befejezte." : "Az ellenfél még játszik."}
+          ${d.other.points != null ? `<span>Pontja:</span> ${d.other.points}` : ""}</p>
+        ${d.result ? `<div class="digest-controls"><span class="badge ${DUEL_RESULT[d.result][1]}">${DUEL_RESULT[d.result][0]}</span>
+          <button class="btn primary" id="duel-rematch" type="button">Visszavágó</button></div>` : ""}</div></section>
+      ${d.compare ? `<section class="card"><h2>Helyzetenként</h2><div class="card-body"><div class="table-scroll"><table class="table"><thead><tr><th>#</th><th>Papír</th><th>Dátum</th><th>Te</th><th>Ellenfél</th></tr></thead><tbody>
+        ${d.compare.map((c) => `<tr><td>${c.k + 1}</td><td class="ticker">${esc((c.me || c.other || {}).symbol || "")}</td><td>${esc((c.me || c.other || {}).date || "")}</td>
+          <td>${duelBrief(c.me)}</td><td>${duelBrief(c.other)}</td></tr>`).join("")}</tbody></table></div></div></section>` : ""}`;
+  }
+  const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener("click", fn); };
+  const fail = (e) => { const msg = $("#duel-msg"); if (msg) { msg.className = "msg err small"; msg.textContent = e.message; } else alert(e.message); };
+  on("#duel-accept", async () => {
+    try { const r = await api(`/api/duels/${id}/accept`, { method: "POST", body: "{}" }); location.hash = `#/practice/${r.session.id}`; } catch (e) { fail(e); }
+  });
+  on("#duel-copy", async () => {
+    try { await navigator.clipboard.writeText(`${location.origin}/d/${id}`); const msg = $("#duel-msg"); msg.className = "msg ok small"; msg.textContent = "A link a vágólapon."; }
+    catch (e) { fail(e); }
+  });
+  on("#duel-revoke", async () => {
+    if (!confirm("Visszavonod a meghívót?")) return;
+    try { await api(`/api/duels/${id}/revoke`, { method: "POST", body: "{}" }); await pageDuel(id); } catch (e) { fail(e); }
+  });
+  on("#duel-rematch", async () => {
+    try { const r = await api(`/api/duels/${id}/rematch`, { method: "POST", body: "{}" }); location.hash = `#/duel/${r.id}`; } catch (e) { fail(e); }
   });
 }
 
@@ -267,7 +357,7 @@ async function pageLeaderboard() {
 // Profil: a fiok, kilepes (mindenhonnan is)
 // ---------------------------------------------------------------------------
 async function pageProfile() {
-  const [s, g] = await Promise.all([api("/api/session"), api("/api/progress")]);
+  const [s, g, sh, rv] = await Promise.all([api("/api/session"), api("/api/progress"), api("/api/shares"), api("/api/review")]);
   view.innerHTML = `
     <div class="page-head"><h1>Profil</h1><span class="muted" translate="no">${esc(s.email)}</span>
       ${s.admin ? `<a class="btn" href="/admin">Admin felület</a>` : ""}</div>
@@ -286,6 +376,16 @@ async function pageProfile() {
     <section class="card"><h2>Becenév a ranglistán</h2><div class="card-body">
       <form id="nick-form" class="ag-form"><label>Becenév<input name="nickname" maxlength="20" value="${esc(s.nickname || "")}" autocomplete="nickname"></label>
         <div class="wide"><button class="btn" type="submit">Mentés</button> <span id="nick-msg" class="small"></span></div></form></div></section>
+    <section class="card"><h2>Megosztásaid</h2><div class="card-body">
+      ${sh.length ? `<ul class="digest-list">${sh.map((x) => `<li><span><a href="/s/${esc(x.id)}" target="_blank" rel="noopener">${x.kind === "daily"
+        ? `<span>Napi kihívás</span> · ${esc(x.ref)}` : `${esc(x.ref)}. szint`}</a></span>
+        <button class="btn share-revoke" type="button" data-id="${esc(x.id)}">Visszavonás</button></li>`).join("")}</ul>`
+        : `<p class="muted">Még nem osztottál meg eredményt.</p>`}
+      <p class="muted small">Visszavonás után a link és a kártya nem érhető el.</p></div></section>
+    <section class="card"><h2>Magabiztosság és kalibráció</h2><div class="card-body">
+      <label class="check"><input type="checkbox" id="conf-toggle" ${prefConfidence() ? "checked" : ""}> <span>Magabiztosság megadása minden döntésnél (a leckékben a 6. szinttől mindig)</span></label>
+      ${g.calibration.n ? calibrationView(g.calibration) : `<p class="muted">Még nincs magabiztossággal megadott döntés.</p>`}</div></section>
+    ${weaknessCard(rv)}
     <section class="card"><h2>Jelvények</h2><div class="card-body"><div class="badges">${g.badges.map((b) =>
       `<span class="badge ${b.earned_at ? "go" : "fail"}">${b.earned_at ? "✓" : "○"} ${esc(b.label)}</span>`).join(" ")}</div></div></section>
     <section class="card"><h2>Munkamenetek</h2><div class="card-body">
@@ -312,6 +412,11 @@ async function pageProfile() {
       location.href = "/";
     } catch (e) { const m = $("#delete-msg"); m.className = "msg err small"; m.textContent = e.message; }
   });
+  $("#conf-toggle").addEventListener("change", (ev) => { try { localStorage.setItem("sw-confidence", ev.target.checked ? "1" : "0"); } catch (e) { /* privat mod */ } });
+  document.querySelectorAll(".share-revoke").forEach((b) => b.addEventListener("click", async () => {
+    await api("/api/share/revoke", { method: "POST", body: JSON.stringify({ id: b.dataset.id }) });
+    await pageProfile();
+  }));
   const unlink = $("#google-unlink");
   if (unlink) unlink.addEventListener("click", async () => {
     if (!confirm("Bontod a Google-kapcsolatot? Utána jelszóval léphetsz be.")) return;
@@ -368,9 +473,26 @@ const PR_STATUS = { unfilled: "a limit nem teljesült", open: "nyitva maradt", f
 const rCls = (r) => (r == null ? "" : r > 0 ? "up" : r < 0 ? "down" : "");
 const fmtIn = (v) => (Math.round(v * 100) / 100).toFixed(2);       // <input type="number"> erteke: pont a tizedesjel
 
+// hibak ismetlese (#36): az esedekes helyzettipusokbol hasonlo, de uj helyzetek
+function reviewCard(r) {
+  const due = r.queue.filter((q) => q.is_due);
+  return `<section class="card"><h2>Ismétlés</h2><div class="card-body">
+    <p class="muted small">A rossz vagy szerencsés döntések (és a túl szoros stopok) helyzettípusa másnap visszajön, hasonló, de másik helyzettel; jó döntés után egyre ritkábban.</p>
+    ${due.length ? `<div class="digest-controls"><button class="btn primary" id="review-start" type="button">Ismétlő kör (${due.length} típus esedékes)</button> <span id="review-msg" class="small" role="status"></span></div>`
+      : `<p>Nincs esedékes ismétlés.${r.queue.length ? ` <span>A következő:</span> ${esc(r.queue[0].due)}` : ""}</p>`}</div></section>`;
+}
+
+function weaknessCard(r) {
+  if (!r.weaknesses.length) return "";
+  return `<section class="card"><h2>Gyengeségeim</h2><div class="card-body"><table class="table cards-on-phone"><thead><tr><th>Helyzettípus</th><th>Döntés</th><th>Rossz vagy szerencsés</th><th>Szoros stop</th></tr></thead><tbody>
+    ${r.weaknesses.map((w) => `<tr><td>${esc(PR_CAT[w.category] || w.category)}</td><td class="num">${w.n}</td><td class="num">${w.misses} (${fmt(w.miss_rate * 100, 0)}%)</td><td class="num">${w.tight}</td></tr>`).join("")}
+    </tbody></table>
+    ${r.queue.length ? `<p class="muted small"><span>Ismétlésre vár:</span> ${r.queue.map((q) => `<span>${esc(PR_CAT[q.category] || q.category)}</span> (${esc(q.due)})`).join(" · ")}</p>` : ""}</div></section>`;
+}
+
 async function pagePractice(msg = "") {
   clearInterval(practiceTimer);
-  const d = await api("/api/practice");
+  const [d, rv] = await Promise.all([api("/api/practice"), api("/api/review")]);
   const p = d.pool;
   const total = p ? Object.values(p.counts).reduce((a, b) => a + b, 0) : 0;
   view.innerHTML = `
@@ -378,6 +500,7 @@ async function pagePractice(msg = "") {
       <span class="muted">Rejtett, múltbeli chart-helyzetek: eldöntöd, kihagyod-e, vagy long / short belépsz-e (stoppal, opcionális céllal és időkorláttal), utána megnézed, mi történt, ítéletet és lépésenkénti levezetést kapsz, és összeveted a stratégiákkal és egy véletlen alapvonallal.
         A papír és a dátum csak a döntés után derül ki. Szimuláció múltbeli adaton, nem ajánlás.</span></div>
     ${msg ? `<section class="card"><div class="card-body">${esc(msg)}</div></section>` : ""}
+    ${p ? reviewCard(rv) : ""}
     <section class="card"><h2>Feladatkészlet</h2><div class="card-body">
       ${p ? `<p>${p.symbols} papír, ${total} helyzet: stratégia-jelzés ${p.counts.strategy}, formálódó alakzat ${p.counts.pattern}, short-gyanús helyzet ${p.counts.short ?? 0}, semmi különös ${p.counts.nothing}.</p>
         <p class="muted small">Készült: ${when(p.created)} · az adat a zárolt holdout előtt véget ér (${esc(p.visible_end)})${p.partial ? " · részleges: elfogyott az időkeret" : ""}</p>`
@@ -399,9 +522,14 @@ async function pagePractice(msg = "") {
     <section class="card"><h2>Körök</h2><div class="card-body">${d.sessions.length ? `<table class="table"><thead><tr><th>Készült</th><th>Állás</th><th>Átlag R</th><th>Megosztási kód</th><th></th></tr></thead><tbody>
       ${d.sessions.map((s) => `<tr class="clickable" data-href="#/practice/${esc(s.id)}"><td class="small">${when(s.created)}</td>
         <td>${s.decided} / ${s.rounds}${s.done ? ` <span class="badge go">kész</span>` : ""}</td><td class="num ${rCls(s.mean_r)}">${signed(s.mean_r, 2, " R")}</td>
-        <td class="small"><code>${esc(s.code)}</code></td><td><button class="btn" type="button" data-pr-delete="${esc(s.id)}">Törlés</button></td></tr>`).join("")}</tbody></table>`
+        <td class="small">${s.duel ? "Párbaj" : `<code>${esc(s.code)}</code>`}</td><td>${s.duel ? "" : `<button class="btn" type="button" data-pr-delete="${esc(s.id)}">Törlés</button>`}</td></tr>`).join("")}</tbody></table>`
       : `<div class="muted">Még nincs kör.</div>`}</div></section>`;
   bindRowLinks();
+  const rs = $("#review-start");
+  if (rs) rs.addEventListener("click", async () => {
+    try { const r = await api("/api/review/start", { method: "POST", body: "{}" }); location.hash = `#/practice/${r.session.id}`; }
+    catch (e) { const m = $("#review-msg"); m.className = "msg err small"; m.textContent = e.message; }
+  });
   const form = $("#pr-form");
   if (form) form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -529,15 +657,19 @@ async function pagePracticeTask(id, k, sess) {
         <label>Stop (kötelező)<input name="stop" type="number" step="0.01" value="${fmtIn(100 - 2 * atr)}"></label>
         <label>Cél (üres: nincs)<input name="target" type="number" step="0.01"></label>
         <label>Időkorlát (nap)<input name="days" type="number" min="1" max="${t.max_days}" value="10"></label>
+        ${t.confidence || prefConfidence() ? `<label class="wide">Magabiztosság: <output id="pr-conf-out">70%</output> – ennyire vagy biztos benne, hogy ez a jó döntés
+          <input name="confidence" type="range" min="50" max="95" step="5" value="70"></label>` : ""}
         <div class="wide"><span id="pr-risk" class="small muted"></span></div>
         <div class="wide"><button class="btn primary" type="submit">Döntés rögzítése</button> <span class="muted small">A döntés után nem módosítható.</span> <span id="pr-err" class="small"></span></div>
       </form></div></section>
+    ${practiceCriteriaBefore(t.hints)}
     <div id="pr-reveal"></div>`;
   const svg = $("#pr-chart");
   const form = $("#pr-dform");
   const read = () => {
     const n = (name) => { const raw = form.elements[name].value.trim(); return raw === "" ? null : Number(raw); };
-    return { action: form.elements.action.value, entry: form.elements.entry.value, limit: n("limit"), stop: n("stop"), target: n("target"), days: n("days") };
+    return { action: form.elements.action.value, entry: form.elements.entry.value, limit: n("limit"), stop: n("stop"), target: n("target"), days: n("days"),
+      confidence: form.elements.confidence ? n("confidence") : null };
   };
   let chartOpt = {};
   const draw = () => practiceChart(svg, t.chart.bars, chartOpt);
@@ -565,6 +697,7 @@ async function pagePracticeTask(id, k, sess) {
     const ref = f.entry === "limit" ? f.limit : 100;
     $("#pr-risk").textContent = enter && f.stop != null && ref ? `Stop-távolság: ${fmt(sign * (ref - f.stop) / atr, 2)} ATR (${fmt(sign * (ref - f.stop) / ref * 100, 1)}%)`
       + (f.target ? ` · cél: ${fmt((f.target - ref) / (ref - f.stop), 2)} R` : "") : "";
+    if (form.elements.confidence) $("#pr-conf-out").textContent = `${f.confidence}%`;
     chartOpt = { levels: practiceLevels(f) };
     draw();
   };
@@ -578,7 +711,7 @@ async function pagePracticeTask(id, k, sess) {
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const f = read();
-    const body = f.action === "skip" ? { action: "skip" } : { ...f, limit: f.entry === "limit" ? f.limit : null };
+    const body = f.action === "skip" ? { action: "skip", confidence: f.confidence } : { ...f, limit: f.entry === "limit" ? f.limit : null };
     try {
       const r = await api(`/api/practice/session/${id}/task/${k}/decision`, { method: "POST", body: JSON.stringify(body) });
       if (r.hidden) {                          // napi kihivas: az eredmeny csak a vegen
@@ -641,6 +774,46 @@ function showPracticeReveal(id, k, t, rev, redraw, instant, sess) {
   }, 70);
 }
 
+// itelet-szempontok (#59): a dontes elott altalanos lista (nem az adott helyzetrol), a felfedeskor ugyanez pipakkal
+const PR_CRITERIA = {
+  trend: "Trend: a záró és az EMA50 / EMA200 helyzete melyik irányt támogatja? A döntés iránya egyezzen vele.",
+  signal: "Szabály: jelez-e valamelyik stratégia (Visszahúzás, Kitörés, short-gyanús helyzet)? Ha egyik sem, a kihagyás is jó döntés lehet.",
+  stop: "Stop: legalább 1 ATR-re a belépőtől, a szerkezeti szint (swing pont) mögött.",
+  rr: "Cél / kockázat: ha adsz meg célt, legalább 1 legyen.",
+};
+
+function practiceCriteriaBefore(mode) {
+  if (mode !== "show" && mode !== "toggle") return "";
+  const list = `<ul class="digest-list">${Object.values(PR_CRITERIA).map((c) => `<li><span>${esc(c)}</span></li>`).join("")}</ul>`;
+  return mode === "show"
+    ? `<section class="card pr-criteria"><h2>Mitől jó egy döntés?</h2><div class="card-body">${list}</div></section>`
+    : `<section class="card pr-criteria"><div class="card-body"><details><summary>Szempontok mutatása: mitől jó egy döntés?</summary>${list}</details></div></section>`;
+}
+
+function practiceCriteriaAfter(rv) {
+  if (!rv || !rv.criteria) return "";
+  const mark = (ok) => (ok == null ? `<span class="muted" aria-label="nem értelmezhető">–</span>`
+    : ok ? `<span class="up" aria-label="teljesült">✓</span>` : `<span class="down" aria-label="nem teljesült">✗</span>`);
+  return `<section class="card"><h2>A szempontok szerint</h2><div class="card-body"><ul class="digest-list">
+    ${rv.criteria.map((c) => `<li><span>${mark(c.ok)} ${esc(PR_CRITERIA[c.key] || c.key)}</span></li>`).join("")}</ul></div></section>`;
+}
+
+// magabiztossag es kalibracio (#54): a 6. szinttol a leckekben mindig, kulonben a Profil oldalon kapcsolhato
+// (eszkozonkent, localStorage); az iteletet nem befolyasolja, kulon kalibracios pontot ad
+const prefConfidence = () => { try { return localStorage.getItem("sw-confidence") === "1"; } catch (e) { return false; } };
+
+function calibrationView(c) {
+  const pctv = (v) => `${fmt(v * 100, 0)}%`;
+  const say = { over: "Túl magabiztos", under: "Túl óvatos", ok: "Jól kalibrált" };
+  return `${c.noisy ? `<p class="small"><strong>Még csak ${c.n} döntés (legalább ${c.min} kell): a görbe még főleg zaj.</strong></p>` : ""}
+    ${c.summary ? `<p><strong>${say[c.summary]}:</strong> <span>átlagosan ${pctv(c.stated)}-ra becsülted, a döntéseid ${pctv(c.actual)}-a volt jó vagy balszerencsés.</span></p>` : ""}
+    <div class="parts">${c.buckets.map((b) => `<div class="part"><span>${b.lo}–${b.hi}%</span>
+      <span class="track"><span class="fill" style="width:${b.actual * 100}%"></span></span>
+      <span class="muted small">${pctv(b.actual)} / ${pctv(b.stated)} · ${b.n}</span></div>`).join("")}</div>
+    <p class="muted small">Sávonként: tényleges találati arány / a megadott átlag · a döntések száma. Jól kalibráltnál a kettő közel azonos.
+      Brier: ${fmt(c.brier, 3)} · kalibrációs pont összesen: ${c.points > 0 ? "+" : ""}${c.points}</p>`;
+}
+
 function practiceVerdict(rv) {
   if (!rv || !rv.verdict) return "";
   const v = rv.verdict;
@@ -679,6 +852,7 @@ function practicePoints(rev) {
   return `<div class="pr-points"><strong>+${p.points} pont</strong>
     <span class="small muted">${p.parts.map((x) => `${esc(x.label)} ${x.value >= 0 ? "+" : "−"}${Math.abs(x.value)}`).join(" · ")}</span>
     ${g ? `<span class="small">XP ${g.xp} · ${g.level}. szint · sorozat: ${g.streak} nap</span>` : ""}
+    ${rev.calibration ? `<span class="small">Magabiztosság: ${rev.calibration.confidence}% · kalibrációs pont: ${rev.calibration.points > 0 ? "+" : ""}${rev.calibration.points}</span>` : ""}
     ${g && g.new_badges.length ? g.new_badges.map((b) => `<span class="badge go">Új jelvény: ${esc(b.label)}</span>`).join(" ") : ""}</div>`;
 }
 
@@ -696,6 +870,7 @@ function practiceOutcome(k, t, rev, sess) {
     <td class="small muted">${s.signaled && s.reason ? `${esc(PR_REASON[s.reason] || s.reason)}${s.held ? ` · ${s.held} nap` : ""}` : ""}</td></tr>`).join("");
   const last = sess ? sess.done : k + 1 >= t.rounds;
   return `<section class="card"><h2>Ítélet</h2><div class="card-body">${practiceVerdict(rev.review)}${practicePoints(rev)}</div></section>
+    ${practiceCriteriaAfter(rev.review)}
     <section class="card"><h2>Eredmény</h2><div class="card-body">
     <div class="kpis check-kpis">
       <div class="kpi"><div class="label">A te döntésed</div><div class="value ${mine[1]}">${mine[0]}</div><div class="sub">${mine[2]}</div></div>
@@ -902,6 +1077,37 @@ function showKindReveal(id, k, t, rev, show, sess) {
   $("#pr-next").addEventListener("click", () => pagePracticeSession(id));
 }
 
+// megosztas (#57): kartya + link, csak gombnyomasra jon letre; a Profil oldalon visszavonhato
+function shareBox(kind, ref) {
+  return `<section class="card"><h2>Megosztás</h2><div class="card-body">
+    <p class="small muted">Kártya és link a beceneveddel és az eredménnyel – a helyzetek és a válaszaid nélkül, hogy más is kitölthesse. A Profil oldalon visszavonhatod.</p>
+    <div class="digest-controls"><select id="share-group" hidden aria-label="Csoport meghívókódja a megosztásban"></select>
+      <button class="btn primary" id="share-btn" type="button" data-kind="${kind}" data-ref="${esc(String(ref))}">Eredmény megosztása</button>
+      <span id="share-msg" class="small" role="status"></span></div></div></section>`;
+}
+
+async function wireShare() {
+  const btn = $("#share-btn");
+  if (!btn) return;
+  const sel = $("#share-group");
+  btn.addEventListener("click", async () => {
+    const msg = $("#share-msg");
+    try {
+      const r = await api("/api/share", { method: "POST", body: JSON.stringify({ kind: btn.dataset.kind, ref: btn.dataset.ref, group: sel.value || null }) });
+      let copied = false;
+      try { await navigator.clipboard.writeText(r.url); copied = true; } catch (e) { /* nincs vagolap-engedely: a link latszik */ }
+      msg.className = "msg ok small";
+      msg.innerHTML = `<a href="${esc(r.url)}" target="_blank" rel="noopener" translate="no">${esc(r.url)}</a> ${copied ? "<span>(a vágólapon)</span>" : ""}`;
+      if (navigator.share) navigator.share({ url: r.url }).catch(() => {});
+    } catch (e) { msg.className = "msg err small"; msg.textContent = e.message; }
+  });
+  const groups = await api("/api/groups").catch(() => []);
+  if (groups.length) {
+    sel.innerHTML = `<option value="">Csoport nélkül</option>${groups.map((g) => `<option value="${g.id}">Meghívó: ${esc(g.name)}</option>`).join("")}`;
+    sel.hidden = false;
+  }
+}
+
 function renderPracticeSummary(p) {
   const s = p.summary;
   const lines = `<ul class="digest-list">${p.lines.map((l) => `<li><span>${esc(l.text)}</span></li>`).join("")}</ul>`;
@@ -911,20 +1117,20 @@ function renderPracticeSummary(p) {
   const ls = p.lesson;
   const dailyBox = p.session.daily ? `<section class="card"><div class="card-body"><div class="digest-controls">
       <strong>Napi kihívás (${esc(p.session.daily)}): ${p.tasks.reduce((a, t) => a + (t.points || 0), 0)} pont</strong>
-      <a class="btn primary" href="#/leaderboard">Ranglista</a></div></div></section>` : "";
+      <a class="btn primary" href="#/leaderboard">Ranglista</a></div></div></section>${shareBox("daily", p.session.daily)}` : "";
   const lessonBox = ls ? `<section class="card"><div class="card-body"><div class="pr-verdict ${ls.passed ? "ok" : "warn"}" role="status">
       <span class="pr-verdict-icon" aria-hidden="true">${ls.passed ? "✓" : "↺"}</span>
       <div><div class="pr-verdict-label">${ls.level}. szint: ${ls.passed ? "teljesítve" : "még nem teljesült"}</div>
         <div class="small">Jó vagy balszerencsés döntés: ${fmt(ls.share * 100, 0)}% (kell: ${fmt(ls.needed * 100, 0)}%).</div></div></div>
       <div class="digest-controls">${ls.next ? `<a class="btn primary" href="#/learn/${ls.next}">Tovább a ${ls.next}. szintre</a>` : ""}
-        <a class="btn" href="#/learn/${ls.level}">${ls.passed ? "A lecke újra" : "Újrapróbálom"}</a></div></div></section>` : "";
+        <a class="btn" href="#/learn/${ls.level}">${ls.passed ? "A lecke újra" : "Újrapróbálom"}</a></div></div></section>${ls.passed ? shareBox("level", ls.level) : ""}` : "";
   const kindsBox = Object.keys(p.kinds || {}).length ? `<section class="card"><h2>Feladattípusok</h2><div class="card-body"><ul class="digest-list">
       ${Object.entries(p.kinds).map(([key, v]) => `<li><span>${esc(PR_KIND[key] || key)}: ${v.n} feladat, átlagos értékelés ${fmt(v.mean_quality * 100, 0)}%</span></li>`).join("")}
     </ul></div></section>` : "";
   view.innerHTML = `
     <div class="page-head"><a href="${ls ? "#/learn" : "#/practice"}" class="muted">← ${ls ? "Tanulás" : "Gyakorlás"}</a><h1>A kör összegzése</h1>
-      <span class="muted">Megosztási kód: <code>${esc(p.session.code)}</code> – ugyanazzal a feladatkészlettel ugyanazt a helyzetsort adja.</span></div>
-    ${lessonBox}${dailyBox}${kindsBox}
+      ${p.session.code ? `<span class="muted">Megosztási kód: <code>${esc(p.session.code)}</code> – ugyanazzal a feladatkészlettel ugyanazt a helyzetsort adja.</span>` : ""}</div>
+    ${lessonBox}${dailyBox}${p.session.duel ? `<section class="card"><div class="card-body"><a class="btn primary" href="#/duel/${esc(p.session.duel)}">Vissza a párbajhoz</a></div></section>` : ""}${kindsBox}
     ${s.decided ? `<div class="kpis">
       <div class="kpi"><div class="label">Teljesült kötés</div><div class="value">${s.filled}</div><div class="sub">${s.entered} belépési döntés, ${s.skipped} kihagyás</div></div>
       <div class="kpi"><div class="label">Nyerési arány</div><div class="value">${s.win == null ? "–" : `${fmt(s.win * 100, 1)}%`}</div><div class="sub">átlag ${signed(s.mean_r, 2, " R")}</div></div>
@@ -944,6 +1150,7 @@ function renderPracticeSummary(p) {
         <td class="small">${(t.strategies || []).map((x) => `${esc(PR_STRAT[x.strategy] || x.strategy)}: ${x.r != null ? signed(x.r, 2, " R") : esc(PR_STATUS[x.status] || "–")}`).join(" · ") || "–"}</td>
         <td class="num ${rCls(t.reference_r)}">${signed(t.reference_r, 2, " R")}</td><td class="num ${rCls(t.baseline_r)}">${signed(t.baseline_r, 2, " R")}</td></tr>`)).join("")}
     </tbody></table></div></div></section>`;
+  wireShare();
 }
 
 // ---------------------------------------------------------------------------

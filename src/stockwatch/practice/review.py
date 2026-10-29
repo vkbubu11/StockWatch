@@ -408,6 +408,19 @@ def steps(decision: dict, result: dict, ctx: dict, rule_rows: list[dict], alts: 
     return out
 
 
+def criteria(ctx: dict, ver: dict, user: dict | None, settings: Settings) -> list[dict]:
+    """A dontes elotti szempontlista (#59) kiertekelese, ugyanabban a sorrendben: ok = True / False, vagy None
+    (nem ertelmezheto, pl. kihagyasnal nincs stop)."""
+    side = None if ver["user_choice"] == "skip" else ver["user_choice"]
+    user = user or {}
+    trend = {"up": "long", "down": "short"}.get(ctx["trend"])
+    stop, rr = user.get("stop_atr"), user.get("rr")
+    return [{"key": "trend", "ok": None if side is None or trend is None else side == trend},
+            {"key": "signal", "ok": ver["rule_ok"]},
+            {"key": "stop", "ok": None if side is None or stop is None else stop >= settings.practice.tight_stop_atr},
+            {"key": "rr", "ok": None if side is None or rr is None else rr >= settings.practice.min_rr}]
+
+
 def build(symbol: str, df: pd.DataFrame, feat: pd.DataFrame, mirrored, atr: np.ndarray, i: int, decision: dict,
           result: dict, params: dict, settings: Settings, mctx, earnings_dates, scale: float, cost: float,
           borrow: float) -> dict:
@@ -418,4 +431,5 @@ def build(symbol: str, df: pd.DataFrame, feat: pd.DataFrame, mirrored, atr: np.n
     better = (better_stop(feat, i, decision, scale, result.get("atr"), cost, mirrored, borrow, ver["user_r"],
                           settings.practice.better_r) if ver["filled"] else None)
     return {"verdict": ver, "verdict_line": _line(f"x_v_{ver['category']}"), "context": ctx, "alternatives": alts,
+            "criteria": criteria(ctx, ver, result.get("user"), settings),
             "better": better, "steps": steps(decision, result, ctx, rule_rows, alts, ver, better)}

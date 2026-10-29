@@ -94,7 +94,7 @@ def _verify_mail(email: str, token: str, base_url: str, lang: str = "hu") -> Non
 # Regisztracio, ellenorzes
 # ---------------------------------------------------------------------------
 def register(email: str, password: str, accepted_terms: bool, age_ok: bool, ip: str, base_url: str,
-             lang: str = "hu") -> None:
+             lang: str = "hu", source: str | None = None) -> None:
     """Uj fiok + ellenorzo level. Letezo, ellenorizetlen cimre uj ellenorzo levelet kuld, letezo ellenorzottre
     semmit - a valasz minden esetben ugyanaz."""
     if not IP_REGISTER.hit(ip):
@@ -113,7 +113,7 @@ def register(email: str, password: str, accepted_terms: bool, age_ok: bool, ip: 
             "INSERT INTO users (email, password_hash, terms_version, terms_accepted_at) VALUES (%s, %s, %s, now()) "
             "ON CONFLICT ((lower(email))) DO NOTHING RETURNING id", (email, password_hash, TERMS_VERSION)).fetchone()
         if row is not None:
-            analytics.track("register", row[0], conn, method="password")
+            analytics.track("register", row[0], conn, method="password", source=source)
         if row is None:
             row = conn.execute("SELECT id FROM users WHERE lower(email) = %s AND email_verified_at IS NULL",
                                (email,)).fetchone()
@@ -288,11 +288,19 @@ def export(user_id: int) -> dict:
                                   (user_id,)).fetchall()
         groups = conn.execute("SELECT g.name, g.owner_id = %s, m.joined_at FROM group_members m JOIN learning_groups g "
                               "ON g.id = m.group_id WHERE m.user_id = %s", (user_id, user_id)).fetchall()
+        shares = conn.execute("SELECT id, kind, ref, data, created_at, revoked_at FROM shares WHERE user_id = %s "
+                              "ORDER BY created_at", (user_id,)).fetchall()
+        duels = conn.execute("SELECT id, rounds, created_at, expires_at, revoked_at, challenger_id = %s, winner_id = %s "
+                             "FROM duels WHERE challenger_id = %s OR opponent_id = %s ORDER BY created_at",
+                             (user_id, user_id, user_id, user_id)).fetchall()
     keys = ("email", "created_at", "email_verified_at", "terms_version", "terms_accepted_at", "onboarded_at")
     return {"account": dict(zip(keys, row)) if row else None,
             "sessions": [dict(zip(("created_at", "last_used_at", "expires_at", "user_agent"), s)) for s in sessions],
             "identities": [dict(zip(("provider", "email", "created_at"), i)) for i in identities],
             "groups": [dict(zip(("name", "owner", "joined_at"), g)) for g in groups],
+            "shares": [dict(zip(("id", "kind", "ref", "data", "created_at", "revoked_at"), s)) for s in shares],
+            "duels": [dict(zip(("id", "rounds", "created_at", "expires_at", "revoked_at", "challenger", "won"), d))
+                      for d in duels],
             "practice": [store.load_session(s["id"], user_id) for s in store.sessions(user_id, limit=store.MAX_SESSIONS)]}
 
 

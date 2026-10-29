@@ -133,6 +133,10 @@ def overview(days: int = 30, now: datetime | None = None) -> dict:
         errors = dict(conn.execute(
             "SELECT name, count(*) FROM events WHERE name IN ('js_error', 'server_error') "
             "AND at >= %(now)s - interval '7 days' AND at < %(now)s GROUP BY name", p).fetchall())
+        shares = conn.execute(                                       # a megosztasi hurok (#57)
+            "SELECT count(*) FILTER (WHERE name = 'share_create'), count(*) FILTER (WHERE name = 'share_view'), "
+            "count(*) FILTER (WHERE name = 'register' AND props->>'source' = 'share') FROM events "
+            "WHERE name IN ('share_create', 'share_view', 'register') AND at >= %(since)s AND at < %(now)s", p).fetchone()
         views = {}
         for key, expr in (("source", "coalesce(props->>'ref', 'közvetlen')"), ("device", "props->>'device'"),
                           ("path", "props->>'path'")):
@@ -153,5 +157,6 @@ def overview(days: int = 30, now: datetime | None = None) -> dict:
         "decisions": {"total": decisions[0], "users": decisions[1],
                       "per_user": round(decisions[0] / decisions[1], 1) if decisions[1] else None},
         "errors": {"js": errors.get("js_error", 0), "server": errors.get("server_error", 0)},
+        "shares": {"created": shares[0], "views": shares[1], "registers": shares[2]},
         "pageviews": {k: [{"key": a, "n": n} for a, n in rows] for k, rows in views.items()},
     }

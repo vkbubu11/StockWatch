@@ -20,6 +20,7 @@ from .practice import session as practice
 from .practice import synthetic
 
 PASS_SHARE = 0.6
+HINTS = ("show", "toggle", "hidden")             # az itelet-szempontok a dontes elott (#59): latszik / osszecsukva / nem
 GOOD = ("good", "unlucky")                       # a szabaly szerint indokolt dontes
 LESSONS_PATH = Path(__file__).with_name("locale") / "lessons.hu.json"
 
@@ -54,6 +55,8 @@ def validate(data) -> list[dict]:
                 or not all(v is None or (isinstance(v, list) and all(isinstance(s, str) for s in v)) for v in only.values()):
             raise ValueError(f"{n}. szint: rossz feladat-szuro (tasks.only): kategoria -> null vagy forrasok listaja; "
                              f"kategoriak: {', '.join(sampler.CATEGORIES)}.")
+        if tasks.get("hints", "hidden") not in HINTS:
+            raise ValueError(f"{n}. szint: tasks.hints: {', '.join(HINTS)}.")
         if "kinds" in tasks:
             try:
                 kinds.normalize_kinds(tasks["kinds"])
@@ -79,6 +82,19 @@ def lessons() -> tuple[dict, ...]:
     version = stored()
     data = version[1] if version else json.loads(LESSONS_PATH.read_text(encoding="utf-8"))
     return tuple(validate(data))
+
+
+def hints(session: dict) -> str:
+    """Az itelet-szempontok a dontes elott (#59): a lecke beallitasa szerint; napi kihivasban soha; szabad
+    gyakorlasban osszecsukva (a felhasznalo nyithatja ki)."""
+    if session.get("daily"):
+        return "hidden"
+    if session.get("lesson"):
+        try:
+            return lesson(int(session["lesson"]))["tasks"].get("hints", "hidden")
+        except LookupError:
+            return "hidden"
+    return "toggle"
 
 
 def lesson(level: int) -> dict:

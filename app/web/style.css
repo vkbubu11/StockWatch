@@ -759,3 +759,6 @@ svg.pr-input { cursor: crosshair; }
 .adm-tabs { display: flex; flex-wrap: wrap; margin-bottom: 12px; }
 .adm-tabs .seg { min-height: 40px; }
 .auth-google { display: block; width: 100%; text-align: center; }
+
+/* megosztott eredmeny (#57) */
+.share-card { display: block; width: 100%; height: auto; max-width: 720px; border-radius: 12px; margin: 8px 0 16px; }

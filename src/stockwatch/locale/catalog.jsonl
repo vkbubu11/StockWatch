@@ -3129,3 +3129,111 @@
 {"hu": "Napi kihívás: mindenki ugyanazt az öt helyzetet kapja, ranglistával (csak becenév látszik) és privát csoportokkal egy kurzusnak vagy baráti körnek.", "en": "Daily challenge: everyone gets the same five situations, with a leaderboard (only nicknames are shown) and private groups for a course or a group of friends.", "de": "Tägliche Challenge: Alle bekommen dieselben fünf Situationen, mit Rangliste (nur Spitznamen sichtbar) und privaten Gruppen für einen Kurs oder Freundeskreis.", "es": "Reto diario: todos reciben las mismas cinco situaciones, con clasificación (solo se ven apodos) y grupos privados para un curso o un grupo de amigos."}
 {"hu": "Gyors regisztráció Google-fiókkal", "en": "Quick sign-up with Google", "de": "Schnell registrieren mit Google", "es": "Registro rápido con Google"}
 {"hu": "vagy e-mail-címmel", "en": "or with an email address", "de": "oder mit E-Mail-Adresse", "es": "o con un correo electrónico"}
+{"hu": "Trend: a záró és az EMA50 / EMA200 helyzete melyik irányt támogatja? A döntés iránya egyezzen vele.", "en": "Trend: which direction do the close and the EMA50 / EMA200 support? The direction of your decision should match it.", "de": "Trend: Welche Richtung stützen der Schlusskurs und EMA50 / EMA200? Die Richtung deiner Entscheidung sollte dazu passen.", "es": "Tendencia: ¿qué dirección apoyan el cierre y la EMA50 / EMA200? La dirección de tu decisión debería coincidir."}
+{"hu": "Szabály: jelez-e valamelyik stratégia (Visszahúzás, Kitörés, short-gyanús helyzet)? Ha egyik sem, a kihagyás is jó döntés lehet.", "en": "Rule: does any strategy signal (Pullback, Breakout, short-type situation)? If none does, skipping can be a good decision too.", "de": "Regel: Signalisiert eine Strategie (Rücksetzer, Ausbruch, Short-verdächtige Situation)? Wenn keine, kann auch Auslassen eine gute Entscheidung sein.", "es": "Regla: ¿da señal alguna estrategia (Retroceso, Ruptura, situación de tipo corto)? Si ninguna, saltar también puede ser una buena decisión."}
+{"hu": "Stop: legalább 1 ATR-re a belépőtől, a szerkezeti szint (swing pont) mögött.", "en": "Stop: at least 1 ATR from the entry, behind the structural level (swing point).", "de": "Stop: mindestens 1 ATR vom Einstieg entfernt, hinter dem Strukturniveau (Swing-Punkt).", "es": "Stop: al menos a 1 ATR de la entrada, detrás del nivel estructural (punto de swing)."}
+{"hu": "Cél / kockázat: ha adsz meg célt, legalább 1 legyen.", "en": "Target / risk: if you set a target, it should be at least 1.", "de": "Ziel / Risiko: Wenn du ein Ziel setzt, sollte es mindestens 1 sein.", "es": "Objetivo / riesgo: si pones un objetivo, que sea al menos 1."}
+{"hu": "Mitől jó egy döntés?", "en": "What makes a decision good?", "de": "Was macht eine Entscheidung gut?", "es": "¿Qué hace buena una decisión?"}
+{"hu": "Szempontok mutatása: mitől jó egy döntés?", "en": "Show criteria: what makes a decision good?", "de": "Kriterien anzeigen: Was macht eine Entscheidung gut?", "es": "Mostrar criterios: ¿qué hace buena una decisión?"}
+{"hu": "A szempontok szerint", "en": "By the criteria", "de": "Nach den Kriterien", "es": "Según los criterios"}
+{"hu": "nem értelmezhető", "en": "not applicable", "de": "nicht anwendbar", "es": "no aplicable"}
+{"hu": "teljesült", "en": "met", "de": "erfüllt", "es": "cumplido"}
+{"hu": "{0} / {1} jó döntés", "en": "{0} / {1} good decisions", "de": "{0} / {1} gute Entscheidungen", "es": "{0} / {1} decisiones buenas"}
+{"hu": "Oktatási célú gyakorlás, nem befektetési tanács.", "en": "Educational practice, not investment advice.", "de": "Übung zu Lernzwecken, keine Anlageberatung.", "es": "Práctica educativa, no es asesoramiento de inversión."}
+{"hu": "Próbáld ki a mai kihívást", "en": "Try today's challenge", "de": "Probier die heutige Challenge", "es": "Prueba el reto de hoy"}
+{"hu": "Próbáld ki ingyen", "en": "Try it for free", "de": "Kostenlos ausprobieren", "es": "Pruébalo gratis"}
+{"hu": "Csatlakozz a csoportunkhoz:", "en": "Join our group:", "de": "Tritt unserer Gruppe bei:", "es": "Únete a nuestro grupo:"}
+{"hu": "Meghívókód:", "en": "Invite code:", "de": "Einladungscode:", "es": "Código de invitación:"}
+{"hu": "Megosztás", "en": "Share", "de": "Teilen", "es": "Compartir"}
+{"hu": "Kártya és link a beceneveddel és az eredménnyel – a helyzetek és a válaszaid nélkül, hogy más is kitölthesse. A Profil oldalon visszavonhatod.", "en": "A card and link with your nickname and result – without the situations or your answers, so others can take it too. You can revoke it on the Profile page.", "de": "Karte und Link mit deinem Spitznamen und Ergebnis – ohne die Situationen und deine Antworten, damit andere sie auch lösen können. Auf der Profilseite kannst du sie widerrufen.", "es": "Tarjeta y enlace con tu apodo y resultado, sin las situaciones ni tus respuestas, para que otros también puedan hacerlo. Puedes revocarlo en la página de Perfil."}
+{"hu": "Csoport meghívókódja a megosztásban", "en": "Group invite code in the share", "de": "Gruppen-Einladungscode in der Freigabe", "es": "Código de invitación del grupo en lo compartido"}
+{"hu": "Eredmény megosztása", "en": "Share result", "de": "Ergebnis teilen", "es": "Compartir resultado"}
+{"hu": "(a vágólapon)", "en": "(copied)", "de": "(kopiert)", "es": "(copiado)"}
+{"hu": "Csoport nélkül", "en": "Without group", "de": "Ohne Gruppe", "es": "Sin grupo"}
+{"hu": "Meghívó: {0}", "en": "Invite: {0}", "de": "Einladung: {0}", "es": "Invitación: {0}"}
+{"hu": "Megosztásaid", "en": "Your shares", "de": "Deine Freigaben", "es": "Lo que has compartido"}
+{"hu": "Még nem osztottál meg eredményt.", "en": "You haven't shared a result yet.", "de": "Du hast noch kein Ergebnis geteilt.", "es": "Aún no has compartido ningún resultado."}
+{"hu": "Visszavonás után a link és a kártya nem érhető el.", "en": "After revoking, the link and the card are no longer available.", "de": "Nach dem Widerruf sind Link und Karte nicht mehr erreichbar.", "es": "Tras revocarlo, el enlace y la tarjeta dejan de estar disponibles."}
+{"hu": "{0} megnyitás · {1} regisztráció", "en": "{0} opens · {1} sign-ups", "de": "{0} Aufrufe · {1} Registrierungen", "es": "{0} aperturas · {1} registros"}
+{"hu": "Nincs ilyen megosztás.", "en": "No such share.", "de": "Keine solche Freigabe.", "es": "No existe ese elemento compartido."}
+{"hu": "Ezen a napon nem játszottál napi kihívást.", "en": "You didn't play the daily challenge on this day.", "de": "An diesem Tag hast du die tägliche Challenge nicht gespielt.", "es": "No jugaste el reto diario ese día."}
+{"hu": "A napi kihívás eredménye a beadás után osztható meg.", "en": "The daily challenge result can be shared after submission.", "de": "Das Ergebnis der täglichen Challenge kann nach dem Abschluss geteilt werden.", "es": "El resultado del reto diario se puede compartir tras enviarlo."}
+{"hu": "Csak teljesített szint osztható meg.", "en": "Only a completed level can be shared.", "de": "Nur eine abgeschlossene Stufe kann geteilt werden.", "es": "Solo se puede compartir un nivel completado."}
+{"hu": "Ismeretlen megosztás.", "en": "Unknown share type.", "de": "Unbekannte Freigabe.", "es": "Tipo de elemento compartido desconocido."}
+{"hu": "Nyertél", "en": "You won", "de": "Gewonnen", "es": "Ganaste"}
+{"hu": "Vesztettél", "en": "You lost", "de": "Verloren", "es": "Perdiste"}
+{"hu": "Döntetlen", "en": "Draw", "de": "Unentschieden", "es": "Empate"}
+{"hu": "Párbaj", "en": "Duel", "de": "Duell", "es": "Duelo"}
+{"hu": "Hívj ki valakit: ugyanazokat a helyzeteket kapjátok ugyanabban a sorrendben, 72 órátok van rá. A másik eredményét a saját köröd befejezése után látod; aki a határidőig nem fejezi be, veszít.", "en": "Challenge someone: you both get the same situations in the same order and have 72 hours. You see the other's result after finishing your own round; whoever doesn't finish by the deadline loses.", "de": "Fordere jemanden heraus: Ihr bekommt dieselben Situationen in derselben Reihenfolge und habt 72 Stunden Zeit. Das Ergebnis des anderen siehst du nach Abschluss deiner eigenen Runde; wer bis zur Frist nicht fertig ist, verliert.", "es": "Reta a alguien: ambos recibís las mismas situaciones en el mismo orden y tenéis 72 horas. Ves el resultado del otro tras terminar tu propia ronda; quien no termine antes del plazo pierde."}
+{"hu": "Párbaj indítása", "en": "Start a duel", "de": "Duell starten", "es": "Iniciar duelo"}
+{"hu": "Indult", "en": "Started", "de": "Gestartet", "es": "Inicio"}
+{"hu": "Ellenfél", "en": "Opponent", "de": "Gegner", "es": "Rival"}
+{"hu": "még nincs", "en": "none yet", "de": "noch keiner", "es": "aún no"}
+{"hu": "visszavonva", "en": "revoked", "de": "widerrufen", "es": "revocado"}
+{"hu": "folyamatban", "en": "in progress", "de": "läuft", "es": "en curso"}
+{"hu": "Elfogadom, játszom", "en": "Accept and play", "de": "Annehmen und spielen", "es": "Aceptar y jugar"}
+{"hu": "Párbaj-meghívó", "en": "Duel invite", "de": "Duell-Einladung", "es": "Invitación a duelo"}
+{"hu": "kihívott egy párbajra.", "en": "challenged you to a duel.", "de": "hat dich zu einem Duell herausgefordert.", "es": "te ha retado a un duelo."}
+{"hu": "{0} helyzet, ugyanazok ugyanabban a sorrendben. Határidő: {1}.", "en": "{0} situations, the same ones in the same order. Deadline: {1}.", "de": "{0} Situationen, dieselben in derselben Reihenfolge. Frist: {1}.", "es": "{0} situaciones, las mismas en el mismo orden. Plazo: {1}."}
+{"hu": "A köröm", "en": "My round", "de": "Meine Runde", "es": "Mi ronda"}
+{"hu": "kész: {0} pont", "en": "done: {0} points", "de": "fertig: {0} Punkte", "es": "terminado: {0} puntos"}
+{"hu": "nem fejeződött be időben", "en": "not finished in time", "de": "nicht rechtzeitig beendet", "es": "no terminado a tiempo"}
+{"hu": "Ellenfél:", "en": "Opponent:", "de": "Gegner:", "es": "Rival:"}
+{"hu": "Még nincs ellenfél.", "en": "No opponent yet.", "de": "Noch kein Gegner.", "es": "Aún no hay rival."}
+{"hu": "{0} helyzet", "en": "{0} situations", "de": "{0} Situationen", "es": "{0} situaciones"}
+{"hu": "határidő: {0}", "en": "deadline: {0}", "de": "Frist: {0}", "es": "plazo: {0}"}
+{"hu": "A meghívót visszavontad.", "en": "You revoked the invite.", "de": "Du hast die Einladung widerrufen.", "es": "Has revocado la invitación."}
+{"hu": "Meghívó link", "en": "Invite link", "de": "Einladungslink", "es": "Enlace de invitación"}
+{"hu": "Küldd el annak, akit kihívsz. Az első elfogadó lesz az ellenfeled; addig visszavonhatod.", "en": "Send it to the person you challenge. The first one to accept becomes your opponent; until then you can revoke it.", "de": "Schick ihn der Person, die du herausforderst. Wer zuerst annimmt, wird dein Gegner; bis dahin kannst du ihn widerrufen.", "es": "Envíalo a quien retas. El primero en aceptar será tu rival; hasta entonces puedes revocarlo."}
+{"hu": "Link másolása", "en": "Copy link", "de": "Link kopieren", "es": "Copiar enlace"}
+{"hu": "A link a vágólapon.", "en": "Link copied.", "de": "Link kopiert.", "es": "Enlace copiado."}
+{"hu": "Az ellenfél még nem fogadta el.", "en": "The opponent hasn't accepted yet.", "de": "Der Gegner hat noch nicht angenommen.", "es": "El rival aún no ha aceptado."}
+{"hu": "Az ellenfél befejezte.", "en": "The opponent has finished.", "de": "Der Gegner ist fertig.", "es": "El rival ha terminado."}
+{"hu": "Az ellenfél még játszik.", "en": "The opponent is still playing.", "de": "Der Gegner spielt noch.", "es": "El rival aún está jugando."}
+{"hu": "Pontja:", "en": "Their points:", "de": "Punkte:", "es": "Sus puntos:"}
+{"hu": "Visszavágó", "en": "Rematch", "de": "Revanche", "es": "Revancha"}
+{"hu": "Helyzetenként", "en": "By situation", "de": "Pro Situation", "es": "Por situación"}
+{"hu": "Te", "en": "You", "de": "Du", "es": "Tú"}
+{"hu": "Visszavonod a meghívót?", "en": "Revoke the invite?", "de": "Einladung widerrufen?", "es": "¿Revocar la invitación?"}
+{"hu": "Vissza a párbajhoz", "en": "Back to the duel", "de": "Zurück zum Duell", "es": "Volver al duelo"}
+{"hu": "Első párbaj", "en": "First duel", "de": "Erstes Duell", "es": "Primer duelo"}
+{"hu": "5 megnyert párbaj", "en": "5 duels won", "de": "5 gewonnene Duelle", "es": "5 duelos ganados"}
+{"hu": "Nincs ilyen párbaj.", "en": "No such duel.", "de": "Kein solches Duell.", "es": "No existe ese duelo."}
+{"hu": "Ez a meghívó már nem érvényes.", "en": "This invite is no longer valid.", "de": "Diese Einladung ist nicht mehr gültig.", "es": "Esta invitación ya no es válida."}
+{"hu": "A saját párbajodat nem fogadhatod el.", "en": "You can't accept your own duel.", "de": "Du kannst dein eigenes Duell nicht annehmen.", "es": "No puedes aceptar tu propio duelo."}
+{"hu": "A meghívó lejárt.", "en": "The invite has expired.", "de": "Die Einladung ist abgelaufen.", "es": "La invitación ha caducado."}
+{"hu": "A feladatkészlet közben megváltozott – kérj új meghívót.", "en": "The task pool has changed in the meantime – ask for a new invite.", "de": "Der Aufgabenpool hat sich inzwischen geändert – bitte um eine neue Einladung.", "es": "El conjunto de tareas ha cambiado entretanto: pide una nueva invitación."}
+{"hu": "Az ellenfél már elfogadta – a párbaj nem vonható vissza.", "en": "The opponent has already accepted – the duel can't be revoked.", "de": "Der Gegner hat bereits angenommen – das Duell kann nicht widerrufen werden.", "es": "El rival ya ha aceptado: el duelo no se puede revocar."}
+{"hu": "A visszavágó a párbaj eredménye után indítható.", "en": "A rematch can be started once the duel has a result.", "de": "Eine Revanche ist erst nach dem Ergebnis des Duells möglich.", "es": "La revancha se puede iniciar cuando el duelo tenga resultado."}
+{"hu": "A párbaj 5 vagy 10 helyzetes.", "en": "A duel has 5 or 10 situations.", "de": "Ein Duell hat 5 oder 10 Situationen.", "es": "Un duelo tiene 5 o 10 situaciones."}
+{"hu": "Párbaj-meghívót kaptál. Lépj be, és a párbaj megnyílik. Ha még nincs fiókod, regisztrálj, erősítsd meg az e-mail-címedet, majd nyisd meg újra a meghívó linkjét.", "en": "You've received a duel invite. Log in and the duel opens. If you don't have an account yet, sign up, confirm your email address, then open the invite link again.", "de": "Du hast eine Duell-Einladung erhalten. Melde dich an, dann öffnet sich das Duell. Wenn du noch kein Konto hast, registriere dich, bestätige deine E-Mail-Adresse und öffne den Einladungslink erneut.", "es": "Has recibido una invitación a un duelo. Inicia sesión y se abrirá el duelo. Si aún no tienes cuenta, regístrate, confirma tu correo y vuelve a abrir el enlace de invitación."}
+{"hu": "Magabiztosság és kalibráció", "en": "Confidence and calibration", "de": "Zuversicht und Kalibrierung", "es": "Confianza y calibración"}
+{"hu": "Magabiztosság megadása minden döntésnél (a leckékben a 6. szinttől mindig)", "en": "Give your confidence with every decision (always in lessons from level 6)", "de": "Zuversicht bei jeder Entscheidung angeben (in Lektionen ab Stufe 6 immer)", "es": "Indicar la confianza en cada decisión (en las lecciones, siempre desde el nivel 6)"}
+{"hu": "Még nincs magabiztossággal megadott döntés.", "en": "No decisions with a confidence level yet.", "de": "Noch keine Entscheidungen mit Zuversichtsangabe.", "es": "Aún no hay decisiones con nivel de confianza."}
+{"hu": "Magabiztosság:", "en": "Confidence:", "de": "Zuversicht:", "es": "Confianza:"}
+{"hu": "– ennyire vagy biztos benne, hogy ez a jó döntés", "en": "– how sure you are that this is the right decision", "de": "– wie sicher du bist, dass dies die richtige Entscheidung ist", "es": "– cuánto confías en que esta es la decisión correcta"}
+{"hu": "Magabiztosság: {0}% · kalibrációs pont: {1}", "en": "Confidence: {0}% · calibration points: {1}", "de": "Zuversicht: {0}% · Kalibrierungspunkte: {1}", "es": "Confianza: {0}% · puntos de calibración: {1}"}
+{"hu": "Még csak {0} döntés (legalább {1} kell): a görbe még főleg zaj.", "en": "Only {0} decisions so far (at least {1} needed): the curve is still mostly noise.", "de": "Erst {0} Entscheidungen (mindestens {1} nötig): Die Kurve ist noch überwiegend Rauschen.", "es": "Solo {0} decisiones (se necesitan al menos {1}): la curva aún es sobre todo ruido."}
+{"hu": "Túl magabiztos", "en": "Overconfident", "de": "Zu zuversichtlich", "es": "Demasiado confiado"}
+{"hu": "Túl óvatos", "en": "Too cautious", "de": "Zu vorsichtig", "es": "Demasiado prudente"}
+{"hu": "Jól kalibrált", "en": "Well calibrated", "de": "Gut kalibriert", "es": "Bien calibrado"}
+{"hu": "Túl magabiztos:", "en": "Overconfident:", "de": "Zu zuversichtlich:", "es": "Demasiado confiado:"}
+{"hu": "Túl óvatos:", "en": "Too cautious:", "de": "Zu vorsichtig:", "es": "Demasiado prudente:"}
+{"hu": "Jól kalibrált:", "en": "Well calibrated:", "de": "Gut kalibriert:", "es": "Bien calibrado:"}
+{"hu": "átlagosan {0}-ra becsülted, a döntéseid {1}-a volt jó vagy balszerencsés.", "en": "on average you estimated {0}; {1} of your decisions were good or unlucky.", "de": "im Schnitt hast du {0} geschätzt; {1} deiner Entscheidungen waren gut oder unglücklich.", "es": "de media estimaste un {0}; el {1} de tus decisiones fueron buenas o desafortunadas."}
+{"hu": "Sávonként: tényleges találati arány / a megadott átlag · a döntések száma. Jól kalibráltnál a kettő közel azonos.", "en": "Per band: actual hit rate / your stated average · number of decisions. When well calibrated, the two are close.", "de": "Pro Band: tatsächliche Trefferquote / angegebener Durchschnitt · Anzahl der Entscheidungen. Bei guter Kalibrierung liegen beide nahe beieinander.", "es": "Por franja: tasa real de acierto / media indicada · número de decisiones. Si está bien calibrado, ambos están cerca."}
+{"hu": "Brier: {0} · kalibrációs pont összesen: {1}", "en": "Brier: {0} · total calibration points: {1}", "de": "Brier: {0} · Kalibrierungspunkte gesamt: {1}", "es": "Brier: {0} · puntos de calibración en total: {1}"}
+{"hu": "A magabiztosság {0} és {1}% között legyen.", "en": "Confidence must be between {0} and {1}%.", "de": "Die Zuversicht muss zwischen {0} und {1} % liegen.", "es": "La confianza debe estar entre {0} y {1}%."}
+{"hu": "A magabiztosság 50 és 95% között legyen.", "en": "Confidence must be between 50 and 95%.", "de": "Die Zuversicht muss zwischen 50 und 95 % liegen.", "es": "La confianza debe estar entre 50 y 95%."}
+{"hu": "Ismétlés", "en": "Review", "de": "Wiederholung", "es": "Repaso"}
+{"hu": "A rossz vagy szerencsés döntések (és a túl szoros stopok) helyzettípusa másnap visszajön, hasonló, de másik helyzettel; jó döntés után egyre ritkábban.", "en": "Situation types of bad or lucky decisions (and too-tight stops) come back the next day with a similar but different situation; after good decisions, less and less often.", "de": "Situationstypen schlechter oder glücklicher Entscheidungen (und zu enger Stopps) kommen am nächsten Tag mit einer ähnlichen, aber anderen Situation zurück; nach guten Entscheidungen immer seltener.", "es": "Los tipos de situación de decisiones malas o afortunadas (y stops demasiado ajustados) vuelven al día siguiente con una situación similar pero distinta; tras decisiones buenas, cada vez con menos frecuencia."}
+{"hu": "Ismétlő kör ({0} típus esedékes)", "en": "Review round ({0} types due)", "de": "Wiederholungsrunde ({0} Typen fällig)", "es": "Ronda de repaso ({0} tipos pendientes)"}
+{"hu": "Nincs esedékes ismétlés.", "en": "No review due.", "de": "Keine Wiederholung fällig.", "es": "No hay repaso pendiente."}
+{"hu": "A következő:", "en": "Next:", "de": "Nächste:", "es": "Siguiente:"}
+{"hu": "Gyengeségeim", "en": "My weak spots", "de": "Meine Schwachstellen", "es": "Mis puntos débiles"}
+{"hu": "Helyzettípus", "en": "Situation type", "de": "Situationstyp", "es": "Tipo de situación"}
+{"hu": "Rossz vagy szerencsés", "en": "Bad or lucky", "de": "Schlecht oder glücklich", "es": "Mala o afortunada"}
+{"hu": "Szoros stop", "en": "Tight stop", "de": "Enger Stopp", "es": "Stop ajustado"}
+{"hu": "Ismétlésre vár: {0}", "en": "Waiting for review: {0}", "de": "Wartet auf Wiederholung: {0}", "es": "Pendiente de repaso: {0}"}
+{"hu": "Ismétlésre vár:", "en": "Waiting for review:", "de": "Wartet auf Wiederholung:", "es": "Pendiente de repaso:"}
+{"hu": "A feladatkészletben nincs ilyen típusú helyzet.", "en": "The task pool has no situation of this type.", "de": "Der Aufgabenpool enthält keine Situation dieses Typs.", "es": "El conjunto de tareas no tiene situaciones de este tipo."}

@@ -63,7 +63,7 @@ def test_decision_awards_points_xp_and_badges(env):
     summary = progress.summary(env["user"])
     assert summary["xp"] == second["progress"]["xp"] and summary["streak"] == 1
     assert {b["key"]: bool(b["earned_at"]) for b in summary["badges"]} == {
-        "first_short": True, "good_skips_10": False, "wide_stops_20": False}
+        "first_short": True, "good_skips_10": False, "wide_stops_20": False, "first_duel": False, "duel_wins_5": False}
 
 
 def _history(user, rows):

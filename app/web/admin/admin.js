@@ -112,7 +112,8 @@ const VIEWS = {
         <div class="kpi"><div class="label">Aktív 7 nap</div><div class="value">${o.active.week}</div></div>
         <div class="kpi"><div class="label">Aktív 30 nap</div><div class="value">${o.active.month}</div></div>
         <div class="kpi"><div class="label">Döntés / felhasználó</div><div class="value">${o.decisions.per_user ?? "–"}</div><div class="sub">${o.decisions.total} döntés</div></div>
-        <div class="kpi"><div class="label">Hibák (7 nap)</div><div class="value">${o.errors.js + o.errors.server}</div><div class="sub">böngésző ${o.errors.js} · szerver ${o.errors.server}</div></div></div>
+        <div class="kpi"><div class="label">Hibák (7 nap)</div><div class="value">${o.errors.js + o.errors.server}</div><div class="sub">böngésző ${o.errors.js} · szerver ${o.errors.server}</div></div>
+        <div class="kpi"><div class="label">Megosztás</div><div class="value">${o.shares.created}</div><div class="sub">${o.shares.views} megnyitás · ${o.shares.registers} regisztráció</div></div></div>
       <section class="card"><h2>Tölcsér (${o.days} nap)</h2><div class="card-body">${table(["Lépés", "Fő", "A regisztráltak"], funnel)}</div></section>
       <section class="card"><h2>Heti kohorsz-visszatérés</h2><div class="card-body">
         ${table(["Regisztráció hete", "Fő", ...Array.from({ length: 8 }, (_, i) => `${i + 1}. hét`)], cohorts)}</div></section>

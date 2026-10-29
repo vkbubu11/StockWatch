@@ -24,6 +24,8 @@ BADGES = {
     "first_short": "Első short",
     "good_skips_10": "10 jó kihagyás egymás után",
     "wide_stops_20": "20 belépés legalább 1 ATR-es stoppal egymás után",
+    "first_duel": "Első párbaj",
+    "duel_wins_5": "5 megnyert párbaj",
 }
 
 
@@ -79,6 +81,12 @@ def record(conn, user_id: int, points: int, day: date) -> dict:
         "INSERT INTO user_badges (user_id, badge) VALUES (%s, %s) ON CONFLICT DO NOTHING", (user_id, b)).rowcount]
     return level(xp) | {"streak": streak, "best_streak": best, "freeze": freeze,
                         "new_badges": [{"key": b, "label": BADGES[b]} for b in new]}
+
+
+def award(conn, user_id: int, badge: str) -> bool:
+    """Esemenyhez kotott jelveny (pl. parbaj, #55) - egyszer."""
+    return conn.execute("INSERT INTO user_badges (user_id, badge) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                        (user_id, badge)).rowcount > 0
 
 
 def _earned(conn, user_id: int) -> list[str]:
