@@ -195,7 +195,7 @@ def test_phone_card_labels_are_translated(site, browser, env):  # noqa: F811
     page.goto(site + "/#/leaderboard")
     _settle(page)
     labels = page.evaluate("[...document.querySelectorAll('table.cards-on-phone tbody tr:first-child td')].map(td => td.dataset.label)")
-    assert labels == ["Rank", "Nickname", "Score", "Days"]
+    assert labels == ["Rank", "Nickname", "Weekly points", None, "Rank", "Nickname", "Score", "Days"]   # heti liga, ranglista
     page.close()
 
 

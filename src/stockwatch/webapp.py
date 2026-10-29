@@ -467,6 +467,10 @@ def make_handler(trust_proxy: bool = False):
                     from . import duels
 
                     return self._json(duels.mine(user["id"]))
+                if path == "/api/league":
+                    from . import leagues
+
+                    return self._json(leagues.view(user["id"]))
                 m = DUEL_RE.fullmatch(path)
                 if m and not m.group(2):
                     from . import duels
@@ -752,6 +756,14 @@ def make_handler(trust_proxy: bool = False):
                         getattr(groups, action)(user["id"], int(body.get("id") or 0))
                         return self._json({"ok": True})
                     return self._error(404, "Nem talalhato")
+                if path in ("/api/league/seen", "/api/league/opt"):
+                    from . import leagues
+
+                    if path.endswith("seen"):
+                        leagues.seen(user["id"])
+                    else:
+                        leagues.set_opt_in(user["id"], bool(body.get("in")))
+                    return self._json({"ok": True})
                 if path == "/api/review/start":
                     from . import repetition
 

@@ -298,6 +298,9 @@ def decide(user_id: int, session_id: str, k: int, body: dict, settings: Settings
         analytics.track("decision", user_id, conn, kind=task.get("kind") or "decision", daily=bool(session.get("daily")),
                         lesson=session.get("lesson"), hints=_hints(session))
         prog = progress.record(conn, user_id, points["points"], progress.today())
+        from .. import leagues                       # heti liga (#56): a het elso dontesekor csoportba kerul
+
+        leagues.join(conn, user_id, progress.today())
         if (task.get("kind") or "decision") == "decision" and not session.get("daily"):   # hibak ismetlese (#36)
             from .. import repetition
 

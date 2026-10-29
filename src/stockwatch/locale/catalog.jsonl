@@ -3237,3 +3237,26 @@
 {"hu": "Ismétlésre vár: {0}", "en": "Waiting for review: {0}", "de": "Wartet auf Wiederholung: {0}", "es": "Pendiente de repaso: {0}"}
 {"hu": "Ismétlésre vár:", "en": "Waiting for review:", "de": "Wartet auf Wiederholung:", "es": "Pendiente de repaso:"}
 {"hu": "A feladatkészletben nincs ilyen típusú helyzet.", "en": "The task pool has no situation of this type.", "de": "Der Aufgabenpool enthält keine Situation dieses Typs.", "es": "El conjunto de tareas no tiene situaciones de este tipo."}
+{"hu": "Bronz", "en": "Bronze", "de": "Bronze", "es": "Bronce"}
+{"hu": "Ezüst", "en": "Silver", "de": "Silber", "es": "Plata"}
+{"hu": "Arany", "en": "Gold", "de": "Gold", "es": "Oro"}
+{"hu": "Platina", "en": "Platinum", "de": "Platin", "es": "Platino"}
+{"hu": "Gyémánt", "en": "Diamond", "de": "Diamant", "es": "Diamante"}
+{"hu": "Feljutottál", "en": "You were promoted", "de": "Du bist aufgestiegen", "es": "Has ascendido"}
+{"hu": "A ligádban maradtál", "en": "You stayed in your league", "de": "Du bist in deiner Liga geblieben", "es": "Te has mantenido en tu liga"}
+{"hu": "Kiestél", "en": "You were relegated", "de": "Du bist abgestiegen", "es": "Has descendido"}
+{"hu": "feljutó hely", "en": "promotion spot", "de": "Aufstiegsplatz", "es": "puesto de ascenso"}
+{"hu": "kieső hely", "en": "relegation spot", "de": "Abstiegsplatz", "es": "puesto de descenso"}
+{"hu": "Múlt heti liga:", "en": "Last week's league:", "de": "Liga der letzten Woche:", "es": "Liga de la semana pasada:"}
+{"hu": "{0}. hely, {1} pont", "en": "place {0}, {1} points", "de": "Platz {0}, {1} Punkte", "es": "puesto {0}, {1} puntos"}
+{"hu": "Most:", "en": "Now:", "de": "Jetzt:", "es": "Ahora:"}
+{"hu": "Heti liga", "en": "Weekly league", "de": "Wochenliga", "es": "Liga semanal"}
+{"hu": "Heti liga:", "en": "Weekly league:", "de": "Wochenliga:", "es": "Liga semanal:"}
+{"hu": "Kiléptél a heti ligából – a Profil oldalon visszaléphetsz.", "en": "You have left the weekly league – you can rejoin on the Profile page.", "de": "Du hast die Wochenliga verlassen – auf der Profilseite kannst du wieder beitreten.", "es": "Has salido de la liga semanal; puedes volver a unirte en la página de Perfil."}
+{"hu": "Ezen a héten még nem döntöttél – az első döntéseddel bekerülsz egy kb. 30 fős csoportba.", "en": "You haven't made a decision this week yet – your first decision puts you in a group of about 30.", "de": "Du hast diese Woche noch keine Entscheidung getroffen – mit deiner ersten kommst du in eine Gruppe von etwa 30 Personen.", "es": "Aún no has tomado ninguna decisión esta semana; con la primera entrarás en un grupo de unas 30 personas."}
+{"hu": "A hét zárása:", "en": "Week closes:", "de": "Wochenabschluss:", "es": "Cierre de la semana:"}
+{"hu": "Feljut: {0} · kiesik: {1}", "en": "Promoted: {0} · relegated: {1}", "de": "Aufstieg: {0} · Abstieg: {1}", "es": "Ascienden: {0} · descienden: {1}"}
+{"hu": "Heti pont", "en": "Weekly points", "de": "Wochenpunkte", "es": "Puntos semanales"}
+{"hu": "A heti pont a döntések minősége szerint jár (a napi kihívás és a leckék is számítanak, ugyanannak a helyzetnek az újrajátszása nem). A hét vasárnap éjfélkor zárul.", "en": "Weekly points reflect decision quality (the daily challenge and lessons count too; replaying the same situation does not). The week closes at midnight on Sunday.", "de": "Die Wochenpunkte richten sich nach der Qualität der Entscheidungen (Tageschallenge und Lektionen zählen auch, das erneute Spielen derselben Situation nicht). Die Woche endet Sonntag um Mitternacht.", "es": "Los puntos semanales dependen de la calidad de las decisiones (el reto diario y las lecciones también cuentan; volver a jugar la misma situación, no). La semana cierra el domingo a medianoche."}
+{"hu": "Részt veszek a heti ligában", "en": "I take part in the weekly league", "de": "Ich nehme an der Wochenliga teil", "es": "Participo en la liga semanal"}
+{"hu": "Kilépéskor azonnal kikerülsz a heti csoportodból; visszalépés után a következő döntéseddel kerülsz be újra.", "en": "Leaving removes you from your weekly group immediately; after rejoining, your next decision puts you back in.", "de": "Beim Verlassen wirst du sofort aus deiner Wochengruppe entfernt; nach dem Wiedereintritt kommst du mit deiner nächsten Entscheidung wieder hinein.", "es": "Al salir, abandonas tu grupo semanal de inmediato; tras volver a unirte, entrarás de nuevo con tu próxima decisión."}

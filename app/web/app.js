@@ -306,8 +306,39 @@ let lbPeriod = "week";
 let lbGroup = "";                                    // "" = mindenki, kulonben a privat csoport azonositoja (#47)
 const LB_PERIODS = { day: "Napi", week: "Heti", month: "Havi", all: "Összesített" };
 
+// heti liga (#56): kb. 30 fos csoport, hetfotol vasarnapig a dontesek pontja; a het vegen feljutas / kieses
+const LEAGUE_TIERS = ["Bronz", "Ezüst", "Arany", "Platina", "Gyémánt"];
+const LEAGUE_OUTCOME = { up: "Feljutottál", stay: "A ligádban maradtál", down: "Kiestél" };
+const LEAGUE_ZONE = { up: ["feljutó hely", "go"], down: ["kieső hely", "fail"] };
+
+function leagueLast(l) {
+  if (!l.last) return "";
+  return `<p class="${l.last.new ? "" : "muted small"}"><span>Múlt heti liga:</span> <strong>${LEAGUE_OUTCOME[l.last.outcome]}</strong>
+    · <span>${l.last.rank}. hely, ${l.last.xp} pont</span> · <span>Most:</span> <span>${LEAGUE_TIERS[l.tier]}</span></p>`;
+}
+
+function leagueNotice(l) {
+  if (!l.last || !l.last.new) return "";
+  return `<section class="card"><div class="card-body">${leagueLast(l)}
+    <div class="digest-controls"><a class="btn" href="#/leaderboard">Heti liga</a> <button class="btn" type="button" id="league-seen">Rendben</button></div></div></section>`;
+}
+
+function leagueCard(l) {
+  const name = (r) => (r.name ? `<span translate="no">${esc(r.name)}</span>` : `Játékos #${esc(r.tag)}`);
+  const body = l.opted_out ? `<p class="muted">Kiléptél a heti ligából – a Profil oldalon visszaléphetsz.</p>`
+    : !l.group ? `<p>Ezen a héten még nem döntöttél – az első döntéseddel bekerülsz egy kb. 30 fős csoportba.</p>`
+    : `<p class="muted small"><span>A hét zárása:</span> ${when(l.ends)} · <span>Feljut: ${l.quotas.up} · kiesik: ${l.quotas.down}</span></p>
+      <table class="table cards-on-phone"><thead><tr><th>Hely</th><th>Becenév</th><th>Heti pont</th><th></th></tr></thead><tbody>
+      ${l.group.map((r) => `<tr class="${r.me ? "lb-me" : ""}"><td class="num">${r.rank}.</td><td>${name(r)}${r.me ? " (te)" : ""}</td>
+        <td class="num">${r.xp}</td><td>${LEAGUE_ZONE[r.zone] ? `<span class="badge ${LEAGUE_ZONE[r.zone][1]}">${LEAGUE_ZONE[r.zone][0]}</span>` : ""}</td></tr>`).join("")}
+      </tbody></table>`;
+  return `<section class="card"><h2><span>Heti liga:</span> <span>${LEAGUE_TIERS[l.tier]}</span></h2><div class="card-body">
+    ${leagueLast(l)}${body}
+    <p class="muted small">A heti pont a döntések minősége szerint jár (a napi kihívás és a leckék is számítanak, ugyanannak a helyzetnek az újrajátszása nem). A hét vasárnap éjfélkor zárul.</p></div></section>`;
+}
+
 async function pageLeaderboard() {
-  const groups = await api("/api/groups");
+  const [groups, league] = await Promise.all([api("/api/groups"), api("/api/league")]);
   if (lbGroup && !groups.some((g) => String(g.id) === lbGroup)) lbGroup = "";
   const d = await api(`/api/leaderboard?period=${lbPeriod}${lbGroup ? `&group=${lbGroup}` : ""}`);
   const row = (r) => `<tr class="${r.me ? "lb-me" : ""}"><td class="num">${r.rank}.</td>
@@ -316,6 +347,7 @@ async function pageLeaderboard() {
   view.innerHTML = `
     <div class="page-head"><h1>Ranglista</h1><span class="muted">A napi kihívások pontjai szerint (a döntés minősége, nem a profit).
       Becenév látszik, e-mail soha – a becenevet a Profil oldalon állíthatod be.</span></div>
+    ${leagueCard(league)}
     <section class="card"><div class="card-body">
       ${groups.length ? `<label class="cal-field">Kik között<select id="lb-group"><option value="">Mindenki</option>
         ${groups.map((g) => `<option value="${g.id}" translate="no" ${String(g.id) === lbGroup ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select></label>` : ""}
@@ -336,6 +368,7 @@ async function pageLeaderboard() {
       <form id="group-join" class="ag-form"><label>Meghívókód<input name="code" maxlength="8" autocomplete="off" required></label>
         <div class="wide"><button class="btn" type="submit">Csatlakozás</button> <span id="group-msg" class="small"></span></div></form>
     </div></section>`;
+  if (league.last && league.last.new) api("/api/league/seen", { method: "POST", body: "{}" }).catch(() => {});
   view.querySelectorAll("[data-lb]").forEach((b) => b.addEventListener("click", () => { lbPeriod = b.dataset.lb; pageLeaderboard(); }));
   const sel = $("#lb-group");
   if (sel) sel.addEventListener("change", () => { lbGroup = sel.value; pageLeaderboard(); });
@@ -357,7 +390,7 @@ async function pageLeaderboard() {
 // Profil: a fiok, kilepes (mindenhonnan is)
 // ---------------------------------------------------------------------------
 async function pageProfile() {
-  const [s, g, sh, rv] = await Promise.all([api("/api/session"), api("/api/progress"), api("/api/shares"), api("/api/review")]);
+  const [s, g, sh, rv, lg] = await Promise.all([api("/api/session"), api("/api/progress"), api("/api/shares"), api("/api/review"), api("/api/league")]);
   view.innerHTML = `
     <div class="page-head"><h1>Profil</h1><span class="muted" translate="no">${esc(s.email)}</span>
       ${s.admin ? `<a class="btn" href="/admin">Admin felület</a>` : ""}</div>
@@ -386,6 +419,9 @@ async function pageProfile() {
       <label class="check"><input type="checkbox" id="conf-toggle" ${prefConfidence() ? "checked" : ""}> <span>Magabiztosság megadása minden döntésnél (a leckékben a 6. szinttől mindig)</span></label>
       ${g.calibration.n ? calibrationView(g.calibration) : `<p class="muted">Még nincs magabiztossággal megadott döntés.</p>`}</div></section>
     ${weaknessCard(rv)}
+    <section class="card"><h2>Heti liga</h2><div class="card-body">
+      <label class="check"><input type="checkbox" id="league-toggle" ${lg.opted_out ? "" : "checked"}> <span>Részt veszek a heti ligában</span></label>
+      <p class="muted small">Kilépéskor azonnal kikerülsz a heti csoportodból; visszalépés után a következő döntéseddel kerülsz be újra.</p></div></section>
     <section class="card"><h2>Jelvények</h2><div class="card-body"><div class="badges">${g.badges.map((b) =>
       `<span class="badge ${b.earned_at ? "go" : "fail"}">${b.earned_at ? "✓" : "○"} ${esc(b.label)}</span>`).join(" ")}</div></div></section>
     <section class="card"><h2>Munkamenetek</h2><div class="card-body">
@@ -412,6 +448,7 @@ async function pageProfile() {
       location.href = "/";
     } catch (e) { const m = $("#delete-msg"); m.className = "msg err small"; m.textContent = e.message; }
   });
+  $("#league-toggle").addEventListener("change", (ev) => api("/api/league/opt", { method: "POST", body: JSON.stringify({ in: ev.target.checked }) }));
   $("#conf-toggle").addEventListener("change", (ev) => { try { localStorage.setItem("sw-confidence", ev.target.checked ? "1" : "0"); } catch (e) { /* privat mod */ } });
   document.querySelectorAll(".share-revoke").forEach((b) => b.addEventListener("click", async () => {
     await api("/api/share/revoke", { method: "POST", body: JSON.stringify({ id: b.dataset.id }) });
@@ -492,7 +529,7 @@ function weaknessCard(r) {
 
 async function pagePractice(msg = "") {
   clearInterval(practiceTimer);
-  const [d, rv] = await Promise.all([api("/api/practice"), api("/api/review")]);
+  const [d, rv, lg] = await Promise.all([api("/api/practice"), api("/api/review"), api("/api/league")]);
   const p = d.pool;
   const total = p ? Object.values(p.counts).reduce((a, b) => a + b, 0) : 0;
   view.innerHTML = `
@@ -500,6 +537,7 @@ async function pagePractice(msg = "") {
       <span class="muted">Rejtett, múltbeli chart-helyzetek: eldöntöd, kihagyod-e, vagy long / short belépsz-e (stoppal, opcionális céllal és időkorláttal), utána megnézed, mi történt, ítéletet és lépésenkénti levezetést kapsz, és összeveted a stratégiákkal és egy véletlen alapvonallal.
         A papír és a dátum csak a döntés után derül ki. Szimuláció múltbeli adaton, nem ajánlás.</span></div>
     ${msg ? `<section class="card"><div class="card-body">${esc(msg)}</div></section>` : ""}
+    ${leagueNotice(lg)}
     ${p ? reviewCard(rv) : ""}
     <section class="card"><h2>Feladatkészlet</h2><div class="card-body">
       ${p ? `<p>${p.symbols} papír, ${total} helyzet: stratégia-jelzés ${p.counts.strategy}, formálódó alakzat ${p.counts.pattern}, short-gyanús helyzet ${p.counts.short ?? 0}, semmi különös ${p.counts.nothing}.</p>
@@ -525,6 +563,8 @@ async function pagePractice(msg = "") {
         <td class="small">${s.duel ? "Párbaj" : `<code>${esc(s.code)}</code>`}</td><td>${s.duel ? "" : `<button class="btn" type="button" data-pr-delete="${esc(s.id)}">Törlés</button>`}</td></tr>`).join("")}</tbody></table>`
       : `<div class="muted">Még nincs kör.</div>`}</div></section>`;
   bindRowLinks();
+  const seen = $("#league-seen");
+  if (seen) seen.addEventListener("click", async () => { await api("/api/league/seen", { method: "POST", body: "{}" }); seen.closest("section").remove(); });
   const rs = $("#review-start");
   if (rs) rs.addEventListener("click", async () => {
     try { const r = await api("/api/review/start", { method: "POST", body: "{}" }); location.hash = `#/practice/${r.session.id}`; }

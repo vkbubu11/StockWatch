@@ -293,7 +293,10 @@ def export(user_id: int) -> dict:
         duels = conn.execute("SELECT id, rounds, created_at, expires_at, revoked_at, challenger_id = %s, winner_id = %s "
                              "FROM duels WHERE challenger_id = %s OR opponent_id = %s ORDER BY created_at",
                              (user_id, user_id, user_id, user_id)).fetchall()
-    keys = ("email", "created_at", "email_verified_at", "terms_version", "terms_accepted_at", "onboarded_at")
+        league = conn.execute("SELECT tier, opted_out_at FROM league_members WHERE user_id = %s", (user_id,)).fetchone()
+        weeks = conn.execute("SELECT week, tier, xp, rank, outcome FROM league_entries WHERE user_id = %s ORDER BY week",
+                             (user_id,)).fetchall()
+    keys =("email", "created_at", "email_verified_at", "terms_version", "terms_accepted_at", "onboarded_at")
     return {"account": dict(zip(keys, row)) if row else None,
             "sessions": [dict(zip(("created_at", "last_used_at", "expires_at", "user_agent"), s)) for s in sessions],
             "identities": [dict(zip(("provider", "email", "created_at"), i)) for i in identities],
@@ -301,6 +304,8 @@ def export(user_id: int) -> dict:
             "shares": [dict(zip(("id", "kind", "ref", "data", "created_at", "revoked_at"), s)) for s in shares],
             "duels": [dict(zip(("id", "rounds", "created_at", "expires_at", "revoked_at", "challenger", "won"), d))
                       for d in duels],
+            "league": {"tier": league[0], "opted_out_at": league[1]} if league else None,
+            "league_weeks": [dict(zip(("week", "tier", "xp", "rank", "outcome"), w)) for w in weeks],
             "practice": [store.load_session(s["id"], user_id) for s in store.sessions(user_id, limit=store.MAX_SESSIONS)]}
 
 
