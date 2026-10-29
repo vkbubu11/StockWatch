@@ -87,7 +87,7 @@ def lessons() -> tuple[dict, ...]:
 def hints(session: dict) -> str:
     """Az itelet-szempontok a dontes elott (#59): a lecke beallitasa szerint; napi kihivasban soha; szabad
     gyakorlasban osszecsukva (a felhasznalo nyithatja ki)."""
-    if session.get("daily"):
+    if session.get("daily") or session.get("exam"):
         return "hidden"
     if session.get("lesson"):
         try:

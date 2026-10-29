@@ -108,6 +108,11 @@ def lines(share: dict, lang: str) -> dict:
         headline = tr(f"{d['good']} / {d['total']} jó döntés")
         sub = tr(f"+{d['points']} pont")
         marks = " ".join(d["marks"])
+    elif share["kind"] == "cert":                                          # vizsga-tanusitvany (#37)
+        title = tr("Záróvizsga: teljesítve")
+        headline = tr(f"{round(d['score'] * 100)}% jó döntés")
+        sub = tr(f"{d['levels']} / {d['levels_total']} szint · {d['date']}")
+        marks = ""
     else:
         title = tr(f"{d['level']}. szint: teljesítve")
         headline = tr(d["title"])
@@ -115,7 +120,8 @@ def lines(share: dict, lang: str) -> dict:
         marks = ""
     return {"brand": tr("StockWatch Gyakorlás"), "player": d["player"] if not d["player"].startswith("Játékos #")
             else tr(d["player"]), "title": title, "headline": headline, "sub": sub, "marks": marks,
-            "disclaimer": tr(DISCLAIMER)}
+            "code": tr(f"Ellenőrző kód: {share['ref']}") if share["kind"] == "cert" else None,
+            "disclaimer": tr(d.get("disclaimer") or DISCLAIMER)}
 
 
 def _font(size: int, bold: bool = False, paths: tuple = FONTS):
@@ -152,6 +158,8 @@ def png(share: dict, lang: str) -> bytes:
         draw.text((x, 408), mark, font=sym, fill=MARK_COLOR.get(mark, "#cfe9df"))
         x += 70
     draw.text((x + 30 if x > 60 else 60, 418), t["sub"], font=_font(38), fill="#cfe9df")
+    if t["code"]:
+        draw.text((60, 490), t["code"], font=_font(30), fill="#cfe9df")
     draw.text((60, 560), t["disclaimer"], font=_font(26), fill="#a9c7bb")
     out = io.BytesIO()
     img.save(out, "PNG", optimize=True)

@@ -54,6 +54,7 @@ CLIENT_ERRORS = webauth.RateLimit("ip-client-error", 20, 60 * 60)   # a bongeszo
 DUEL_LINK_RE = re.compile(r"/d/([a-z]{12})")             # parbaj-meghivo (#55); belepes utan ide vissza
 DUEL_RE = re.compile(r"/api/duels/([a-z]{12})(?:/(accept|revoke|rematch))?")
 SHARE_RE = re.compile(r"/s/([a-z]{12})(\.png)?")      # megosztott eredmeny (#57): nyilvanos oldal es kartya
+CERT_RE = re.compile(r"/c/([a-z]{12})(\.png)?")       # vizsga-tanusitvany (#37): visszaellenorzes a koddal
 PRACTICE_SESSION_RE = re.compile(r"/api/practice/session/([a-z]{12})/(task/(\d{1,2})(/decision)?|summary)")
 
 # az urlapok visszajelzesei (?e=kod): (fajta, szoveg)
@@ -419,9 +420,9 @@ def make_handler(trust_proxy: bool = False):
                                                                          or "a szolgáltatás üzemeltetője"))
                     self._pageview(path)
                     return self._send(200, text.encode("utf-8"), STATIC_TYPES[".html"])
-                m = SHARE_RE.fullmatch(path)
+                m = SHARE_RE.fullmatch(path) or CERT_RE.fullmatch(path)
                 if m:
-                    return self._share(m.group(1), bool(m.group(2)))
+                    return self._share(m.group(1), bool(m.group(2)), path[1])
                 user = self._user()
                 if DUEL_LINK_RE.fullmatch(path):                       # a meghivo link: a parbaj oldala (belepve)
                     return self._redirect(f"/#/duel/{path[3:]}" if user else f"/login?e=duel&next={path}")
@@ -471,6 +472,10 @@ def make_handler(trust_proxy: bool = False):
                     from . import leagues
 
                     return self._json(leagues.view(user["id"]))
+                if path == "/api/exams":
+                    from . import exams
+
+                    return self._json(exams.mine(user["id"]))
                 m = DUEL_RE.fullmatch(path)
                 if m and not m.group(2):
                     from . import duels
@@ -540,30 +545,32 @@ def make_handler(trust_proxy: bool = False):
             text = text.replace("[KAPCSOLATI E-MAIL]", html.escape(config.env_value("CONTACT_EMAIL") or ""))
             self._send(200, i18n.translate_html(text, self._lang()).encode("utf-8"), STATIC_TYPES[".html"])
 
-        def _share(self, share_id: str, image: bool) -> None:
-            """Megosztott eredmeny (#57): a linkelonezet (og) es a kep a megoszto nyelven, a lathato oldal a
-            latogatoen; visszavont vagy ismeretlen azonosito: 404."""
-            from . import analytics, i18n, shares
+        def _share(self, share_id: str, image: bool, prefix: str = "s") -> None:
+            """Megosztott eredmeny (#57, /s/) vagy tanusitvany (#37, /c/): a linkelonezet (og) es a kep a megoszto
+            nyelven (a tanusitvanynal a latogatoen), a lathato oldal a latogatoen; visszavont / ismeretlen: 404."""
+            from . import analytics, exams, i18n, shares
 
-            share = shares.get(share_id)
+            share = shares.get(share_id) if prefix == "s" else exams.certificate(share_id)
             if share is None:
                 return self._not_found(False)
+            lang = share["lang"] or self._lang()
             if image:
-                return self._send(200, shares.png(share, share["lang"]), "image/png")
+                return self._send(200, shares.png(share, lang), "image/png")
             if not analytics.is_bot(self.headers.get("User-Agent", "")):
                 analytics.track_later("share_view", kind=share["kind"])
-            og, t = shares.lines(share, share["lang"]), shares.lines(share, self._lang())
+            og, t = shares.lines(share, lang), shares.lines(share, self._lang())
             esc, base = html.escape, self._base_url()
             group = share["data"].get("group")
             cta = "Próbáld ki a mai kihívást" if share["kind"] == "daily" else "Próbáld ki ingyen"
             content = (f'<h1>{esc(t["player"])}</h1><h2>{esc(t["title"])}</h2>'
                        f'<p><strong>{esc(t["headline"])}</strong></p><p>{esc(t["marks"])} {esc(t["sub"])}</p>'
+                       + (f'<p><code>{esc(t["code"])}</code></p>' if t["code"] else "")
                        + (f'<p><span>Csatlakozz a csoportunkhoz:</span> <strong>{esc(group["name"])}</strong></p>'
                           f'<p><span>Meghívókód:</span> <code>{esc(group["code"])}</code></p>' if group else "")
                        + f'<p><a class="btn primary" href="/register?src=share">{cta}</a></p>'
                        f'<p class="muted">{esc(t["disclaimer"])}</p>')
             fields = {"{TITLE}": f'{og["player"]} – {og["title"]}', "{DESCRIPTION}": f'{og["headline"]} · {og["sub"]}. {og["disclaimer"]}',
-                      "{IMAGE}": f"{base}/s/{share['id']}.png", "{URL}": f"{base}/s/{share['id']}",
+                      "{IMAGE}": f"{base}/{prefix}/{share['id']}.png", "{URL}": f"{base}/{prefix}/{share['id']}",
                       "{ALT}": f'{t["title"]}: {t["headline"]}'}
             text = (WEB_DIR / "share.html").read_text(encoding="utf-8").replace("<!--CONTENT-->", content)
             for key, value in fields.items():
@@ -764,6 +771,10 @@ def make_handler(trust_proxy: bool = False):
                     else:
                         leagues.set_opt_in(user["id"], bool(body.get("in")))
                     return self._json({"ok": True})
+                if path == "/api/exams/start":
+                    from . import exams
+
+                    return self._json({"session": exams.start(user["id"], load_settings())})
                 if path == "/api/review/start":
                     from . import repetition
 

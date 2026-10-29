@@ -43,19 +43,19 @@ def standings(rows: list[tuple], tier: int) -> list[tuple]:
 
 def _points(conn, user_ids: list[int], week: date, live: bool) -> dict[int, tuple[int, datetime | None]]:
     """A het pontja felhasznalonkent. live: a be nem adott napi kihivas nelkul (zaraskor minden dontes szamit)."""
-    from .practice.session import DAILY_MINUTES
+    from .practice.session import HIDDEN_SQL
 
     # shortcut: a torolt kor dontese nem latszik, igy torles utan ugyanaz a helyzet ujra szamit; ha visszaelnek vele,
     # kulon tabla kell a mar szamolt helyzetekrol
     rows = conn.execute(
         "WITH firsts AS (SELECT DISTINCT ON (s.user_id, t.symbol, t.day, t.kind) s.user_id, t.points, t.decided_at, "
-        "s.daily IS NOT NULL AND s.summary IS NULL AND s.created_at >= now() - %(minutes)s * interval '1 minute' AS hidden "
+        f"{HIDDEN_SQL} AS hidden "
         "FROM practice_tasks t JOIN practice_sessions s ON s.id = t.session_id "
         "WHERE s.user_id = ANY(%(ids)s) AND t.decided_at IS NOT NULL ORDER BY s.user_id, t.symbol, t.day, t.kind, t.decided_at) "
         "SELECT user_id, coalesce(sum(points), 0), max(decided_at) FILTER (WHERE points > 0) FROM firsts "
         "WHERE (decided_at AT TIME ZONE 'Europe/Budapest')::date BETWEEN %(lo)s AND %(hi)s AND NOT (%(live)s AND hidden) "
         "GROUP BY user_id",
-        {"minutes": DAILY_MINUTES, "ids": user_ids, "lo": week, "hi": week + timedelta(days=6), "live": live}).fetchall()
+        {"ids": user_ids, "lo": week, "hi": week + timedelta(days=6), "live": live}).fetchall()
     return {uid: (int(xp), reached) for uid, xp, reached in rows}
 
 

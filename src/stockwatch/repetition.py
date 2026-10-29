@@ -62,16 +62,16 @@ def start(user_id: int, settings=None) -> dict:
 
 
 def weaknesses(user_id: int, limit: int = 300) -> list[dict]:
-    from .practice.session import DAILY_MINUTES
+    from .practice.session import HIDDEN_SQL
 
     with db.connection() as conn:
         rows = conn.execute(
             "WITH recent AS (SELECT t.category, t.verdict, t.stop_atr FROM practice_tasks t JOIN practice_sessions s "
             "ON s.id = t.session_id WHERE s.user_id = %s AND t.kind = 'decision' AND t.verdict IS NOT NULL "
-            "AND (s.daily IS NULL OR s.summary IS NOT NULL OR s.created_at < now() - %s * interval '1 minute') "
+            f"AND NOT {HIDDEN_SQL} "
             "ORDER BY t.decided_at DESC LIMIT %s) "
             "SELECT category, count(*), count(*) FILTER (WHERE verdict = ANY(%s)), "
             "count(*) FILTER (WHERE stop_atr IS NOT NULL AND stop_atr < %s) FROM recent GROUP BY category",
-            (user_id, DAILY_MINUTES, limit, list(MISS), scoring.TIGHT_ATR)).fetchall()
+            (user_id, limit, list(MISS), scoring.TIGHT_ATR)).fetchall()
     out = [{"category": c, "n": n, "misses": m, "tight": t, "miss_rate": round(m / n, 3)} for c, n, m, t in rows]
     return sorted(out, key=lambda r: (-r["miss_rate"], -r["n"]))

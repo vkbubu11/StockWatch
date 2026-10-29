@@ -24,6 +24,10 @@ from .templates import STRATEGY_LABELS, Line
 FEW = 10
 DAILY_ROUNDS = 5                                 # a napi kihivas (#35) helyzetei
 DAILY_MINUTES = 20                               # az inditastol ennyi perc a beadasra
+EXAM_MINUTES = 30                                # a vizsga (#37) ideje
+# a be nem adott napi kihivas / vizsga (SQL, s = practice_sessions): az eredmenye meg nem latszhat
+HIDDEN_SQL = (f"(s.summary IS NULL AND ((s.daily IS NOT NULL AND s.created_at >= now() - interval '{DAILY_MINUTES} minutes') "
+              f"OR (s.exam AND s.created_at >= now() - interval '{EXAM_MINUTES} minutes')))")
 EMAS = (20, 50, 200)
 
 
@@ -112,9 +116,10 @@ def _now() -> str:
 def public(session: dict) -> dict:
     """A munkamenet a listahoz / a fejlechez - papir es datum nelkul (felfedett feladatoknal sem)."""
     decided = sum(1 for t in session["tasks"] if t.get("decision"))
-    # parbaj (#55): a kod nem latszik - vele a helyzetsor elore kiprobalhato lenne
+    # parbaj (#55), vizsga (#37): a kod nem latszik - vele a helyzetsor elore kiprobalhato lenne
     return {"id": session["id"], "created": session["created"], "rounds": len(session["tasks"]),
-            "code": None if session.get("duel") else session["code"], "duel": session.get("duel"),
+            "code": None if session.get("duel") or session.get("exam") else session["code"], "duel": session.get("duel"),
+            "exam": bool(session.get("exam")),
             "decided": decided, "done": decided == len(session["tasks"]), "warning": session.get("warning"),
             "next": next((k for k, t in enumerate(session["tasks"]) if not t.get("decision")), None),
             "mean_r": session.get("summary", {}).get("mean_r") if decided == len(session["tasks"]) else None,
@@ -125,7 +130,7 @@ def public(session: dict) -> dict:
 def create(user_id: int, settings: Settings | None = None, seed: int | None = None,
            rounds: int = 20, mix: dict | None = None, code: str | None = None,
            only: dict | None = None, lesson: int | None = None, daily: str | None = None,
-           kinds_mix: dict | None = None, duel: str | None = None) -> dict:
+           kinds_mix: dict | None = None, duel: str | None = None, exam: bool = False) -> dict:
     """Uj kor. `only` es `lesson`: a tanulasi ut (#33) celzott feladatsora (learning.py); `daily`: a napi
     kihivas napja (daily.py); `kinds_mix`: feladattipus -> suly (#49; None: csak dontes). shortcut: a megosztasi
     kod a tipusokat nem tartalmazza - vegyes kort csak a dontesi feladatokra reprodukal."""
@@ -152,20 +157,19 @@ def create(user_id: int, settings: Settings | None = None, seed: int | None = No
     session = {"id": store.new_id(), "created": _now(), "seed": int(seed), "rounds": int(rounds),
                "mix": sampler.normalize_mix(mix), "pool_fingerprint": pool["fingerprint"],
                "code": sampler.share_code(int(seed), pool["fingerprint"], int(rounds)), "warning": warning, "lesson": lesson,
-               "daily": daily, "duel": duel,
+               "daily": daily, "duel": duel, "exam": exam,
                "tasks": [p | {"task_id": store.new_id(10), "decision": None, "result": None} for p in picks]}
     store.create_session(session, user_id)
     return public(session)
 
 
 def deadline(session: dict) -> datetime | None:
-    if not session.get("daily"):
-        return None
-    return datetime.fromisoformat(session["created"]) + timedelta(minutes=DAILY_MINUTES)
+    minutes = DAILY_MINUTES if session.get("daily") else EXAM_MINUTES if session.get("exam") else None
+    return None if minutes is None else datetime.fromisoformat(session["created"]) + timedelta(minutes=minutes)
 
 
 def hidden(session: dict) -> bool:
-    """A napi kihivas felfedese csak a beadas utan (minden dontes megvan, vagy lejart az ido)."""
+    """A napi kihivas / vizsga felfedese csak a beadas utan (minden dontes megvan, vagy lejart az ido)."""
     limit = deadline(session)
     return limit is not None and not all(t.get("decision") for t in session["tasks"])         and datetime.now(timezone.utc) < limit
 
@@ -244,7 +248,7 @@ def _check_open(session: dict, task: dict) -> None:
     if task.get("decision") is not None:
         raise ValueError("A dontes mar rogzitve - nem modosithato.")
     if deadline(session) and datetime.now(timezone.utc) > deadline(session):
-        raise ValueError("A napi kihivas ideje lejart.")
+        raise ValueError("A vizsga ideje lejárt." if session.get("exam") else "A napi kihivas ideje lejart.")
 
 
 def _evaluate(session: dict, task: dict, k: int, body: dict, settings: Settings) -> tuple[dict, dict, dict]:
@@ -301,7 +305,7 @@ def decide(user_id: int, session_id: str, k: int, body: dict, settings: Settings
         from .. import leagues                       # heti liga (#56): a het elso dontesekor csoportba kerul
 
         leagues.join(conn, user_id, progress.today())
-        if (task.get("kind") or "decision") == "decision" and not session.get("daily"):   # hibak ismetlese (#36)
+        if (task.get("kind") or "decision") == "decision" and not deadline(session):   # hibak ismetlese (#36)
             from .. import repetition
 
             ver = (result.get("review") or {}).get("verdict") or {}

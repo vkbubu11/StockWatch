@@ -294,6 +294,8 @@ def export(user_id: int) -> dict:
                              "FROM duels WHERE challenger_id = %s OR opponent_id = %s ORDER BY created_at",
                              (user_id, user_id, user_id, user_id)).fetchall()
         league = conn.execute("SELECT tier, opted_out_at FROM league_members WHERE user_id = %s", (user_id,)).fetchone()
+        exams = conn.execute("SELECT id, created_at, finished_at, score, passed FROM exams WHERE user_id = %s "
+                             "ORDER BY created_at", (user_id,)).fetchall()
         weeks = conn.execute("SELECT week, tier, xp, rank, outcome FROM league_entries WHERE user_id = %s ORDER BY week",
                              (user_id,)).fetchall()
     keys =("email", "created_at", "email_verified_at", "terms_version", "terms_accepted_at", "onboarded_at")
@@ -305,6 +307,7 @@ def export(user_id: int) -> dict:
             "duels": [dict(zip(("id", "rounds", "created_at", "expires_at", "revoked_at", "challenger", "won"), d))
                       for d in duels],
             "league": {"tier": league[0], "opted_out_at": league[1]} if league else None,
+            "exams": [dict(zip(("code", "created_at", "finished_at", "score", "passed"), e)) for e in exams],
             "league_weeks": [dict(zip(("week", "tier", "xp", "rank", "outcome"), w)) for w in weeks],
             "practice": [store.load_session(s["id"], user_id) for s in store.sessions(user_id, limit=store.MAX_SESSIONS)]}
 

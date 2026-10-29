@@ -46,14 +46,13 @@ def curve(pairs: list[tuple[int, bool]]) -> dict:
 
 
 def for_user(user_id: int, limit: int = 500) -> dict:
-    from .practice.session import DAILY_MINUTES
+    from .practice.session import HIDDEN_SQL
 
     with db.connection() as conn:
         # a be nem adott napi kihivas nem szamit: a gorbe valtozasa elarulna az iteletet
         rows = conn.execute(
             "SELECT (t.decision->>'confidence')::int, t.verdict FROM practice_tasks t JOIN practice_sessions s "
             "ON s.id = t.session_id WHERE s.user_id = %s AND t.kind = 'decision' AND t.verdict IS NOT NULL "
-            "AND t.decision->>'confidence' IS NOT NULL AND (s.daily IS NULL OR s.summary IS NOT NULL "
-            "OR s.created_at < now() - %s * interval '1 minute') ORDER BY t.decided_at DESC LIMIT %s",
-            (user_id, DAILY_MINUTES, limit)).fetchall()
+            f"AND t.decision->>'confidence' IS NOT NULL AND NOT {HIDDEN_SQL} ORDER BY t.decided_at DESC LIMIT %s",
+            (user_id, limit)).fetchall()
     return curve([(c, v in HIT) for c, v in rows])

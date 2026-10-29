@@ -152,8 +152,23 @@ function pageInfo(contact) {
 // ---------------------------------------------------------------------------
 // Tanulasi ut (#33): szintek, lecke abraval, celzott feladatsor
 // ---------------------------------------------------------------------------
+// vizsga (#37): rogzitett helyzetsor, idokorlat, felfedes csak a vegen; a sikeres vizsga tanusitvanya a koddal ellenorizheto
+function examCard(x) {
+  const status = (e) => (e.passed ? `<span class="badge go">Sikeres</span>` : e.finished ? `<span class="badge fail">Sikertelen</span>` : `<span class="badge watch">Folyamatban</span>`);
+  return `<section class="card"><h2>Záróvizsga</h2><div class="card-body">
+    <p><span>${x.rounds} helyzet, ${x.minutes} perc; az eredmény csak a beadás után látszik.</span>
+      <span>Sikeres, ha legalább ${fmt(x.pass_share * 100, 0)}% jó vagy balszerencsés döntés (a ki nem töltött helyzet nem jó).</span></p>
+    <div class="digest-controls">${x.running ? `<a class="btn primary" href="#/practice/${esc(x.running)}">Vizsga folytatása</a>`
+      : x.next_start ? `<span class="muted"><span>Újabb vizsga:</span> ${when(x.next_start)}</span>`
+      : `<button class="btn primary" id="exam-start" type="button">Vizsga indítása</button>`} <span id="exam-msg" class="small" role="status"></span></div>
+    ${x.exams.length ? `<table class="table cards-on-phone"><thead><tr><th>Indítva</th><th>Eredmény</th><th>Állapot</th><th>Tanúsítvány</th></tr></thead><tbody>
+      ${x.exams.map((e) => `<tr><td class="small">${when(e.created)}</td><td class="num">${e.score == null ? "–" : `${fmt(e.score * 100, 0)}%`}</td><td>${status(e)}</td>
+        <td>${e.code ? `<a href="/c/${esc(e.code)}" target="_blank" rel="noopener">Megnyitás</a> <code>${esc(e.code)}</code>` : ""}</td></tr>`).join("")}</tbody></table>` : ""}
+    <p class="muted small">A sikeres vizsga tanúsítványa nyilvános linken, az ellenőrző kóddal visszaellenőrizhető (becenév, dátum, eredmény). A becenevet a Profil oldalon állíthatod be. Oktatási célú gyakorlás múltbeli adaton, nem befektetési képesítés.</p></div></section>`;
+}
+
 async function pageLearn() {
-  const levels = await api("/api/lessons");
+  const [levels, exams] = await Promise.all([api("/api/lessons"), api("/api/exams")]);
   view.innerHTML = `
     <div class="page-head"><h1>Tanulás</h1><span class="muted">Tíz szint: rövid lecke, egy ábra, utána célzott feladatsor.
       A szint akkor teljesül, ha a döntéseid nagy része jó vagy balszerencsés (a szabály szerint indokolt) – a következő addig zárolt.</span></div>
@@ -161,7 +176,13 @@ async function pageLearn() {
       <a class="card learn-card ${l.unlocked ? "" : "locked"}" ${l.unlocked ? `href="#/learn/${l.level}"` : `aria-disabled="true"`}>
         <div class="card-body"><div class="learn-level">${l.level}. szint</div><h2>${esc(l.title)}</h2>
           ${l.completed ? `<span class="badge go">Teljesítve</span>` : l.unlocked ? `<span class="badge watch">Elérhető</span>` : `<span class="badge fail">Zárolt</span>`}
-          ${l.best_share != null ? `<span class="muted small">legjobb: ${fmt(l.best_share * 100, 0)}%</span>` : ""}</div></a>`).join("")}</div>`;
+          ${l.best_share != null ? `<span class="muted small">legjobb: ${fmt(l.best_share * 100, 0)}%</span>` : ""}</div></a>`).join("")}</div>
+    ${examCard(exams)}`;
+  const start = $("#exam-start");
+  if (start) start.addEventListener("click", async () => {
+    try { const r = await api("/api/exams/start", { method: "POST", body: "{}" }); location.hash = `#/practice/${r.session.id}`; }
+    catch (e) { const m = $("#exam-msg"); m.className = "msg err small"; m.textContent = e.message; }
+  });
 }
 
 async function pageLesson(level) {
@@ -560,7 +581,7 @@ async function pagePractice(msg = "") {
     <section class="card"><h2>Körök</h2><div class="card-body">${d.sessions.length ? `<table class="table"><thead><tr><th>Készült</th><th>Állás</th><th>Átlag R</th><th>Megosztási kód</th><th></th></tr></thead><tbody>
       ${d.sessions.map((s) => `<tr class="clickable" data-href="#/practice/${esc(s.id)}"><td class="small">${when(s.created)}</td>
         <td>${s.decided} / ${s.rounds}${s.done ? ` <span class="badge go">kész</span>` : ""}</td><td class="num ${rCls(s.mean_r)}">${signed(s.mean_r, 2, " R")}</td>
-        <td class="small">${s.duel ? "Párbaj" : `<code>${esc(s.code)}</code>`}</td><td>${s.duel ? "" : `<button class="btn" type="button" data-pr-delete="${esc(s.id)}">Törlés</button>`}</td></tr>`).join("")}</tbody></table>`
+        <td class="small">${s.duel ? "Párbaj" : s.exam ? "Vizsga" : `<code>${esc(s.code)}</code>`}</td><td>${s.duel || s.exam ? "" : `<button class="btn" type="button" data-pr-delete="${esc(s.id)}">Törlés</button>`}</td></tr>`).join("")}</tbody></table>`
       : `<div class="muted">Még nincs kör.</div>`}</div></section>`;
   bindRowLinks();
   const seen = $("#league-seen");
@@ -679,7 +700,7 @@ async function pagePracticeTask(id, k, sess) {
   if (t.kind && t.kind !== "decision") { await pageKindTask(id, k, sess, t); return; }
   const atr = t.chart.atr || 1;
   view.innerHTML = `
-    <div class="page-head"><a href="${sess.daily ? "#/daily" : "#/practice"}" class="muted">← ${sess.daily ? "Napi kihívás" : "Gyakorlás"}</a><h1>Helyzet ${k + 1} / ${t.rounds}</h1>
+    <div class="page-head"><a href="${sess.daily ? "#/daily" : sess.exam ? "#/learn" : "#/practice"}" class="muted">← ${sess.daily ? "Napi kihívás" : sess.exam ? "Tanulás" : "Gyakorlás"}</a><h1>Helyzet ${k + 1} / ${t.rounds}</h1>
       ${sess.deadline ? `<span class="badge watch">Beadás: ${esc(new Date(sess.deadline).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" }))}-ig</span>` : ""}
       <span class="muted">Az utolsó látható záró = 100; a vízszintes tengely kereskedési napokban (0 = a döntés napja). ATR (14): ${fmt(atr, 2)}</span></div>
     ${sess.warning === "other_pool" ? `<section class="card"><div class="card-body">Ez a megosztási kód más feladatkészlethez készült: itt ugyanaz a kód más helyzeteket ad.</div></section>` : ""}
@@ -1170,7 +1191,8 @@ function renderPracticeSummary(p) {
   view.innerHTML = `
     <div class="page-head"><a href="${ls ? "#/learn" : "#/practice"}" class="muted">← ${ls ? "Tanulás" : "Gyakorlás"}</a><h1>A kör összegzése</h1>
       ${p.session.code ? `<span class="muted">Megosztási kód: <code>${esc(p.session.code)}</code> – ugyanazzal a feladatkészlettel ugyanazt a helyzetsort adja.</span>` : ""}</div>
-    ${lessonBox}${dailyBox}${p.session.duel ? `<section class="card"><div class="card-body"><a class="btn primary" href="#/duel/${esc(p.session.duel)}">Vissza a párbajhoz</a></div></section>` : ""}${kindsBox}
+    ${lessonBox}${dailyBox}${p.session.duel ? `<section class="card"><div class="card-body"><a class="btn primary" href="#/duel/${esc(p.session.duel)}">Vissza a párbajhoz</a></div></section>` : ""}${p.session.exam
+      ? `<section class="card"><div class="card-body"><a class="btn primary" href="#/learn">Vizsgaeredmény és tanúsítvány</a></div></section>` : ""}${kindsBox}
     ${s.decided ? `<div class="kpis">
       <div class="kpi"><div class="label">Teljesült kötés</div><div class="value">${s.filled}</div><div class="sub">${s.entered} belépési döntés, ${s.skipped} kihagyás</div></div>
       <div class="kpi"><div class="label">Nyerési arány</div><div class="value">${s.win == null ? "–" : `${fmt(s.win * 100, 1)}%`}</div><div class="sub">átlag ${signed(s.mean_r, 2, " R")}</div></div>
