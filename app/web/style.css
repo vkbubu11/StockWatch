@@ -78,9 +78,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--surface-2);
 }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 650; font-size: 16px; }
 .brand:hover { text-decoration: none; }
-.brand svg { width: 26px; height: 26px; }
-.brand svg rect { fill: var(--accent); }
-.brand svg path { stroke: #fff; stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.brand img { width: 28px; height: 28px; display: block; }
 .tabs { display: flex; gap: 4px; }
 .tabs a {
   padding: 7px 12px; border-radius: 8px; color: var(--muted); font-weight: 550;

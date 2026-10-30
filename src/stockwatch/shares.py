@@ -23,6 +23,7 @@ DISCLAIMER = "Oktatási célú gyakorlás, nem befektetési tanács."
 FONTS = ("/usr/share/fonts/truetype/dejavu/DejaVuSans{b}.ttf", "C:/Windows/Fonts/segoeui{bw}.ttf",
          "/Library/Fonts/Arial{sp}.ttf")
 SYMBOL_FONTS = ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "C:/Windows/Fonts/seguisym.ttf")   # ✓ ↺ ≈ ✗
+LOGO = Path(__file__).resolve().parents[2] / "app" / "web" / "img" / "logo.png"
 MARK_COLOR = {"✓": "#8fe3c0", "↺": "#cfe9df", "≈": "#f2d48f", "✗": "#ff9a8a"}
 
 
@@ -144,8 +145,8 @@ def png(share: dict, lang: str) -> bytes:
     for y in range(630):                                            # finom atmenet a hatterben
         shade = int(13 + 10 * y / 630)
         draw.line([(0, y), (1200, y)], fill=(shade, 38 + shade // 2, 32))
-    draw.rounded_rectangle([60, 60, 120, 120], 14, fill="#1f6f5c")
-    draw.line([(72, 104), (87, 87), (99, 97), (112, 74)], fill="#ffffff", width=6, joint="curve")
+    logo = Image.open(LOGO).convert("RGBA").resize((60, 60), Image.LANCZOS)
+    img.paste(logo, (60, 60), logo)
     draw.text((140, 70), t["brand"], font=_font(34, True), fill="#8fe3c0")
     draw.text((60, 170), t["player"], font=_font(40), fill="#ffffff")
     draw.text((60, 230), t["title"], font=_font(34), fill="#cfe9df")
