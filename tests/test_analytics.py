@@ -100,3 +100,18 @@ def test_pageviews_are_counted_without_cookie_or_identifier(neon, port):  # noqa
     assert rows == [("pageview", None, '{"ref": "reddit.com", "path": "/", "device": "mobile"}')]
     res = _req(port, "POST", "/api/client-error", "{}", {"X-StockWatch": "1"})
     assert res.status == 200 and _wait_for("js_error")[0][1:] == (None, "{}")
+
+
+def test_excluded_users_are_left_out_of_the_overview(neon):
+    keep, test = make_user("anna@example.com"), make_user("teszt@example.com")
+    with db.connection() as conn:
+        conn.execute("UPDATE users SET stats_excluded = true WHERE id = %s", (test,))
+    for uid in (keep, test):
+        _put("register", f"u{uid}", NOW - timedelta(days=2))
+        _put("decision", f"u{uid}", NOW - timedelta(days=1))
+        _put("decision", f"u{uid}", NOW - timedelta(days=1))
+    _put("pageview", None, NOW - timedelta(days=1), path="/")                    # nevtelen: marad
+    o = analytics.overview(30, now=NOW)
+    assert [s["n"] for s in o["funnel"]][:4] == [1, 1, 0, 1]
+    assert o["decisions"] == {"total": 2, "users": 1, "per_user": 2.0} and o["active"]["week"] == 1
+    assert [e["email"] for e in o["excluded"]] == ["teszt@example.com"]

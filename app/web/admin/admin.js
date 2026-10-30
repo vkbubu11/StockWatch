@@ -98,16 +98,23 @@ async function render() {
 const FUNNEL = { landing: "Kezdőoldal-megtekintés", register: "Regisztráció", verify: "E-mail megerősítve", first_decision: "Első döntés",
   level1: "1. szint teljesítve" };
 let days = 30;
+let overviewData = null;                 // a kizart felhasznalok listajahoz (BIND.overview)
+let exQuery = "", exOpen = false;        // a kizart-lista keresese es nyitott allapota ujrarajzolas utan is megmarad
 
 const VIEWS = {
   async overview() {
-    const o = await api(`/api/admin/overview?days=${days}`);
+    const o = overviewData = await api(`/api/admin/overview?days=${days}`);
     const top = o.funnel[1].n || 0;
     const funnel = o.funnel.map((s, i) => `<tr><td>${FUNNEL[s.step]}</td><td class="num">${s.n}</td>
       <td class="num">${i > 1 && top ? pct(s.n / top) : "–"}</td></tr>`);
     const cohorts = o.cohorts.map((c) => `<tr><td>${esc(c.week)}</td><td class="num">${c.size}</td>${c.retention.map((r) => `<td class="num">${pct(r)}</td>`).join("")}</tr>`);
     const views = (key) => o.pageviews[key].map((r) => `<tr><td>${esc(r.key || "–")}</td><td class="num">${r.n}</td></tr>`);
     return `<div class="digest-controls"><label>Időszak <select id="adm-days">${[7, 30, 90, 365].map((d) => `<option ${d === days ? "selected" : ""}>${d}</option>`).join("")}</select> nap</label></div>
+      <details class="card" id="adm-ex" ${exOpen ? "open" : ""}><summary class="card-body"><strong>Kizárva az összegzésből: ${o.excluded.length} felhasználó</strong></summary>
+        <div class="card-body"><p class="muted small">A bepipált felhasználók (pl. saját és tesztfiókok) eseményei nem számítanak bele a mutatókba.
+          A név nélküli látogatások (kezdőoldal-megtekintés, források, eszközök) nem köthetők felhasználóhoz, azok maradnak.</p>
+          <label>Keresés (e-mail vagy becenév)<input id="adm-ex-q" type="search" value="${esc(exQuery)}" autocomplete="off"></label>
+          <div id="adm-ex-list" class="adm-ex-list"></div></div></details>
       <div class="kpis"><div class="kpi"><div class="label">Aktív ma</div><div class="value">${o.active.day}</div></div>
         <div class="kpi"><div class="label">Aktív 7 nap</div><div class="value">${o.active.week}</div></div>
         <div class="kpi"><div class="label">Aktív 30 nap</div><div class="value">${o.active.month}</div></div>
@@ -217,7 +224,29 @@ async function showUser(id) {
 }
 
 const BIND = {
-  overview(body) { body.querySelector("#adm-days").addEventListener("change", (e) => { days = Number(e.target.value); render(); }); },
+  overview(body) {
+    body.querySelector("#adm-days").addEventListener("change", (e) => { days = Number(e.target.value); render(); });
+    body.querySelector("#adm-ex").addEventListener("toggle", (e) => { exOpen = e.target.open; });
+    const list = async () => {
+      const q = exQuery;
+      const found = await api(`/api/admin/users?q=${encodeURIComponent(q)}`);
+      const box = document.getElementById("adm-ex-list");
+      if (!box || q !== exQuery) return;                 // kozben tovabb gepelt vagy fulet valtott
+      // a kizartak mindig elol (a talalati lista 50 fore korlatozott)
+      const match = (u) => `${u.email} ${u.nickname || ""}`.toLowerCase().includes(q.trim().toLowerCase());
+      const rows = [...overviewData.excluded.filter(match).map((u) => ({ ...u, stats_excluded: true })),
+        ...found.filter((u) => !u.stats_excluded)];
+      box.innerHTML = rows.length ? rows.map((u) => `<label class="check"><input type="checkbox" data-ex="${u.id}" ${u.stats_excluded ? "checked" : ""}>
+        <span>${esc(u.email)}${u.nickname ? ` · ${esc(u.nickname)}` : ""}</span></label>`).join("") : `<p class="muted">Nincs találat.</p>`;
+      box.querySelectorAll("[data-ex]").forEach((c) => c.addEventListener("change", async () => {
+        if (await act(`/api/admin/users/${c.dataset.ex}/${c.checked ? "exclude" : "include"}`, {})) render();
+        else c.checked = !c.checked;
+      }));
+    };
+    let timer = null;
+    body.querySelector("#adm-ex-q").addEventListener("input", (e) => { exQuery = e.target.value; clearTimeout(timer); timer = setTimeout(list, 250); });
+    list();
+  },
   users(body) {
     const search = async (q) => {
       const list = await api(`/api/admin/users?q=${encodeURIComponent(q)}`);

@@ -49,5 +49,14 @@ def test_admin_page_on_a_phone(site, browser, env):  # noqa: F811
     page.wait_for_selector("[data-user]")
     page.click("[data-user]")
     page.wait_for_selector("[data-uact=export]")
+    make_user("teszt@example.com")                                    # kizaras az osszegzesbol, kereses utan
+    page.click("[data-tab=overview]")
+    page.click("#adm-ex summary")
+    page.fill("#adm-ex-q", "teszt")
+    page.wait_for_function("() => document.querySelectorAll('#adm-ex-list [data-ex]').length === 1")
+    page.check("#adm-ex-list [data-ex]")
+    page.wait_for_function("() => document.querySelector('#adm-ex summary')?.textContent.includes(': 1 ')")
+    page.wait_for_selector("#adm-ex-list [data-ex]:checked")          # ujrarajzolas utan nyitva, a keresessel
+    assert page.input_value("#adm-ex-q") == "teszt"
     assert not errors, errors
     page.close()

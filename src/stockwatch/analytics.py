@@ -16,6 +16,7 @@ import re
 import secrets
 import threading
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from urllib.parse import urlparse
 
 from psycopg.types.json import Jsonb
@@ -95,6 +96,14 @@ def overview(days: int = 30, now: datetime | None = None) -> dict:
     since = now - timedelta(days=days)
     p = {"since": since, "now": now, "act": list(ACTIVITY)}
     with db.connection() as conn:
+        excluded = conn.execute("SELECT id, email, nickname FROM users WHERE stats_excluded ORDER BY email").fetchall()
+        p["ex"] = [subject(r[0]) for r in excluded]
+        # a kizart felhasznalok esemenyei nelkul (a nevtelen esemenyek, pl. oldalmegtekintes, maradnak); egy menetben
+        # csereli az `events` tablat, igy a beszurt alkerdes nem kerul ujra csere ala
+        ev = "(SELECT * FROM events WHERE subject IS NULL OR subject <> ALL(%(ex)s::text[]))"
+        raw = conn
+        conn = SimpleNamespace(execute=lambda sql, params: raw.execute(
+            re.sub(r"FROM events( e\b)?", lambda m: f"FROM {ev}{m.group(1) or ' events'}", sql), params))
         funnel = conn.execute(
             "WITH reg AS (SELECT subject FROM events WHERE name = 'register' AND at >= %(since)s AND at < %(now)s "
             "GROUP BY subject) SELECT "
@@ -159,4 +168,5 @@ def overview(days: int = 30, now: datetime | None = None) -> dict:
         "errors": {"js": errors.get("js_error", 0), "server": errors.get("server_error", 0)},
         "shares": {"created": shares[0], "views": shares[1], "registers": shares[2]},
         "pageviews": {k: [{"key": a, "n": n} for a, n in rows] for k, rows in views.items()},
+        "excluded": [{"id": i, "email": e, "nickname": n} for i, e, n in excluded],
     }

@@ -762,3 +762,7 @@ svg.pr-input { cursor: crosshair; }
 
 /* megosztott eredmeny (#57) */
 .share-card { display: block; width: 100%; height: auto; max-width: 720px; border-radius: 12px; margin: 8px 0 16px; }
+/* admin: az osszegzesbol kizart felhasznalok keresheto listaja */
+.adm-ex-list { max-height: 320px; overflow-y: auto; margin-top: 8px; }
+.adm-ex-list label.check { display: flex; gap: 8px; align-items: center; padding: 4px 0; overflow-wrap: anywhere; }
+#adm-ex summary { cursor: pointer; }

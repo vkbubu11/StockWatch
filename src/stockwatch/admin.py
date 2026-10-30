@@ -138,9 +138,9 @@ def reset_totp(email: str) -> bool:
 USER_COLS = ("u.id, u.email, u.nickname, u.created_at, u.email_verified_at, u.suspended_at, u.role, "
              "u.password_hash IS NOT NULL, EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = u.id), "
              "(SELECT max(last_used_at) FROM sessions s WHERE s.user_id = u.id), "
-             "coalesce((SELECT xp FROM progress p WHERE p.user_id = u.id), 0)")
+             "coalesce((SELECT xp FROM progress p WHERE p.user_id = u.id), 0), u.stats_excluded")
 USER_KEYS = ("id", "email", "nickname", "created_at", "verified_at", "suspended_at", "role", "password", "google",
-             "last_active", "xp")
+             "last_active", "xp", "stats_excluded")
 
 
 def users(query: str = "", limit: int = 50) -> list[dict]:
@@ -173,7 +173,7 @@ def user_detail(user_id: int) -> dict:
 
 
 def user_action(admin: dict, user_id: int, action: str, base_url: str) -> dict:
-    """resend | suspend | unsuspend | reset_nickname | delete | export - mind naplozva."""
+    """resend | suspend | unsuspend | reset_nickname | delete | export | exclude | include - mind naplozva."""
     if action in ("suspend", "delete") and user_id == admin["id"]:
         raise ValueError("Saját fiókodat innen nem függesztheted fel és nem törölheted.")
     detail = user_detail(user_id)
@@ -190,6 +190,8 @@ def user_action(admin: dict, user_id: int, action: str, base_url: str) -> dict:
             conn.execute("UPDATE users SET suspended_at = NULL WHERE id = %s", (user_id,))
         elif action == "reset_nickname":
             conn.execute("UPDATE users SET nickname = NULL WHERE id = %s", (user_id,))
+        elif action in ("exclude", "include"):                  # az admin osszegzesbol (analytics.overview)
+            conn.execute("UPDATE users SET stats_excluded = %s WHERE id = %s", (action == "exclude", user_id))
         elif action == "export":
             out = {"export": accounts.export(user_id)}
         elif action != "delete":

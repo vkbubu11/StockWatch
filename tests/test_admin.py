@@ -93,15 +93,15 @@ def test_admin_actions_are_audited_and_the_log_is_append_only(neon, port, outbox
     assert "/verify?token=" in outbox[-1][2] and outbox[-1][0] == "bela@example.com"
     with pytest.raises(accounts.AccountError):                          # felfuggesztve: nem lep be
         accounts.login("cili@example.com", PW, "127.0.0.1")
-    for action in ("unsuspend", "reset_nickname", "export"):
+    for action in ("unsuspend", "reset_nickname", "exclude", "export"):
         assert _post(port, f"/api/admin/users/{target}/{action}", {}, headers).status == 200
     detail = json.loads(_req(port, "GET", f"/api/admin/users/{target}", headers=headers).text)
-    assert detail["nickname"] is None and detail["suspended_at"] is None
+    assert detail["nickname"] is None and detail["suspended_at"] is None and detail["stats_excluded"]
     assert _post(port, f"/api/admin/users/{root}/delete", {}, headers).status == 400     # sajat magat nem
     assert _post(port, "/api/admin/daily/replace", {"day": "2026-11-02"}, headers).status == 200
     assert _post(port, f"/api/admin/users/{other}/delete", {}, headers).status == 200
     assert json.loads(_req(port, "GET", f"/api/admin/users/{other}", headers=headers).text)["error"]
-    assert _audit_actions() == ["user_delete", "daily_replace", "user_export", "user_reset_nickname", "user_unsuspend",
+    assert _audit_actions() == ["user_delete", "daily_replace", "user_export", "user_exclude", "user_reset_nickname", "user_unsuspend",
                                 "user_suspend", "user_resend", "admin_login"]
     with db.connection() as conn, pytest.raises(psycopg.errors.RaiseException):
         conn.execute("UPDATE admin_audit SET action = 'x'")

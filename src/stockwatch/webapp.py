@@ -48,7 +48,7 @@ LESSON_RE = re.compile(r"/api/lessons/(\d{1,2})(/start)?")
 # admin felulet (#58): nem adminnak minden /admin es /api/admin utvonal 404
 ADMIN_FILES = {"/admin": "index.html", "/admin/": "index.html", "/admin/admin.js": "admin.js"}
 ADMIN_GET = re.compile(r"/api/admin/(state|overview|users|users/(\d{1,12})|content|groups|system|audit)")
-ADMIN_POST = re.compile(r"/api/admin/(verify|logout|users/(\d{1,12})/(resend|suspend|unsuspend|reset_nickname|delete|export)"
+ADMIN_POST = re.compile(r"/api/admin/(verify|logout|users/(\d{1,12})/(resend|suspend|unsuspend|reset_nickname|delete|export|exclude|include)"
                         r"|lessons|lessons/restore|daily/replace|pool/rebuild|groups/(\d{1,12})/(revoke_code|delete))")
 CLIENT_ERRORS = webauth.RateLimit("ip-client-error", 20, 60 * 60)   # a bongeszos hibaszamlalo (#48) IP-nkent
 DUEL_LINK_RE = re.compile(r"/d/([a-z]{12})")             # parbaj-meghivo (#55); belepes utan ide vissza
