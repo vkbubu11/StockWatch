@@ -125,6 +125,8 @@ class AppState:
         self.data_stamp: tuple | None = None
         self.job = {"state": "idle", "message": "", "started": None, "finished": None}
         self.best: dict | None = None          # a legutobbi "Legjobb belepo most" eredmeny
+        self.best_by_sector: dict[str, dict] = {}   # szektorvalaszto (#74): szektoronkent a legutobbi eredmeny
+        self.sector_cache: tuple[float, dict] | None = None   # /api/sectors (rovid ideig gyorsitotarazva)
 
     # -- adat valtozasanak eszlelese (pl. a monitor kozben frissitett) ----
     def _stamp(self) -> tuple:
@@ -286,24 +288,29 @@ class AppState:
             self._set_job("error", f"Hiba: {type(exc).__name__}: {exc}"[:300])
 
     # -- "Legjobb belepo most" (best.py) hatterszalon ---------------------
-    def start_best(self) -> bool:
+    def start_best(self, sector: str | None = None) -> bool:
         with self.lock:
             if self.job["state"] == "running":
                 return False
             self.job = {"state": "running", "message": "Legjobb belepo keresese...", "kind": "best",
-                        "started": datetime.now(timezone.utc).isoformat(), "finished": None}
-        threading.Thread(target=self._best, daemon=True).start()
+                        "sector": sector, "started": datetime.now(timezone.utc).isoformat(), "finished": None}
+        threading.Thread(target=self._best, args=(sector,), daemon=True).start()
         return True
 
-    def _best(self) -> None:
+    def _best(self, sector: str | None = None) -> None:
         from . import best
 
         try:
             config.load_settings.cache_clear()
             config.load_watchlist.cache_clear()
-            result = best.find_best(load_settings(), progress=lambda m: self._set_job("running", m))
-            self.best = result
-            parts = [f"{side}: {result[side]['best']['symbol']}" for side in ("long", "short") if result[side]["best"]]
+            result = best.find_best(load_settings(), progress=lambda m: self._set_job("running", m), sector=sector)
+            if sector:
+                self.best_by_sector[sector] = result
+                self.sector_cache = None                       # a szektor-tagsag frissulhetett
+            else:
+                self.best = result
+            parts = [f"{side}: {', '.join(d['symbol'] for d in result[side]['top'])}"
+                     for side in ("long", "short") if result[side]["top"]]
             self._set_job("done", "Kesz - " + (", ".join(parts) if parts else "most nincs szuron atmeno belepo") + ".")
         except Exception as exc:
             log.exception("Legjobb belepo keresese sikertelen")
@@ -1233,6 +1240,33 @@ def digest_payload(day: str | None = None) -> dict:
             "job": digest_jobs().snapshot()}
 
 
+SECTOR_CACHE_SECONDS = 600
+
+
+def valid_sectors() -> set[str]:
+    from . import sectors
+
+    return set(sectors.SECTORS) | {sectors.OTHER}
+
+
+def sectors_payload(app) -> dict:
+    """A foldali szektorvalaszto (#74): szektoronkent a tagok szama a "Legjobb belepo" listajan es a
+    szektor-ETF allapota - csak tarolt adatbol (halozat nelkul), par percig gyorsitotarazva."""
+    from . import best, sectors
+
+    cached = app.sector_cache
+    if cached and time.monotonic() - cached[0] < SECTOR_CACHE_SECONDS:
+        out = cached[1]
+    else:
+        settings = load_settings()
+        symbols = best.list_symbols(settings.scan.best_list, settings, allow_network=False)
+        out = sectors.overview(settings, symbols)
+        out["list"] = settings.scan.best_list
+        out["label"] = best.LISTS.get(settings.scan.best_list, settings.scan.best_list)
+        app.sector_cache = (time.monotonic(), out)
+    return out | {"computed": {k: v["computed_at"] for k, v in app.best_by_sector.items()}}
+
+
 def digest_action(action: str) -> dict:
     if action != "run":
         raise ValueError("Ismeretlen muvelet")
@@ -1969,7 +2003,11 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                     result = bt_runs.load(run_id)
                     return self._json(result) if result else self._error(404, "Nincs ilyen futtatas")
                 if path == "/api/best":
-                    return self._json({"result": app.best, "job": app.job})
+                    sector = parse_qs(url.query).get("sector", [""])[0]
+                    result = app.best_by_sector.get(sector) if sector else app.best
+                    return self._json({"result": result, "job": app.job})
+                if path == "/api/sectors":
+                    return self._json(sectors_payload(app))
                 m = re.fullmatch(r"/i18n/([a-z]{2})\.json", path)
                 if m:
                     from . import i18n
@@ -2028,7 +2066,10 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                     started = app.start_index_scan()
                     return self._json({"started": started, "job": app.job}, 202 if started else 409)
                 if path == "/api/best":
-                    started = app.start_best()
+                    sector = body.get("sector") or None
+                    if sector is not None and sector not in valid_sectors():
+                        return self._error(400, "Ismeretlen szektor")
+                    started = app.start_best(sector)
                     return self._json({"started": started, "job": app.job}, 202 if started else 409)
                 if path == "/api/refresh":
                     started = app.start_refresh()

@@ -2371,3 +2371,48 @@
 {"hu": "kihagyás", "en": "skip", "de": "ausgelassen", "es": "omitida"}
 {"hu": "belépés", "en": "entry", "de": "Einstieg", "es": "entrada"}
 {"hu": "Rejtett chart", "en": "Hidden chart", "de": "Verdeckter Chart", "es": "Gráfico oculto"}
+{"hu": "Szektor – legjobb belépők", "en": "Sector – best entries", "de": "Sektor – beste Einstiege", "es": "Sector – mejores entradas"}
+{"hu": "a 3 legjobb long és short belépő friss árral", "en": "the 3 best long and short entries at fresh prices", "de": "die 3 besten Long- und Short-Einstiege zu aktuellen Kursen", "es": "las 3 mejores entradas long y short con precios actuales"}
+{"hu": "Válassz szektort…", "en": "Choose a sector…", "de": "Sektor wählen…", "es": "Elige un sector…"}
+{"hu": "Keresés", "en": "Search", "de": "Suchen", "es": "Buscar"}
+{"hu": "Keresés folyamatban", "en": "Searching", "de": "Suche läuft", "es": "Buscando"}
+{"hu": "a lista a", "en": "the list can be chosen in", "de": "die Liste ist wählbar unter", "es": "la lista se elige en"}
+{"hu": "{0:n} papír", "en": "{0} stocks", "de": "{0} Aktien", "es": "{0} acciones"}
+{"hu": "{0:n} / {1:n} papír elemezve", "en": "{0} / {1} stocks analysed", "de": "{0} / {1} Aktien analysiert", "es": "{0} / {1} acciones analizadas"}
+{"hu": "utolsó gyertya", "en": "last candle", "de": "letzte Kerze", "es": "última vela"}
+{"hu": "Információtechnológia", "en": "Information Technology", "de": "Informationstechnologie", "es": "Tecnología de la información"}
+{"hu": "Egészségügy", "en": "Health Care", "de": "Gesundheitswesen", "es": "Salud"}
+{"hu": "Pénzügy", "en": "Financials", "de": "Finanzwesen", "es": "Finanzas"}
+{"hu": "Nem alapvető fogyasztási cikkek", "en": "Consumer Discretionary", "de": "Nicht-Basiskonsumgüter", "es": "Consumo discrecional"}
+{"hu": "Kommunikációs szolgáltatások", "en": "Communication Services", "de": "Kommunikationsdienste", "es": "Servicios de comunicación"}
+{"hu": "Ipar", "en": "Industrials", "de": "Industrie", "es": "Industria"}
+{"hu": "Alapvető fogyasztási cikkek", "en": "Consumer Staples", "de": "Basiskonsumgüter", "es": "Consumo básico"}
+{"hu": "Energia", "en": "Energy", "de": "Energie", "es": "Energía"}
+{"hu": "Közművek", "en": "Utilities", "de": "Versorger", "es": "Servicios públicos"}
+{"hu": "Ingatlan", "en": "Real Estate", "de": "Immobilien", "es": "Inmobiliario"}
+{"hu": "Alapanyagok", "en": "Materials", "de": "Grundstoffe", "es": "Materiales"}
+{"hu": "Egyéb / ismeretlen", "en": "Other / unknown", "de": "Sonstige / unbekannt", "es": "Otros / desconocido"}
+{"hu": "SMA200 fölött", "en": "above SMA200", "de": "über SMA200", "es": "por encima de la SMA200"}
+{"hu": "SMA200 alatt", "en": "below SMA200", "de": "unter SMA200", "es": "por debajo de la SMA200"}
+{"hu": "rövid adatsor", "en": "short history", "de": "kurze Datenreihe", "es": "serie corta"}
+{"hu": "nincs ETF-adat", "en": "no ETF data", "de": "keine ETF-Daten", "es": "sin datos del ETF"}
+{"hu": "1 hónap {0}", "en": "1 month {0}", "de": "1 Monat {0}", "es": "1 mes {0}"}
+{"hu": "Ebben a szektorban még nem kerestél. Nyomd meg a „Keresés” gombot (friss árral, ~1–3 perc).", "en": "You have not searched this sector yet. Press “Search” (fresh prices, ~1–3 min).", "de": "In diesem Sektor hast du noch nicht gesucht. Drücke „Suchen“ (aktuelle Kurse, ~1–3 Min.).", "es": "Aún no has buscado en este sector. Pulsa «Buscar» (precios actuales, ~1–3 min)."}
+{"hu": "Történeti adat: nincs igazolt adat (a short motor kísérleti)", "en": "Historical data: no validated data (the short engine is experimental)", "de": "Historische Daten: keine belegten Daten (die Short-Engine ist experimentell)", "es": "Datos históricos: no hay datos validados (el motor short es experimental)"}
+{"hu": "Alakzat-história", "en": "Pattern history", "de": "Formations-Historie", "es": "Historial del patrón"}
+{"hu": "nincs elég adat", "en": "not enough data", "de": "nicht genug Daten", "es": "datos insuficientes"}
+{"hu": "nyerés {0}", "en": "win {0}", "de": "Treffer {0}", "es": "acierto {0}"}
+{"hu": "várható érték {0}", "en": "expected value {0}", "de": "Erwartungswert {0}", "es": "valor esperado {0}"}
+{"hu": "{0:n} minta", "en": "{0} samples", "de": "{0} Stichproben", "es": "{0} muestras"}
+{"hu": "A felismert alakzat backtestelt, geometriai statisztikája (költség nélkül) – nem a jövő ígérete", "en": "Backtested geometric statistics of the detected pattern (without costs) – not a promise about the future", "de": "Backgetestete geometrische Statistik der erkannten Formation (ohne Kosten) – kein Versprechen für die Zukunft", "es": "Estadística geométrica del patrón detectado según el backtest (sin costes): no es una promesa de futuro"}
+{"hu": "Pontszám", "en": "Score", "de": "Punktzahl", "es": "Puntuación"}
+{"hu": "Kísérleti – nincs backtesttel igazolva", "en": "Experimental – not validated by backtest", "de": "Experimentell – nicht per Backtest belegt", "es": "Experimental: no validado por backtest"}
+{"hu": "Bikapiac – a letörések többsége elbukik, ezért nincs short jelölt.", "en": "Bull market – most breakdowns fail, so there are no short candidates.", "de": "Bullenmarkt – die meisten Ausbrüche nach unten scheitern, daher keine Short-Kandidaten.", "es": "Mercado alcista: la mayoría de las rupturas a la baja fracasan, por eso no hay candidatos short."}
+{"hu": "Most nincs a szűrőkön átmenő {0} belépő ebben a szektorban.", "en": "There is currently no {0} entry passing the filters in this sector.", "de": "Derzeit gibt es in diesem Sektor keinen {0}-Einstieg, der die Filter besteht.", "es": "Ahora no hay ninguna entrada {0} que pase los filtros en este sector."}
+{"hu": "Csak {0:n} belépő ment át a szűrőkön – gyengébbel nem töltjük fel.", "en": "Only {0} entries passed the filters – we do not pad the list with weaker ones.", "de": "Nur {0} Einstiege haben die Filter bestanden – wir füllen nicht mit schwächeren auf.", "es": "Solo {0} entradas pasaron los filtros; no rellenamos con otras más débiles."}
+{"hu": "A sorrend a pontszám; 5 ponton belül az alakzat-história várható értékének alsó határa dönt. Előre senki nem tudja, melyik lesz a legjobb – ez becslés. Nem befektetési tanács. A program semmit nem vásárol – csak megmutatja.", "en": "Ranked by score; within 5 points the lower bound of the pattern history's expected value decides. Nobody knows in advance which will be best – this is an estimate. Not financial advice. The program buys nothing – it only shows.", "de": "Sortiert nach Punktzahl; innerhalb von 5 Punkten entscheidet die Untergrenze des Erwartungswerts aus der Formations-Historie. Niemand weiß im Voraus, welcher der beste sein wird – das ist eine Schätzung. Keine Anlageberatung. Das Programm kauft nichts – es zeigt nur an.", "es": "Ordenado por puntuación; con menos de 5 puntos de diferencia decide el límite inferior del valor esperado del historial del patrón. Nadie sabe de antemano cuál será el mejor: es una estimación. No es asesoramiento financiero. El programa no compra nada, solo lo muestra."}
+{"hu": "A szektorok nem tölthetők be", "en": "The sectors could not be loaded", "de": "Die Sektoren konnten nicht geladen werden", "es": "No se pudieron cargar los sectores"}
+{"hu": "Ebben a szektorban nincs papir a valasztott listan.", "en": "There are no stocks of this sector on the chosen list.", "de": "In diesem Sektor gibt es keine Aktien auf der gewählten Liste.", "es": "No hay acciones de este sector en la lista elegida."}
+{"hu": "Szektorok...", "en": "Sectors...", "de": "Sektoren...", "es": "Sectores..."}
+{"hu": "Kesz - most nincs szuron atmeno belepo.", "en": "Done - no entry passes the filters right now.", "de": "Fertig - derzeit besteht kein Einstieg die Filter.", "es": "Listo: ahora ninguna entrada pasa los filtros."}
+{"hu": "Lista", "en": "List", "de": "Liste", "es": "Lista"}

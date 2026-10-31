@@ -217,6 +217,154 @@ function bestSide(side, s) {
 }
 
 // ---------------------------------------------------------------------------
+// Szektorvalaszto a foldalon (#74): egy szektor 3 legjobb long es short belepoje (best.py, sector=...)
+// Sorrend: pontszam; 5 ponton belul az alakzat-historia varhato ertekenek also 95%-os hatara dont.
+// ---------------------------------------------------------------------------
+const SECTOR_LABELS = {
+  "Information Technology": "Információtechnológia", "Health Care": "Egészségügy", "Financials": "Pénzügy",
+  "Consumer Discretionary": "Nem alapvető fogyasztási cikkek", "Communication Services": "Kommunikációs szolgáltatások",
+  "Industrials": "Ipar", "Consumer Staples": "Alapvető fogyasztási cikkek", "Energy": "Energia",
+  "Utilities": "Közművek", "Real Estate": "Ingatlan", "Materials": "Alapanyagok",
+  "Egyéb / ismeretlen": "Egyéb / ismeretlen",
+};
+const SECTOR_KEY = "sw-sector";
+let sectorTimer = null;
+
+function savedSector() {
+  try { return localStorage.getItem(SECTOR_KEY) || ""; } catch (_) { return ""; }
+}
+
+function etfWord(st) {
+  if (!st) return "nincs ETF-adat";
+  const trend = st.above_sma200 === true ? "SMA200 fölött" : st.above_sma200 === false ? "SMA200 alatt" : "rövid adatsor";
+  return `${trend} · 1 hónap ${pct(st.month_pct, 1)}`;
+}
+
+async function sectorCard() {
+  const card = $("#sector-card");
+  if (!card) return;
+  let data;
+  try { data = await api("/api/sectors"); } catch (e) {
+    card.innerHTML = `<h2>Szektor – legjobb belépők</h2><div class="card-body muted">A szektorok nem tölthetők be: ${esc(e.message)}</div>`;
+    return;
+  }
+  const current = savedSector();
+  const opts = data.sectors.map((r) => `<option value="${esc(r.sector)}" ${r.sector === current ? "selected" : ""}>${esc(SECTOR_LABELS[r.sector] || r.sector)} · ${r.count} papír${r.etf ? ` · ${esc(r.etf)}: ${esc(etfWord(r.etf_status))}` : ""}</option>`).join("");
+  card.innerHTML = `<h2>Szektor – legjobb belépők <span class="muted">– a 3 legjobb long és short belépő friss árral</span></h2>
+    <div class="card-body">
+      <form class="sector-form" id="sector-form" autocomplete="off">
+        <label for="sector-select">Szektor</label>
+        <select id="sector-select" name="sector" required>
+          <option value="">Válassz szektort…</option>${opts}</select>
+        <button class="btn primary" type="submit" id="sector-go">Keresés</button>
+        <span class="muted small">Lista: ${esc(data.label || "–")} · ${data.symbols} papír · a lista a <a href="#/settings">Beállításokban</a> választható</span>
+      </form>
+      <div id="sector-result"></div>
+    </div>`;
+  const form = card.querySelector("#sector-form");
+  const select = card.querySelector("#sector-select");
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    if (select.value) startSectorBest(select.value);
+  });
+  select.addEventListener("change", () => {
+    try { localStorage.setItem(SECTOR_KEY, select.value); } catch (_) { /* privat mod */ }
+    showCachedSector(select.value);
+  });
+  if (current) showCachedSector(current);
+}
+
+async function showCachedSector(sector) {
+  const box = $("#sector-result");
+  if (!box) return;
+  if (!sector) { box.innerHTML = ""; return; }
+  try {
+    const d = await api(`/api/best?sector=${encodeURIComponent(sector)}`);
+    box.innerHTML = d.result ? sectorResult(d.result)
+      : `<div class="callout">Ebben a szektorban még nem kerestél. Nyomd meg a „Keresés” gombot (friss árral, ~1–3 perc).</div>`;
+    bindSectorResult(box);
+  } catch (e) { box.innerHTML = `<div class="callout">${esc(e.message)}</div>`; }
+}
+
+async function startSectorBest(sector) {
+  const box = $("#sector-result");
+  const btn = $("#sector-go");
+  try {
+    const res = await api("/api/best", { method: "POST", body: JSON.stringify({ sector }) });
+    renderJob(res.job);
+    if (!res.started) return;
+    if (btn) btn.disabled = true;
+    if (box) box.innerHTML = `<div class="loading">Keresés folyamatban: ${esc(SECTOR_LABELS[sector] || sector)}</div>`;
+    clearTimeout(sectorTimer);
+    const poll = async () => {
+      const d = await api(`/api/best?sector=${encodeURIComponent(sector)}`);
+      renderJob(d.job);
+      if (d.job.state === "running") { sectorTimer = setTimeout(poll, 1500); return; }
+      const b = $("#sector-go");
+      if (b) b.disabled = false;
+      const target = $("#sector-result");
+      if (!target) return;
+      target.innerHTML = d.job.state === "error" ? `<div class="callout">${esc(d.job.message)}</div>` : d.result ? sectorResult(d.result) : "";
+      bindSectorResult(target);
+    };
+    sectorTimer = setTimeout(poll, 1500);
+  } catch (e) { renderJob({ state: "error", message: e.message }); if (btn) btn.disabled = false; }
+}
+
+function bindSectorResult(root) {
+  root.querySelectorAll("[data-check]").forEach((b) => b.addEventListener("click", () => quickCheck(b.dataset.check)));
+  const again = root.querySelector("[data-sector-again]");
+  if (again) again.addEventListener("click", () => startSectorBest(again.dataset.sectorAgain));
+}
+
+function histLine(side, d) {
+  if (side === "short") return `<span class="muted">Történeti adat: nincs igazolt adat (a short motor kísérleti)</span>`;
+  const h = d.hist;
+  if (!h) return `<span class="muted">Alakzat-história: nincs elég adat</span>`;
+  const ev = h.ev_low === null || h.ev_low === undefined ? signed(h.ev, 2, "R")
+    : `${signed(h.ev, 2, "R")} (${signed(h.ev_low, 2)}…${signed(h.ev_high, 2)})`;
+  return `<span title="A felismert alakzat backtestelt, geometriai statisztikája (költség nélkül) – nem a jövő ígérete">Alakzat-história: nyerés ${fmt(h.hit_rate * 100, 0)}% (${fmt(h.hit_low * 100, 0)}–${fmt(h.hit_high * 100, 0)}%) · várható érték ${ev} · ${h.samples} minta</span>`;
+}
+
+function sectorPick(side, d, n) {
+  const soon = d.earnings_date ? `<div class="small" style="color:var(--warn)">Gyorsjelentés: ${esc(d.earnings_date)}</div>` : "";
+  return `<article class="sector-pick">
+    <div class="best-top"><span class="muted">${n}.</span>
+      <button type="button" class="linklike ticker" data-check="${esc(d.symbol)}" title="Papír kiértékelése most">${esc(d.symbol)}</button>
+      <span class="badge ${side === "short" ? "bad" : "go"}">${esc(d.label)}</span>
+      <span class="muted small">${esc(d.pattern)}</span></div>
+    <div class="small"><span>Pontszám</span> ${scorebar(d.score)}</div>
+    ${bestPlan(side, d)}
+    <div class="small">${histLine(side, d)}</div>${soon}
+  </article>`;
+}
+
+function sectorSide(side, s, r) {
+  const title = side === "long" ? "Long (vétel)" : `Short (eladás) <span class="badge warn" title="Nincs backtesttel igazolva, a paper trading nem küldi be">Kísérleti – nincs backtesttel igazolva</span>`;
+  let body;
+  if (s.top.length) body = s.top.map((d, k) => sectorPick(side, d, k + 1)).join("");
+  else if (side === "short" && r.short_blocked) body = `<div class="callout">Bikapiac – a letörések többsége elbukik, ezért nincs short jelölt.</div>`;
+  else body = `<div class="callout">Most nincs a szűrőkön átmenő ${side === "long" ? "long" : "short"} belépő ebben a szektorban.</div>`;
+  const fewer = s.top.length && s.top.length < r.top_n ? `<p class="muted small">Csak ${s.top.length} belépő ment át a szűrőkön – gyengébbel nem töltjük fel.</p>` : "";
+  const list = (items, label, extra) => (items.length ? `<h4>${label}</h4><ul class="best-list">${items.map((d) => `<li><button type="button" class="linklike ticker" data-check="${esc(d.symbol)}">${esc(d.symbol)}</button>
+      <span class="muted small">${esc(d.label)} · ${esc(d.pattern)} · ${fmt(d.score, 0)} pont${extra(d)}</span></li>`).join("")}</ul>` : "");
+  return `<section class="best-side"><h3>${title}</h3>${body}${fewer}
+    ${list(s.setups, "Figyelendő – még nem tört ki", (d) => ` · trigger ${fmt(d.trigger_level)} $`)}
+    ${list(s.near, "Majdnem – szűrőn elbukott", (d) => ` · <span class="down">${esc((d.failed || []).join(", "))}</span>`)}
+  </section>`;
+}
+
+function sectorResult(r) {
+  const at = new Date(r.computed_at).toLocaleString(LOCALE, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const etf = r.etf && r.etf.symbol ? ` · ${esc(r.etf.symbol)}: ${esc(etfWord(r.etf.close === undefined ? null : r.etf))}` : "";
+  return `<p class="muted small">${esc(SECTOR_LABELS[r.sector] || r.sector)}${etf} · ${r.evaluated} / ${r.symbols} papír elemezve · utolsó gyertya: ${esc(r.last_bar || "–")} · ${esc(at)}
+      <button type="button" class="btn small" data-sector-again="${esc(r.sector)}">Frissítés</button></p>
+    ${r.notes.map((n) => `<div class="callout">${esc(n)}</div>`).join("")}
+    <div class="best-grid">${sectorSide("long", r.long, r)}${sectorSide("short", r.short, r)}</div>
+    <p class="muted small">A sorrend a pontszám; 5 ponton belül az alakzat-história várható értékének alsó határa dönt. Előre senki nem tudja, melyik lesz a legjobb – ez becslés. Nem befektetési tanács. A program semmit nem vásárol – csak megmutatja.</p>`;
+}
+
+// ---------------------------------------------------------------------------
 // "Papir kiertekelese": egy beirt papir allapota MOST (quickcheck.py) - jelzesek, formalodo
 // alakzatok "ha most neznenk" pontszammal, a Visszahuzas-strategiak szabalyai
 // ---------------------------------------------------------------------------
@@ -472,6 +620,8 @@ async function pageOverview() {
         <div class="sub">${own.holdings.length ? `${own.holdings.length} nyitott${ownBad ? ` · <span class="down">${ownBad} kockázatos</span>` : ""}${ownWarn ? ` · ${ownWarn} figyelendő` : ""}` : "vedd fel a meglévő pozícióidat"}</div></a>
     </div>
 
+    <section class="card" id="sector-card"></section>
+
     <section class="card">
       <h2>Belépési jelöltek <span class="muted">– ma kiértékelt helyzetek, a kiesettek okaival</span></h2>
       ${o.candidates.length ? candidatesTable(o.candidates) : `<div class="card-body empty">Ma nincs kitörés, visszateszt vagy kitörés-közeli minta a figyelt papírokon.</div>`}
@@ -488,6 +638,7 @@ async function pageOverview() {
     </section>`;
   bindRowLinks();
   digestCard();
+  sectorCard();
   bindQuickForms(view);
   const ixBtn = $("#index-scan");
   if (ixBtn) ixBtn.addEventListener("click", async () => {

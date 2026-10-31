@@ -115,11 +115,8 @@ class PatternStats:
         hits = [t.bars_to_outcome for t in self.trades if t.is_hit]
         return int(statistics.median(hits)) if hits else None
 
-    @property
-    def expectancy_r(self) -> float:
-        """Varhato ertek R-ben: talalatnal a teljes R:R, bukasnal -1."""
-        if not self.trades:
-            return 0.0
+    def _r_values(self) -> list[float]:
+        """Ugyletenkenti eredmeny R-ben: talalatnal a teljes R:R, bukasnal -1, idokorlatnal 0."""
         values = []
         for trade in self.trades:
             risk = abs(trade.trigger_price - trade.invalidation)
@@ -127,7 +124,19 @@ class PatternStats:
                 continue
             reward = abs(trade.target - trade.trigger_price) / risk
             values.append(reward if trade.is_hit else (-1.0 if trade.outcome == "invalidated" else 0.0))
+        return values
+
+    @property
+    def expectancy_r(self) -> float:
+        """Varhato ertek R-ben: talalatnal a teljes R:R, bukasnal -1."""
+        values = self._r_values()
         return float(np.mean(values)) if values else 0.0
+
+    @property
+    def expectancy_sd(self) -> float | None:
+        """Az ugyletenkenti R szorasa - ebbol a varhato ertek 95%-os savja (a "Legjobb belepo" rangsorahoz)."""
+        values = self._r_values()
+        return float(np.std(values, ddof=1)) if len(values) >= 2 else None
 
     def bucket_stats(self, edges: list[float]) -> list[dict]:
         """Minoseg szerinti bontas: jobb minta valoban jobb talalati aranyt ad-e?"""
@@ -161,6 +170,8 @@ class PatternStats:
             "timeout_rate": round(self.timeout_rate, 4),
             "median_bars": self.median_bars,
             "expectancy_r": round(self.expectancy_r, 3),
+            "expectancy_sd": None if self.expectancy_sd is None else round(self.expectancy_sd, 3),
+            "expectancy_n": len(self._r_values()),
             "buckets": self.bucket_stats(edges),
         }
 

@@ -1094,6 +1094,27 @@ Nagy listán (~520 papír) a teljes elemzés a gyenge szerveren túl lassú lenn
 indexszkennelés** legjobb long és short jelöltjeit (és a watchlistet) számolja újra friss árral – kb. 1–3
 perc. Ha még nem volt indexszkennelés, a teljes listát nézi át. A gomb semmit nem küld ki és nem kereskedik.
 
+### Szektor – legjobb belépők (Áttekintés)
+
+Az Áttekintés kártyáján kiválasztasz egy GICS-szektort, és ugyanez a motor a lista **adott szektorba eső** papírjain
+keres: oldalanként a **3 legjobb long** és a **3 legjobb short** belépőt mutatja kész tervvel (ticket #74).
+
+- **Sorrend:** a 0–100 pontszám. Ha két jelölt pontszáma **5 ponton belül** van, az kerül előre, amelyiknek az
+  alakzat-históriából becsült várható értéke (R) **95%-os alsó határa** magasabb. Minden kártyán ott a nyerési arány
+  (Wilson-sávval) és a várható érték (sávval) – ez a felismert alakzat backtestelt, *geometriai* statisztikája,
+  költség nélkül. Ha nincs elég minta: „nincs elég adat”, nem kitalált szám. A sávhoz a kalibrációnak tartalmaznia kell
+  az R szórását (`expectancy_sd`) – régebbi kalibrációnál a sáv hiányzik, futtasd újra a kalibrációt.
+- **Nincs kitöltés:** ha egy szektorban 3-nál kevesebb belépő megy át a szűrőkön, annyit mutat, amennyi van; alatta az
+  előkészületek és a majdnem-jelöltek (melyik szűrőn buktak el).
+- **Short:** kísérleti, nincs backtesttel igazolva – történeti adat helyett „nincs igazolt adat”. Bikapiacon (QQQ és
+  S&P 500 is az SMA200 fölött) a blokk kiírja, miért nincs short jelölt.
+- **Szektorok:** az S&P 500 tagokra a Wikipedia GICS-táblázata (ugyanaz a fájl, mint az eseménytanulmányoknál:
+  `data/events/sectors.json`). A csak Nasdaq-100 / csak watchlist papíroknál a Yahoo szektorát egyszer lekéri, GICS-névre
+  fordítja és eltárolja (`data/sector_cache.json`, keresésenként legfeljebb 40 lekérés, a „nem található” választ 30 napig
+  nem kérdezi újra); ami így sem található, az „Egyéb / ismeretlen”. A választó mellett a szektor-ETF (XLK, XLF, …)
+  állapota: SMA200 fölött / alatt és az 1 hónapos hozam.
+- A szektor a böngészőben megjegyződik; a legutóbbi eredmény szektoronként megmarad, a „Frissítés” gomb újraszámolja.
+
 ---
 
 ## Futtatás szerveren (folyamatos paper trading teszt)
