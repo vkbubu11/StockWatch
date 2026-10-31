@@ -283,7 +283,7 @@ async function pageDuel(id) {
     const mine = !m ? accept : m.decided < m.total && !d.over ? `<a class="btn primary" href="#/practice/${esc(m.session)}">Folytatás (${m.decided} / ${m.total})</a>`
       : `<a class="btn" href="#/practice/${esc(m.session)}">A köröm</a> <span class="muted">${m.finished ? `kész: ${m.points} pont` : "nem fejeződött be időben"}</span>`;
     view.innerHTML = `<div class="page-head"><a href="#/daily" class="muted">← Napi kihívás</a><h1>Párbaj</h1>
-        <span class="muted">${d.opponent ? `<span>Ellenfél:</span> <span translate="no">${esc(d.opponent)}</span>` : "Még nincs ellenfél."} · ${d.rounds} helyzet · határidő: ${when(d.expires)}</span></div>
+        <span class="muted">${d.opponent ? `<span>Ellenfél:</span> <span translate="no">${esc(d.opponent)}</span>` : "Még nincs ellenfél."} · <span>${d.rounds} helyzet</span> · <span>határidő:</span> ${when(d.expires)}</span></div>
       ${d.revoked ? `<section class="card"><div class="card-body"><p>A meghívót visszavontad.</p></div></section>` : ""}
       ${d.side === "challenger" && !d.other.accepted && !d.revoked && !d.over ? `<section class="card"><h2>Meghívó link</h2><div class="card-body">
         <p class="muted small">Küldd el annak, akit kihívsz. Az első elfogadó lesz az ellenfeled; addig visszavonhatod.</p>
