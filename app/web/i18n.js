@@ -207,8 +207,8 @@ const I18N = (() => {
     }
   }
 
-  function observe() {
-    walk(document.body);
+  function observe(initial = true) {
+    if (initial) walk(document.body);           // a szerver altal mar leforditott oldalt nem jarja be ujra
     new MutationObserver((records) => {
       for (const r of records) {
         if (r.type === "childList") r.addedNodes.forEach(walk);
@@ -249,12 +249,13 @@ const I18N = (() => {
       try { again = sessionStorage.getItem("sw-relang") === LANG; sessionStorage.setItem("sw-relang", LANG); } catch (_) { again = true; }
       if (!again) { location.reload(); return; }
     }
-    if (LANG === "hu" || done === LANG) return;
+    // data-i18n-live: a szerver forditotta, de az oldal kesobb is rajzol (kezdooldali kiprobalhato helyzet)
+    if (LANG === "hu" || (done === LANG && !document.documentElement.hasAttribute("data-i18n-live"))) return;
     // a katalogus betolteseig a felulet rejtve (ne villanjon fel magyarul); hiba eseten magyarul jelenik meg
     document.documentElement.classList.add("i18n-loading");
     fetch(`i18n/${LANG}.json`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : {}))
-      .then((dict) => { load(dict); document.title = t(document.title); observe(); })
+      .then((dict) => { load(dict); if (done !== LANG) document.title = t(document.title); observe(done !== LANG); })
       .catch(() => { /* forditas nelkul */ })
       .finally(() => document.documentElement.classList.remove("i18n-loading"));
   }

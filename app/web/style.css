@@ -540,6 +540,13 @@ tr.lab-detail h3, #lab-ml h3 { font-size: 13px; margin: 6px 0; }
 :is(#pr-chart, #lesson-chart) .hline.dash { stroke-dasharray: 5 4; }
 :is(#pr-chart, #lesson-chart) .hlabel { font-size: 11px; font-weight: 650; }
 :is(#pr-chart, #lesson-chart) .hlabel-bg { opacity: .92; }
+:is(#pr-chart, #lesson-chart) .tip-hit { stroke: transparent; stroke-width: 12; fill: none; pointer-events: stroke; }
+/* kezdooldali kiprobalhato helyzet */
+.demo #demo-form { margin-top: 12px; }
+.demo #demo-result { margin-top: 12px; display: grid; gap: 12px; }
+.demo-steps summary { cursor: pointer; font-weight: 600; }
+.demo-cta { margin: 4px 0 0; }
+.walk-steps { margin: 0; padding-left: 22px; display: grid; gap: 6px; font-variant-numeric: tabular-nums; }
 .pr-name { font-size: 15px; margin: 12px 0 10px; }
 
 /* Gyakorlas: itelet, levezetes (#25, #26), irany-valaszto (#24) */

@@ -350,8 +350,10 @@ def test_summary_numbers_come_from_the_data_and_no_advice(env, lang):
 
 def test_templates_digit_free_and_in_catalog():
     rows = {" ".join(json.loads(x)["hu"].split()) for x in i18n.CATALOG_PATH.read_text(encoding="utf-8").splitlines() if x}
+    formulas = {"l_ema_formula", "l_rsi", "l_r"}                    # keplet-allandok (a lecke levezetese)
     for key, template in TEMPLATES.items():
-        assert not re.search(r"\d", re.sub(r"\{\d+(:n)?\}", "", template)), key
+        text = re.sub(r"\{\d+(:n)?\}|EMA\d+|RSI\(\d\)", "", template)       # indikatornevek
+        assert key in formulas or not re.search(r"\d", text), key
         assert " ".join(template.split()) in rows, template
 
 

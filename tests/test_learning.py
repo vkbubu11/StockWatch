@@ -70,3 +70,14 @@ def test_levels_unlock_in_order(user, pool):
     learning.record(user, _finished(1, ["bad"] * 6))                 # egy rosszabb kor nem veszi el a teljesitest
     assert learning.overview(user)[0]["completed"]
     assert learning.record(user, {"lesson": 1, "tasks": [{"decision": None}]}) is None   # befejezetlen kor
+
+
+def test_admin_can_open_every_level(user, pool):
+    from stockwatch import admin, db
+
+    assert not all(x["unlocked"] for x in learning.overview(user))
+    with db.connection() as conn:
+        email = conn.execute("SELECT email FROM users WHERE id = %s", (user,)).fetchone()[0]
+    admin.grant(email)
+    assert all(x["unlocked"] for x in learning.overview(user))       # a tartalom ellenorzesehez minden szint
+    assert learning.page(user, 10)["level"] == 10

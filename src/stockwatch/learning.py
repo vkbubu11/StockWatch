@@ -14,7 +14,7 @@ from pathlib import Path
 
 import psycopg
 
-from . import analytics, db
+from . import analytics, db, walkthrough
 from .config import Settings
 from .practice import session as practice
 from .practice import synthetic
@@ -46,6 +46,8 @@ def validate(data) -> list[dict]:
         fig = x.get("figure")
         if not isinstance(fig, dict) or not (fig.get("kind") == "trend" or fig.get("pattern") in synthetic.TEMPLATES):
             raise ValueError(f"{n}. szint: az abra (figure) {{'kind': 'trend'}} vagy ismert alakzat (pattern) legyen.")
+        if x.get("walkthrough") is not None and x["walkthrough"] not in walkthrough.BUILDERS:
+            raise ValueError(f"{n}. szint: walkthrough: {', '.join(walkthrough.BUILDERS)} (vagy hianyzik).")
         tasks = x.get("tasks")
         if not isinstance(tasks, dict) or not isinstance(tasks.get("rounds"), int) \
                 or not 1 <= tasks["rounds"] <= sampler.MAX_ROUNDS:
@@ -125,12 +127,20 @@ def progress(user_id: int) -> dict[int, dict]:
     return {level: {"best_share": share, "completed": done} for level, share, done in rows}
 
 
+def is_admin(user_id: int) -> bool:
+    """Az admin minden szintet es a vizsgat varakozas nelkul kiprobalhatja (a tartalom ellenorzesehez)."""
+    with db.connection() as conn:
+        row = conn.execute("SELECT role = 'admin' FROM users WHERE id = %s", (user_id,)).fetchone()
+    return bool(row and row[0])
+
+
 def overview(user_id: int) -> list[dict]:
     done = progress(user_id)
+    admin = is_admin(user_id)
     out, unlocked = [], True
     for item in lessons():
         state = done.get(item["level"], {})
-        out.append({"level": item["level"], "title": item["title"], "unlocked": unlocked,
+        out.append({"level": item["level"], "title": item["title"], "unlocked": unlocked or admin,
                     "completed": bool(state.get("completed")), "best_share": state.get("best_share")})
         unlocked = bool(state.get("completed"))
     return out
@@ -150,7 +160,13 @@ def page(user_id: int, level: int) -> dict:
     item = lesson(level)
     return {k: item[k] for k in ("level", "title", "paragraphs", "points", "caption")} | {
         "rounds": item["tasks"]["rounds"], "figure": figure(level), "status": status, "pass_share": PASS_SHARE,
-        "levels": len(lessons())}
+        "levels": len(lessons()), "walkthrough": steps(level)}
+
+
+def steps(level: int) -> dict | None:
+    """A lecke levezetese a sajat pelda-chartjan (walkthrough.py); None, ha a leckehez nincs."""
+    kind = lesson(level).get("walkthrough")
+    return walkthrough.BUILDERS[kind](figure(level)) if kind else None
 
 
 def start(user_id: int, level: int, settings: Settings | None = None) -> dict:

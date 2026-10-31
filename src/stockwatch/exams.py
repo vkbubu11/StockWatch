@@ -3,7 +3,7 @@
   * vizsga: ROUNDS dontesi helyzet, session.EXAM_MINUTES perc; a feladatok az inditaskor rogzulnek, a felfedes csak
     a beadas (vagy a lejart ido) utan, mint a napi kihivasnal; elore ismert kuszob: PASS_SHARE jo vagy
     balszerencses (a szabaly szerint indokolt) dontes - a ki nem toltott helyzet nem jo
-  * COOLDOWN_HOURS-onkent egy inditas; a futo vizsga folytathato; a vizsga kore nem torolheto
+  * COOLDOWN_HOURS-onkent egy inditas (adminnak varakozas nelkul); a futo vizsga folytathato; a vizsga kore nem torolheto
   * sikeres vizsga: tanusitvany a /c/<kod> oldalon (becenev, teljesitett szintek, datum, eredmeny, ellenorzo kod);
     a kod alapjan barki visszaellenorizheti. shortcut: PDF helyett nyomtathato oldal; ha intezmeny keri, kell PDF
 """
@@ -48,7 +48,7 @@ def mine(user_id: int) -> dict:
                             (user_id,)).fetchall()
         exams = [_settle(conn, user_id, r) for r in rows]
     running = next((e["session_id"] for e in exams if not e["finished_at"]), None)
-    nxt = exams[0]["created_at"] + timedelta(hours=COOLDOWN_HOURS) if exams else None
+    nxt = exams[0]["created_at"] + timedelta(hours=COOLDOWN_HOURS) if exams and not learning.is_admin(user_id) else None
     return {"rounds": ROUNDS, "minutes": session.EXAM_MINUTES, "pass_share": PASS_SHARE, "running": running,
             "next_start": nxt if nxt and nxt > datetime.now(timezone.utc) and not running else None,
             "exams": [{"code": e["id"] if e["passed"] else None, "session": e["session_id"], "created": e["created_at"],

@@ -70,3 +70,15 @@ def test_expired_exam_is_settled_with_unanswered_tasks_failed(env, monkeypatch):
         session.decide(user, sid, 0, {"action": "skip"})
     e = exams.mine(user)["exams"][0]
     assert e["finished"] and e["score"] == 0 and e["passed"] is False and e["code"] is None
+
+
+def test_admin_has_no_exam_cooldown(env):  # noqa: F811
+    from stockwatch import admin
+
+    user = env["user"]
+    admin.grant("anna@example.com")
+    sid = exams.start(user, env["settings"])["id"]
+    for k in range(exams.ROUNDS):
+        session.decide(user, sid, k, {"action": "skip"})
+    assert exams.mine(user)["next_start"] is None
+    assert exams.start(user, env["settings"])["id"] != sid           # azonnal ujra indithato

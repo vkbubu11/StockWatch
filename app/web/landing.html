@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="hu">
+<html lang="hu" data-i18n-live>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -26,8 +26,30 @@
       <h1>Tanuld meg olvasni a chartot – vak döntésekkel, azonnali visszajelzéssel</h1>
       <p>Rejtett chart-helyzeteket kapsz: nem látod, melyik papír és melyik nap. Eldöntöd, mit tennél, utána megmutatjuk,
         mi történt – és azt is, hogy a döntésed a szabályok szerint is jó volt-e, vagy csak szerencsés.</p>
-      <p><a class="btn primary" href="/register">Ingyenes regisztráció</a> <a class="btn" href="/login">Van már fiókom</a></p>
+      <p><a class="btn primary" href="#demo">Próbáld ki most</a> <a class="btn" href="/register">Ingyenes regisztráció</a>
+        <a class="btn" href="/login">Van már fiókom</a></p>
     </section>
+
+    <!-- kiprobalhato helyzet regisztracio nelkul (demo.js): semmi nem mentodik -->
+    <section class="card demo" id="demo" aria-labelledby="demo-title"><div class="card-body">
+      <h2 id="demo-title">Próbáld ki most – regisztráció nélkül</h2>
+      <p class="muted small">Egy rejtett helyzet: a chart a döntés napjáig látszik, az utolsó záró = 100. Vidd az egeret a chart
+        elemeire: kiírja a nevüket. A döntés után megmutatjuk, mi történt, és hogy a döntésed a szabályok szerint is jó volt-e.</p>
+      <svg id="pr-chart" role="img" aria-label="Rejtett chart-helyzet"></svg>
+      <form id="demo-form" class="ag-form" hidden>
+        <div class="segmented wide" role="group" aria-label="Döntés">
+          <button type="button" class="seg on" data-side="skip" aria-pressed="true">Kihagyás</button>
+          <button type="button" class="seg" data-side="long" aria-pressed="false">Long (emelkedésre)</button>
+          <button type="button" class="seg" data-side="short" aria-pressed="false">Short (esésre)</button>
+        </div>
+        <label data-trade hidden>Stop<input name="stop" type="number" step="0.01" inputmode="decimal"></label>
+        <label data-trade hidden>Cél (nem kötelező)<input name="target" type="number" step="0.01" inputmode="decimal"></label>
+        <p class="muted small wide" data-trade hidden>A stop javasolt helye 1,5 ATR-re a belépőtől; átírhatod. Belépés a következő nyitáson, legfeljebb 10 napig.</p>
+        <div class="wide"><button class="btn primary" type="submit">Döntés beadása</button> <span id="demo-msg" class="small" role="status"></span></div>
+      </form>
+      <div id="demo-result"></div>
+      <noscript><p>A kipróbáláshoz JavaScript kell.</p></noscript>
+    </div></section>
 
     <section class="landing-steps" aria-label="Hogyan működik">
       <article class="card"><div class="card-body">
@@ -69,6 +91,9 @@
     Oktatási célú gyakorlás múltbeli / szimulált adaton. <strong>Nem befektetési tanács.</strong>
     · <a href="/about">Rólunk és kapcsolat</a> · <a href="/aszf">ÁSZF</a> · <a href="/adatkezeles">Adatkezelési tájékoztató</a> · <a href="/sutik">Sütik</a>
   </footer>
+  <div id="tooltip" class="tooltip" hidden></div>
   <script src="/i18n.js"></script>
+  <script src="/chart.js"></script>
+  <script src="/demo.js"></script>
 </body>
 </html>

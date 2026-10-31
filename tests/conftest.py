@@ -67,6 +67,7 @@ def _neon_url():
     with psycopg.connect(base, autocommit=True) as conn:
         conn.execute(f"CREATE SCHEMA {schema}")
     test_url = make_conninfo(base, options=f"-c search_path={schema}")
+    db.close()                                     # egy korabban (pl. gyujteskor) nyitott pool az eles semara mutatna
     try:
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(db, "url", lambda: test_url)
@@ -85,6 +86,10 @@ def neon(_neon_url, monkeypatch):
 
     monkeypatch.setattr(db, "url", lambda: _neon_url)
     with db.connection() as conn:                  # elotte is: egy megszakadt teszt maradeka ne zavarjon
+        schema = conn.execute("SELECT current_schema()").fetchone()[0]
+        if not (schema or "").startswith("sw_test_"):      # vedokorlat: soha ne az eles semat uritse
+            db.close()
+            pytest.exit(f"A teszt-kapcsolat nem az ideiglenes semara mutat ({schema}) - leallitva.", returncode=3)
         conn.execute("TRUNCATE users, practice_sessions, rate_hits, oauth_states, events, admin_audit, lesson_versions, "
                      "daily_overrides RESTART IDENTITY CASCADE")
     yield

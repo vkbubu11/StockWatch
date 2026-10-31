@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 WEB_DIR = PROJECT_ROOT / "app" / "web"
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
                 ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png"}
-PUBLIC_FILES = ("/style.css", "/i18n.js")             # bejelentkezes nelkul is (+ /i18n/<nyelv>.json, urlapok)
+PUBLIC_FILES = ("/style.css", "/i18n.js", "/chart.js", "/demo.js")             # bejelentkezes nelkul is (+ /i18n/<nyelv>.json, urlapok)
 AUTH_PAGES = ("/login", "/register", "/forgot", "/reset", "/resend")
 LEGAL_PAGES = {"/aszf": "aszf.html", "/adatkezeles": "adatkezeles.html", "/sutik": "sutik.html"}   # nyilvanos (#40)
 # AI-felfedezes (GEO): nyilvanos, gepi olvasasra; a {URL} es a {CONTACT} a szerver beallitasaibol
@@ -51,6 +51,8 @@ ADMIN_GET = re.compile(r"/api/admin/(state|overview|users|users/(\d{1,12})|conte
 ADMIN_POST = re.compile(r"/api/admin/(verify|logout|users/(\d{1,12})/(resend|suspend|unsuspend|reset_nickname|delete|export|exclude|include)"
                         r"|lessons|lessons/restore|daily/replace|pool/rebuild|groups/(\d{1,12})/(revoke_code|delete))")
 CLIENT_ERRORS = webauth.RateLimit("ip-client-error", 20, 60 * 60)   # a bongeszos hibaszamlalo (#48) IP-nkent
+DEMO_LIMIT = webauth.RateLimit("ip-demo", 30, 60 * 60)               # a kezdooldali kiprobalhato helyzet IP-nkent
+SOURCES = ("share", "demo")                                           # a regisztracio forrasa (rejtett mezo, csak ismert)
 DUEL_LINK_RE = re.compile(r"/d/([a-z]{12})")             # parbaj-meghivo (#55); belepes utan ide vissza
 DUEL_RE = re.compile(r"/api/duels/([a-z]{12})(?:/(accept|revoke|rematch))?")
 SHARE_RE = re.compile(r"/s/([a-z]{12})(\.png)?")      # megosztott eredmeny (#57): nyilvanos oldal es kartya
@@ -171,7 +173,7 @@ def auth_form(page: str, email: str = "", token: str = "", google: bool = False,
             + '<label class="check"><input type="checkbox" name="age" value="1" required> <span>Elmúltam 16 éves.</span>'
               '</label><button class="btn primary" type="submit">Regisztráció</button>'
             # honnan jott (#57): suti nelkul, rejtett mezoben; csak ismert ertek
-            + ('<input type="hidden" name="src" value="share">' if source == "share" else ""))
+            + (f'<input type="hidden" name="src" value="{source}">' if source in SOURCES else ""))
     elif page == "resend":
         title, body = "Új megerősítő link", (_field("email", "E-mail-cím", "email", "username", email, "autofocus")
                                              + '<button class="btn primary" type="submit">Új link küldése</button>')
@@ -310,7 +312,7 @@ def make_handler(trust_proxy: bool = False):
                     return self._redirect(next_path if DUEL_LINK_RE.fullmatch(next_path) else "/", self._cookie(token))
                 if path == "/register":
                     accounts.register(email, form.get("password", ""), form.get("terms") == "1", form.get("age") == "1",
-                                      ip, self._base_url(), self._lang(), "share" if form.get("src") == "share" else None)
+                                      ip, self._base_url(), self._lang(), form.get("src") if form.get("src") in SOURCES else None)
                     return self._redirect("/login?e=sent")
                 if path == "/forgot":
                     accounts.request_reset(email, ip, self._base_url(), self._lang())
@@ -423,6 +425,15 @@ def make_handler(trust_proxy: bool = False):
                 m = SHARE_RE.fullmatch(path) or CERT_RE.fullmatch(path)
                 if m:
                     return self._share(m.group(1), bool(m.group(2)), path[1])
+                if path == "/api/demo":                                # kezdooldali kiprobalhato helyzet, nevtelen
+                    from . import analytics, demo
+
+                    if not analytics.is_bot(self.headers.get("User-Agent", "")):
+                        analytics.track_later("demo_view")
+                    try:
+                        return self._json(demo.payload(load_settings()))
+                    except (LookupError, ValueError) as exc:
+                        return self._error(503, str(exc))
                 user = self._user()
                 if DUEL_LINK_RE.fullmatch(path):                       # a meghivo link: a parbaj oldala (belepve)
                     return self._redirect(f"/#/duel/{path[3:]}" if user else f"/login?e=duel&next={path}")
@@ -731,6 +742,26 @@ def make_handler(trust_proxy: bool = False):
                     if CLIENT_ERRORS.hit(webauth.client_ip(self, trust_proxy)):
                         analytics.track_later("js_error")
                     return self._json({"ok": True})
+                if path == "/api/demo/decide":                          # nevtelen: IP-nkenti korlat, mentes nelkul
+                    from . import analytics, demo
+
+                    length = int(self.headers.get("Content-Length", "0") or 0)
+                    if length > 4000:
+                        self._discard_body()
+                        return self._error(413, "Tul nagy keres")
+                    body = json.loads(self.rfile.read(length) or b"{}")
+                    if not isinstance(body, dict):
+                        return self._error(400, "Ervenytelen keres")
+                    if not DEMO_LIMIT.hit(webauth.client_ip(self, trust_proxy)):
+                        return self._error(429, "Túl sok próbálkozás – regisztrálj, és korlátlanul gyakorolhatsz.")
+                    try:
+                        out = demo.decide(body, load_settings())
+                    except LookupError as exc:
+                        return self._error(503, str(exc))
+                    except ValueError as exc:
+                        return self._error(400, str(exc))
+                    analytics.track_later("demo_decide", action=str(body.get("action") or "")[:8])
+                    return self._json(out)
                 user = self._user()
                 if user is None:
                     self._discard_body()

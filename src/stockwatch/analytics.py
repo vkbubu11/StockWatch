@@ -146,6 +146,10 @@ def overview(days: int = 30, now: datetime | None = None) -> dict:
             "SELECT count(*) FILTER (WHERE name = 'share_create'), count(*) FILTER (WHERE name = 'share_view'), "
             "count(*) FILTER (WHERE name = 'register' AND props->>'source' = 'share') FROM events "
             "WHERE name IN ('share_create', 'share_view', 'register') AND at >= %(since)s AND at < %(now)s", p).fetchone()
+        demo = conn.execute(                                         # a kezdooldali kiprobalhato helyzet
+            "SELECT count(*) FILTER (WHERE name = 'demo_view'), count(*) FILTER (WHERE name = 'demo_decide'), "
+            "count(*) FILTER (WHERE name = 'register' AND props->>'source' = 'demo') FROM events "
+            "WHERE name IN ('demo_view', 'demo_decide', 'register') AND at >= %(since)s AND at < %(now)s", p).fetchone()
         views = {}
         for key, expr in (("source", "coalesce(props->>'ref', 'közvetlen')"), ("device", "props->>'device'"),
                           ("path", "props->>'path'")):
@@ -167,6 +171,7 @@ def overview(days: int = 30, now: datetime | None = None) -> dict:
                       "per_user": round(decisions[0] / decisions[1], 1) if decisions[1] else None},
         "errors": {"js": errors.get("js_error", 0), "server": errors.get("server_error", 0)},
         "shares": {"created": shares[0], "views": shares[1], "registers": shares[2]},
+        "demo": {"views": demo[0], "decisions": demo[1], "registers": demo[2]},
         "pageviews": {k: [{"key": a, "n": n} for a, n in rows] for k, rows in views.items()},
         "excluded": [{"id": i, "email": e, "nickname": n} for i, e, n in excluded],
     }

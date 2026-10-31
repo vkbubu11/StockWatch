@@ -1,6 +1,7 @@
 [
   {
     "level": 1,
+    "walkthrough": "candles",
     "title": "Gyertyák és trend",
     "paragraphs": [
       "Egy napi gyertya négy árat mutat: a nyitót, a zárót, a napi csúcsot és a napi mélypontot. A test a nyitó és a záró közötti rész; ha a záró a nyitó fölött van, a gyertya emelkedő, ha alatta, eső.",
@@ -17,6 +18,7 @@
   },
   {
     "level": 2,
+    "walkthrough": "ema",
     "title": "Mozgóátlagok",
     "paragraphs": [
       "A mozgóátlag az utolsó N záró átlaga, így kisimítja a napi ingadozást. A gyakorlásban az exponenciális mozgóátlagok (EMA20, EMA50, EMA200) látszanak: az EMA20 a rövid, az EMA200 a hosszú távú irányt mutatja.",
@@ -33,6 +35,7 @@
   },
   {
     "level": 3,
+    "walkthrough": "levels",
     "title": "Support és rezisztencia",
     "paragraphs": [
       "A support olyan ársáv, ahol korábban az esés többször megállt; a rezisztencia olyan, ahol az emelkedés. Ezek a szintek azért számítanak, mert sok szereplő ugyanazokat az árakat figyeli.",
@@ -49,6 +52,7 @@
   },
   {
     "level": 4,
+    "walkthrough": "double_bottom",
     "title": "Alakzatok (bikás)",
     "paragraphs": [
       "A fordulós alakzatok (dupla és tripla alj, fordított fej-váll) egy esés végén jelennek meg: az ár többször ugyanott fordul, majd a köztes csúcsot összekötő vonal (nyakvonal) fölé zárhat. A folytatólagos alakzatok (zászló, emelkedő háromszög, csésze-fül) egy emelkedés közbeni szünetek.",
@@ -65,6 +69,7 @@
   },
   {
     "level": 5,
+    "walkthrough": "stop",
     "title": "Stop-elhelyezés és R",
     "paragraphs": [
       "A stop az az ár, ahol a kötés kockázata lezárul. Ha túl közel van a belépőhöz (például 1 ATR-en belül), a napi zaj is kiütheti; ha túl messze, a kötés kockázata nagy. A gyakorlás ítélete a túl szoros stopot külön jelzi.",
@@ -81,6 +86,7 @@
   },
   {
     "level": 6,
+    "walkthrough": "rsi",
     "title": "Visszahúzás és túladottság (RSI)",
     "paragraphs": [
       "Az RSI (relatív erő index) azt méri, mennyire voltak erősek az utóbbi napok emelkedései az esésekhez képest, 0 és 100 között. A kétnapos RSI(2) nagyon érzékeny: néhány erős esés után 10 alá is mehet – ez a rövid távú túladottság.",
@@ -97,6 +103,7 @@
   },
   {
     "level": 7,
+    "walkthrough": "breakout",
     "title": "Kitörés",
     "paragraphs": [
       "Kitörésnél az ár egy szint (például egy háromszög vagy zászló teteje) fölé zár, ahol korábban többször megállt. A megerősített kitörésnél a következő nap záró is a szint fölött van – ez kevesebb hamis jelet ad, de későbbi belépést.",
@@ -113,6 +120,7 @@
   },
   {
     "level": 8,
+    "walkthrough": "short",
     "title": "Short és medvés alakzatok",
     "paragraphs": [
       "Shortnál a kötés az esésből profitál: a belépő fölött van a stop, alatta a cél. A medvés alakzatok (dupla és tripla tető, fej-váll, bear zászló, csökkenő háromszög) a bikás párjaik tükörképei.",
@@ -129,6 +137,7 @@
   },
   {
     "level": 9,
+    "walkthrough": "sizing",
     "title": "Kockázatkezelés, pozícióméret",
     "paragraphs": [
       "A pozícióméret abból következik, mennyi a kötésenkénti kockázat: ha egy kötés legfeljebb a számla 1%-át kockáztathatja, a darabszám = (a számla 1%-a) / (belépő és stop távolsága). Így a szorosabb stop nagyobb, a tágabb kisebb pozíciót ad – a kockázat ugyanannyi.",
@@ -145,6 +154,7 @@
   },
   {
     "level": 10,
+    "walkthrough": "mixed",
     "title": "Vegyes vizsga",
     "paragraphs": [
       "Az utolsó szint minden eddigi témát vegyesen kérdez: stratégia-jelzéseket, formálódó alakzatokat, short-gyanús helyzeteket és semmi különös napokat. A kategória csak a felfedéskor derül ki.",

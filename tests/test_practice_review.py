@@ -343,5 +343,7 @@ def test_summary_counts_sides_and_verdicts_and_old_decisions(env):
 def test_new_templates_are_digit_free():
     from stockwatch.practice.templates import TEMPLATES
 
+    formulas = {"l_ema_formula", "l_rsi", "l_r"}                    # keplet-allandok (a lecke levezetese)
     for key, template in TEMPLATES.items():
-        assert not re.search(r"\d", re.sub(r"\{\d+(:n)?\}", "", template)), key
+        text = re.sub(r"\{\d+(:n)?\}|EMA\d+|RSI\(\d\)", "", template)       # indikatornevek
+        assert key in formulas or not re.search(r"\d", text), key
