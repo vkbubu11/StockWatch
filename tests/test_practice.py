@@ -236,7 +236,7 @@ def test_scoring_matches_direct_simulate_trade(env):
         assert user["r"] == pytest.approx(round(expected, 3))
     assert len(rev["future"]) == sampler.FUTURE_BARS
     assert df.index[i + len(rev["future"])] < er.HOLDOUT_START
-    assert rev["baseline"]["n"] > 0 and {s["strategy"] for s in rev["strategies"]} == {"pullback", "deep", "breakout"}
+    assert rev["baseline"]["n"] > 0 and {s["strategy"] for s in rev["strategies"]} == {"pullback", "deep", "breakout", "short"}
 
 
 def test_decision_is_validated_and_final(env, server):

@@ -6,7 +6,9 @@ KESZLET (labor-munkasor vagy CLI, adat-ujjlenyomatonkent egyszer; a webes keres 
     holdout ELOTT van; a lathato es a jovobeli ablakban nincs gyanus (split nelkuli) ugras es nulla volumen
   * kategoriak: "strategy" (a Visszahuzas-csalad setup-ja ugyanazzal a motorral, mint elesben, vagy a labor
     kitores-cache-enek kitorese), "pattern" (pont-idoben, csak az addigi adatbol felismert, formalodo bikas
-    alakzat), "nothing" (egyik sem)
+    alakzat), "short" (short-gyanus: zaro < SMA200 es EMA50 < EMA200, lehetoleg formalodo vagy letort medves
+    alakzattal - a megerositett pivotokbol), "nothing" (egyik sem). Az irany a feladat tipusabol nem talalhato
+    ki: a kategoria csak a felfedeskor latszik, es mindegyikben lehet long, short vagy kihagyas a jo valasz.
   * papironkent legfeljebb nehany pont (veletlen, a tickerbol seedelve), kategoriankent plafonnal
 
 MINTAVETEL: ugyanaz a seed es keszlet ugyanazt a helyzetsort adja (sulyozott kategoria; egy papir lehetoleg csak egyszer).
@@ -31,18 +33,18 @@ from . import store
 
 log = logging.getLogger(__name__)
 
-POOL_VERSION = 1
+POOL_VERSION = 2
 VISIBLE_END = HOLDOUT_START - pd.Timedelta(days=1)
 WARMUP_BARS = 250
 VISIBLE_BARS = 120
 MAX_DAYS = 30                                  # a leghosszabb idokorlat
 FUTURE_BARS = MAX_DAYS + 1                     # az idokorlat utani nyitas is kell
 JUMP_PCT = 30.0                                # backtest_page.data.JUMP_PCT: split nelkul gyanus napi mozgas
-CATEGORIES = ("strategy", "pattern", "nothing")
-DEFAULT_MIX = {"strategy": 40, "pattern": 20, "nothing": 40}
-PER_SYMBOL = {"strategy": 8, "nothing": 6}
+CATEGORIES = ("strategy", "pattern", "short", "nothing")
+DEFAULT_MIX = {"strategy": 35, "pattern": 15, "short": 15, "nothing": 35}
+PER_SYMBOL = {"strategy": 8, "short": 4, "nothing": 6}
 PATTERN_PROBES = 8
-CAP = {"strategy": 4000, "pattern": 2000, "nothing": 4000}
+CAP = {"strategy": 4000, "pattern": 2000, "short": 2000, "nothing": 4000}
 DETECTION_WINDOW = 400                         # backtest.DETECTION_WINDOW
 MAX_ROUNDS = 50
 CODE_ALPHABET = store.ID_ALPHABET
@@ -147,6 +149,27 @@ def forming_pattern(symbol: str, enriched: pd.DataFrame, i: int, settings: Setti
     return forming[0].name if forming else None
 
 
+def downtrend(df: pd.DataFrame) -> np.ndarray:
+    """Pont-idoben: zaro < SMA200 es EMA50 < EMA200 (a short motor trend-szurojenek tukre)."""
+    close = df["close"].astype(float)
+    sma200 = close.rolling(200, min_periods=200).mean()
+    mask = (close < sma200) & (indicators.ema(close, 50) < indicators.ema(close, 200))
+    return mask.fillna(False).to_numpy()
+
+
+def bearish_pattern(symbol: str, enriched: pd.DataFrame, i: int, settings: Settings) -> str | None:
+    """Formalodo vagy az utolso ket napban letort medves alakzat a t=i napon, CSAK az addigi adatbol."""
+    from .. import patterns
+
+    window = enriched.iloc[max(0, i - DETECTION_WINDOW): i + 1]
+    found = patterns.detect(symbol, window, settings.patterns, settings.structure, confirmed_only=True)
+    recent = set(window.index[-2:])
+    for m in found:
+        if m.direction == "bearish" and (m.status == "forming" or (m.status == "triggered" and m.trigger_date in recent)):
+            return m.name
+    return None
+
+
 def symbol_entries(symbol: str, df: pd.DataFrame, settings: Settings, mctx, earnings_dates) -> dict[str, list]:
     ok = eligible(df)
     out: dict[str, list] = {c: [] for c in CATEGORIES}
@@ -165,12 +188,19 @@ def symbol_entries(symbol: str, df: pd.DataFrame, settings: Settings, mctx, earn
     quiet = np.flatnonzero(ok & ~signal)
     out["nothing"] = [[symbol, day(i), ""] for i in _pick(rng, quiet, PER_SYMBOL["nothing"])]
     probes = _pick(rng, quiet, PATTERN_PROBES)
-    if probes:
-        enriched = indicators.enrich(df, settings.structure.atr_period)
-        for i in probes:
-            name = forming_pattern(symbol, enriched, i, settings)
-            if name:
-                out["pattern"].append([symbol, day(i), name])
+    down = np.flatnonzero(ok & ~signal & downtrend(df))
+    short_probes = _pick(_rng(symbol, "short"), down, PATTERN_PROBES)
+    enriched = indicators.enrich(df, settings.structure.atr_period) if probes or short_probes else None
+    for i in probes:
+        name = forming_pattern(symbol, enriched, i, settings)
+        if name:
+            out["pattern"].append([symbol, day(i), name])
+    found, plain = [], []
+    for i in short_probes:
+        name = bearish_pattern(symbol, enriched, i, settings)
+        (found if name else plain).append((i, name or "downtrend"))
+    picked = (found + plain)[: PER_SYMBOL["short"]]
+    out["short"] = [[symbol, day(i), name] for i, name in sorted(picked)]
     return out
 
 

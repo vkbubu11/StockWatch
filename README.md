@@ -544,9 +544,9 @@ Tárolás:
 ## Gyakorló mód (Gyakorlás fül)
 
 **Rejtett, múltbeli chart-helyzetek.** Egy körben (alap: 20 helyzet) mindegyiknél 120 napnyi chartot látsz, papír és
-dátum nélkül. Eldöntöd, hogy kihagyod, vagy belépsz:
-- belépés a következő nyitáson, vagy egynapos limittel;
-- kötelező stop, opcionális cél;
+dátum nélkül. Eldöntöd, hogy kihagyod, vagy **long** vagy **short** irányban belépsz (három gomb: Kihagyom / Long / Short):
+- belépés a következő nyitáson, vagy egynapos limittel (long: a belépő alatt, short: a belépő fölött teljesül);
+- kötelező stop (long: a belépő alatt, short: fölötte), opcionális cél (a másik oldalon);
 - 1–30 napos időkorlát.
 
 A döntés után nem módosítható. Utána lepörög, mi történt, és kiderül a papír és a dátum.
@@ -568,25 +568,62 @@ Ticker, dátum, nyers ár és nyers volumen nincs benne; ezt teszt ellenőrzi mi
 
 Az eredmény R-ben: (kilépő − belépő) / (belépő − stop), oldalanként a stratégia költségével csökkentve.
 
+**Short:** ugyanaz a motor tükrözött árakon (p' = K − p, a csúcs és a mélypont helyet cserél), így a fenti pesszimista
+szabályok pontosan tükrözve érvényesek (azonos gyertyán stop és cél → stop; felfelé nyitási rés a stopon túl → nyitóár).
+R = (belépő − kilépő − költség − kölcsönzési díj) / (stop − belépő). A kölcsönzési díj (bps / nap a belépő értékén)
+a `practice.borrow_bps_day` beállítás, alapból 0. A long viselkedés bitre változatlan (teszt).
+
 **Összevetés ugyanazon a ponton:**
 - Visszahúzás és Mély visszahúzás: ha a döntés napján jelzett, a saját paramétereivel szimulálva;
 - Kitörés: a labor élő kísérletének mentett kötése, ha a kitörés-cache-ben aznap kitörés van;
+- **Short (kísérleti):** a `short.py` motor a döntés napjáig ismert adatból (megerősített pivotok); ha egy megerősített
+  letörés minden szűrőn átment, kötés a következő nyitáson a terv stopjával, céljával és időtávjával. Kísérleti
+  jelöléssel, mert a short oldal nincs backtesttel igazolva;
 - referencia-kötés: következő nyitás, 2 ATR stop, 10 nap;
 - véletlen alapvonal: ugyanazon a papíron 20 seedelt véletlen napon, a te stop-távolságoddal (ATR-ben), céloddal és
   időkorlátoddal, az átlagos R.
+
+**Ítélet minden döntés után (#25)** – két külön szempont, mert a jó döntés és a jó kimenet nem ugyanaz:
+- *kimenet szerint* (utólag): kihagyás (0 R), long, short azonos feltételekkel (következő nyitás, a te
+  stop-távolságod ATR-ben, célod és időkorlátod; kihagyásnál a referencia-beállítás), ugyanazzal a szimulációval.
+  Belépésnél a kimenet jó, ha a teljesült kötés nyereséges; kihagyásnál, ha egyik alternatíva sem lett legalább
+  `practice.good_r` (1) R;
+- *szabály szerint* (a döntés napjáig ismert adatból): long, ha a Visszahúzás / Mély visszahúzás jelzett, vagy a Kitörés
+  kötése átment a szűrőkön; short, ha a kísérleti short motor megerősített letörése átment; egyik sem: kihagyás.
+- Kategória: **jó döntés** (mindkettő), **szerencsés** (csak a kimenet), **balszerencsés** (csak a szabály – egy jó döntés
+  is veszíthet), **rossz döntés** (egyik sem). Mellette jelzés: túl szoros stop (`practice.tight_stop_atr`), alacsony
+  cél/kockázat (`practice.min_rr`), nem teljesült limit.
+
+**Levezetés (#26)** – kinyitható panel, lépésenként, sablonos mondatokkal (LLM nélkül, minden szám a számításból;
+teszt ellenőrzi), a chart a kiválasztott lépés szintjeit emeli ki:
+1. mit lehetett látni a döntéskor (záró, SMA200, EMA50/200, RSI(2), RSI(14), ATR, 20 napos csúcs / mélypont, trendkép,
+   piaci rezsim, gyorsjelentés) – csak a döntés napjáig;
+2. a szabályok szűrőnként (érték, feltétel, teljesült);
+3. a te kötésed: belépés, kockázat (egy R), a kilépés napja és oka (azonos gyertyánál a pesszimista szabály kiírva),
+   bruttó − költség − kölcsönzési díj = nettó, R = nettó / kockázat;
+4. az alternatívák ugyanígy kiszámolva;
+5. mi lett volna a jó döntés és mi különböztette meg, valamint (belépésnél) egy **utólagos** stop-összevetés egy előre
+   rögzített kis rácsból (1–3 ATR), csak `practice.better_r` (0,5) R javulástól, utólagosként jelölve.
 
 **A kör összegzése:**
 - nyerési arány, átlagos és összes R;
 - az alapvonal és a stratégiák átlaga;
 - a kihagyott jó helyzetek (ahol a szabály vagy a referencia-kötés legalább +1 R lett volna);
-- a stop-távolság eloszlása ATR-ben, és az 1 ATR-nél szorosabb stopok aránya.
+- a stop-távolság eloszlása ATR-ben, és az 1 ATR-nél szorosabb stopok aránya;
+- long és short bontás, és az ítéletek megoszlása (jó / szerencsés / balszerencsés / rossz).
 
 **Feladatkészlet:** a Backteszt oldal tárából (elsőbbséggel) és az univerzum-cache-ből készül, egyszer adat-ujjlenyomatonként.
 Egy pont akkor kerül bele, ha legalább 250 bemelegítő gyertya van előtte, és a 31. napja is a zárolt holdout előtt van.
-Gyanús (split nélküli) ugrás vagy nulla volumen sem lehet az ablakban. Három kategória van, alapból 40 / 20 / 40%:
+Gyanús (split nélküli) ugrás vagy nulla volumen sem lehet az ablakban. Négy kategória van, alapból 35 / 15 / 15 / 35%:
 - stratégia-jelzés: a Visszahúzás setup-ja, vagy a labor kitörés-cache-ének kitörése;
 - formálódó bikás alakzat: pont-időben, csak az addigi adatból;
+- short-gyanús helyzet: záró < SMA200 és EMA50 < EMA200, lehetőleg formálódó vagy épp letört medvés alakzattal;
 - semmi különös.
+
+A kategória csak a felfedéskor látszik, és mindegyikben lehet long, short vagy kihagyás a jó válasz, így az irány nem
+található ki a feladat típusából. A készlet verziója 2: a régi készletet a „Újraépítés” gomb (vagy
+`python cli.py practice-pool --force`) cseréli; a régi körök és döntések (a korábbi „belépés” = long) továbbra is
+megnyithatók.
 
 Ugyanaz a seed ugyanazt a helyzetsort adja. A **megosztási kód** (csak betűk) a seedet, a készlet ujjlenyomatát és a
 helyzetek számát tartalmazza; más készletnél a felület figyelmeztet.
@@ -963,7 +1000,18 @@ python cli.py web          # megnyitja: http://127.0.0.1:8765
 ```
 
 Sima HTML/CSS/JS, a Python beépített webszerverével: **nincs új függőség, nincs CDN**,
-internet nélkül is fut (csak a Frissítés gomb tölt le adatot). Világos és sötét téma, mobilon is használható.
+internet nélkül is fut (csak a Frissítés gomb tölt le adatot). Világos és sötét téma.
+
+**Telefonon és tableten (#23):** három töréspont – telefon (≤ 600 px), tablet (601–1024 px), asztal.
+- Telefonon alsó sáv a leggyakoribb nézetekkel (Áttekintés, Összefoglaló, Jelzett trade-ek, Naptár), a többi a
+  „Továbbiak” menüben: minden nézet legfeljebb két koppintás. Tableten a fő menü két sorba törik.
+- A táblák görgethető tartóban vannak (az oldal soha nem görög oldalra), telefonon rögzített első oszloppal; a fő
+  listák (Jelzett trade-ek, lezárt Saját pozíciók, a naptár napi kötései) telefonon kártyaként jelennek meg.
+- Érintésre legalább 44 × 44 px-es gombok és mezők, 16 px-es beviteli betű (iOS nem nagyít rá).
+- Ellenőrzés: `tests/test_responsive.py` (Playwright) minden nézetet megnyit 360, 390, 768, 1024 és 1280 px-en,
+  világos és sötét témában – vízszintes görgetés és 44 px alatti érintési felület nem lehet. A CI a képernyőképeket
+  artefaktként menti. Helyben: `pip install playwright && python -m playwright install chromium`, majd
+  `SCREENSHOT_DIR=screens pytest tests/test_responsive.py`.
 
 | Oldal | Mit mutat |
 |---|---|
@@ -972,8 +1020,9 @@ internet nélkül is fut (csak a Frissítés gomb tölt le adatot). Világos és
 | **Saját pozíciók** | a kézzel felvett pozícióid kiértékelése, felvétel / szerkesztés / lezárás |
 | **Paper trading** | Alpaca paper számla: **eddigi eredmény** (a számla a nyitás óta + a rendszer trade-jei realizált / nyitott bontásban), equity-görbe táblázattal, mai beküldhető jelzések, a rendszer paper trade-jei lábanként, Alpaca pozíciók és megbízások |
 | **Jelzett trade-ek** | a követett trade-ek állapota (belépésre vár / nyitott / lezárt / kimaradt) és az élő eredménynapló R-ben |
+| **Naptár** | kereskedési naptár (#22): a napi realizált eredmény (+ / −) havi naptárban, $ / % / R nézetben; heti és havi összeg, nyerő / vesztes napok, legjobb és legrosszabb nap; egy napra kattintva az aznap lezárt kötések (onnan a jelzés életútja); éves hőtérkép; szűrés forrás (virtuális követés, paper, Saját pozíciók, egy mentett backteszt-futtatás), stratégia és papír szerint; CSV export. A részleges kilépés (pl. a fele +1R-nél) a saját napján számít; a költség levonva; a virtuális / szimulált eredmény jelölve; hétvége nincs a rácsban, a tőzsdei ünnepnap halvány. Csak olvas, megbízást nem küld (`pnl_calendar.py`) |
 | **Értesítések** | minden, amit a monitor kiküldött, utólag kiértékelve: jelzéskori és mostani ár, irányhelyes változás, profit ($ / R), minősítés (jó / rossz / folyamatban); jelerősség (belépési pont vagy alakzat-minőség, gyenge / közepes / erős) és találati arány erősség szerint; szűrés irány, minősítés és erősség szerint; a típusokra és oszlopokra húzott egér magyarázatot mutat |
-| **Gyakorlás** | rejtett, múltbeli chart-helyzetek: döntés (kihagyás / belépés stoppal), felfedés, összevetés a stratégiákkal és egy véletlen alapvonallal, kör-statisztika (lásd: Gyakorló mód) |
+| **Gyakorlás** | rejtett, múltbeli chart-helyzetek: döntés (kihagyás / long / short stoppal), felfedés, ítélet és lépésenkénti levezetés, összevetés a stratégiákkal és egy véletlen alapvonallal, kör-statisztika (lásd: Gyakorló mód) |
 | **Beállítások** | számlaméret, kockázat, belépési és kilépési szabályok, kötési díj, értesítések nyelve, paper trading és Alpaca kulcsok, Discord webhook, watchlist, a `settings.yaml` kommentjeit megtartva |
 | **Információ** (jobb felül) | hibabejelentés: a rendszer GitHub oldalának Issues füle (link: <https://github.com/vkbubu11/StockWatch/issues>) |
 

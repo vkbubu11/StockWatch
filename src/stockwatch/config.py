@@ -594,6 +594,26 @@ class DigestSettings(BaseModel):
         return self
 
 
+class PracticeSettings(BaseModel):
+    """Gyakorlo mod (practice/): a short kotes kolcsonzesi dija es a dontes-itelet kuszobei."""
+
+    borrow_bps_day: float = 0.0         # short: kolcsonzesi dij naponta, bps a belepo erteken (0 = nincs)
+    good_r: float = 1.0                 # egy kihagyott helyzet "jo" volt, ha valamelyik alternativa legalabb ennyi R
+    tight_stop_atr: float = 1.0         # ennel szorosabb stop: "tul szoros" jelzes
+    min_rr: float = 1.0                 # ennel kisebb cel/kockazat arany: jelzes
+    better_r: float = 0.5               # a "jobb stop" osszevetes csak legalabb ennyi R javulasnal jelenik meg
+
+    @model_validator(mode="after")
+    def _check(self) -> "PracticeSettings":
+        if not 0 <= self.borrow_bps_day <= 100:
+            raise ValueError("practice.borrow_bps_day: 0 es 100 kozott")
+        if not 0 < self.good_r <= 10 or not 0 < self.tight_stop_atr <= 5:
+            raise ValueError("practice: good_r 0-10, tight_stop_atr 0-5")
+        if not 0 < self.min_rr <= 10 or not 0 < self.better_r <= 10:
+            raise ValueError("practice: min_rr 0-10, better_r 0-10")
+        return self
+
+
 class Settings(BaseModel):
     data: DataSettings = Field(default_factory=DataSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
@@ -610,6 +630,7 @@ class Settings(BaseModel):
     strategies: StrategiesSettings = Field(default_factory=StrategiesSettings)
     sentiment: SentimentSettings = Field(default_factory=SentimentSettings)
     digest: DigestSettings = Field(default_factory=DigestSettings)
+    practice: PracticeSettings = Field(default_factory=PracticeSettings)
 
     @model_validator(mode="after")
     def _resolve_benchmark(self) -> "Settings":

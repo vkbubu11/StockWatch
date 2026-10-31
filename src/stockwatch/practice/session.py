@@ -8,9 +8,7 @@ volumen es a helyzet kategoriaja nem. A dontes utan nem modosithato.
 from __future__ import annotations
 
 import math
-import re
 import secrets
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -22,18 +20,20 @@ from .. import indicators, market, usage, workspace
 from ..config import Settings, load_settings
 from ..locks import file_lock
 from . import sampler, scoring, store
-from .templates import STRATEGY_LABELS, TEMPLATES
+from .templates import STRATEGY_LABELS, Line
 
 FEW = 10
 EMAS = (20, 50, 200)
 
 
 class Decision(BaseModel):
-    """Normalizalt aron (az utolso lathato zaro = 100)."""
+    """Normalizalt aron (az utolso lathato zaro = 100). Irany: long (a regi "enter" is long) vagy short.
+    Long: a stop a belepo alatt, a cel felette; short: a stop a belepo felett, a cel alatta. A limit
+    long-nal veteli (a belepo alatt teljesul), short-nal eladasi (a belepo felett teljesul)."""
 
     model_config = ConfigDict(extra="forbid")
 
-    action: Literal["skip", "enter"]
+    action: Literal["skip", "enter", "long", "short"]
     entry: Literal["open", "limit"] = "open"
     limit: float | None = None
     stop: float | None = None
@@ -44,6 +44,8 @@ class Decision(BaseModel):
     def _check(self) -> "Decision":
         if self.action == "skip":
             return self
+        if self.action == "enter":
+            self.action = "long"
         if not 1 <= self.days <= sampler.MAX_DAYS:
             raise ValueError(f"days: 1 es {sampler.MAX_DAYS} kozott")
         if self.entry == "limit":
@@ -51,32 +53,24 @@ class Decision(BaseModel):
                 raise ValueError("limit: 0 es 150 kozott (normalizalt ar)")
         else:
             self.limit = None
-        ref = self.limit if self.entry == "limit" else 100.0
-        if self.stop is None:
-            raise ValueError("stop: kotelezo")
-        if not 0 < self.stop < ref:
-            raise ValueError("stop: a belepo alatt legyen")
-        if self.target is not None and not ref < self.target <= 1000:
-            raise ValueError("target: a belepo felett legyen")
         for name in ("limit", "stop", "target"):
             value = getattr(self, name)
             if value is not None and not math.isfinite(value):
                 raise ValueError(f"{name}: ervenytelen szam")
+        ref = self.limit if self.entry == "limit" else 100.0
+        if self.stop is None:
+            raise ValueError("stop: kotelezo")
+        if self.action == "long":
+            if not 0 < self.stop < ref:
+                raise ValueError("stop: a belepo alatt legyen")
+            if self.target is not None and not ref < self.target <= 1000:
+                raise ValueError("target: a belepo felett legyen")
+        else:
+            if not ref < self.stop <= 1000:
+                raise ValueError("stop: short-nal a belepo felett legyen")
+            if self.target is not None and not 0 < self.target < ref:
+                raise ValueError("target: short-nal a belepo alatt legyen")
         return self
-
-
-@dataclass
-class Line:
-    key: str
-    args: list[str] = field(default_factory=list)
-    numeric: list[int] = field(default_factory=list)
-
-    @property
-    def text(self) -> str:
-        return re.sub(r"\{(\d+)(?::n)?\}", lambda m: self.args[int(m.group(1))], TEMPLATES[self.key])
-
-    def to_dict(self) -> dict:
-        return {"key": self.key, "args": self.args, "numeric": self.numeric, "text": self.text}
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +230,14 @@ def lines(s: dict) -> list[dict]:
                             [1, 2, 3]))
         elif v["signaled"]:
             out.append(Line("strategy_none", [STRATEGY_LABELS[name], str(v["signaled"])], [1]))
+    sides = s.get("sides") or {}
+    if (sides.get("short") or {}).get("entered"):
+        lo, sh = sides["long"], sides["short"]
+        out.append(Line("sides", [str(lo["filled"]), _num(lo["mean_r"]), str(sh["filled"]), _num(sh["mean_r"])],
+                        [0, 1, 2, 3]))
+    if s.get("reviewed"):
+        v = s["verdicts"]
+        out.append(Line("verdicts", [str(v["good"]), str(v["lucky"]), str(v["unlucky"]), str(v["bad"])], [0, 1, 2, 3]))
     if s["missed_good"]:
         out.append(Line("missed", [str(s["missed_good"]), _num(scoring.GOOD_R, 0)], [0, 1]))
     if s["stop_atr_median"] is not None:
@@ -250,7 +252,8 @@ def summary_payload(session_id: str, ws: str = workspace.DEFAULT) -> dict:
     s = scoring.summary(session["tasks"])
     tasks = [{"k": k, "decided": t.get("decision") is not None} | (
         {"symbol": t["symbol"], "date": t["date"], "category": t["category"], "source": t["source"],
-         "action": t["decision"]["action"], "r": (t["result"].get("user") or {}).get("r"),
+         "action": scoring.side_of(t["decision"]) or "skip", "r": (t["result"].get("user") or {}).get("r"),
+         "verdict": ((t["result"].get("review") or {}).get("verdict") or {}).get("category"),
          "status": (t["result"].get("user") or {}).get("status"),
          "strategies": [{"strategy": x["strategy"], "r": x.get("r"), "status": x.get("status")}
                         for x in t["result"]["strategies"] if x.get("signaled")],

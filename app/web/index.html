@@ -18,6 +18,7 @@
       <a href="#/digest" data-tab="digest">Összefoglaló</a>
       <a href="#/holdings" data-tab="holdings">Saját pozíciók</a>
       <a href="#/positions" data-tab="positions">Jelzett trade-ek</a>
+      <a href="#/calendar" data-tab="calendar">Naptár</a>
       <a href="#/broker" data-tab="broker">Paper trading</a>
       <a href="#/alerts" data-tab="alerts">Értesítések</a>
       <a href="#/ledger" data-tab="ledger">Jelzésnapló</a>
@@ -54,6 +55,15 @@
     az értesítéseket a <code>python cli.py monitor</code> küldi.
   </footer>
 
+  <!-- telefonon: also sav a leggyakoribb nezetekkel + "Tovabbiak" (a teljes menu); asztalon rejtett -->
+  <nav class="bottom-nav" aria-label="Gyors navigáció">
+    <a href="#/" data-tab="overview"><span class="bn-icon" aria-hidden="true">⌂</span><span>Áttekintés</span></a>
+    <a href="#/digest" data-tab="digest"><span class="bn-icon" aria-hidden="true">☀</span><span>Összefoglaló</span></a>
+    <a href="#/positions" data-tab="positions"><span class="bn-icon" aria-hidden="true">↗</span><span>Jelzett trade-ek</span></a>
+    <a href="#/calendar" data-tab="calendar"><span class="bn-icon" aria-hidden="true">▦</span><span>Naptár</span></a>
+    <button type="button" id="more-btn" aria-expanded="false" aria-controls="more-sheet"><span class="bn-icon" aria-hidden="true">☰</span><span>Továbbiak</span></button>
+  </nav>
+  <div id="more-sheet" class="more-sheet" hidden><nav class="more-list" aria-label="Minden nézet"></nav></div>
   <div id="tooltip" class="tooltip" hidden></div>
   <div id="guide" class="guide" role="tooltip" hidden></div>
   <script src="i18n.js"></script>
