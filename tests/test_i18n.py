@@ -24,6 +24,8 @@ def test_catalog_rows_are_complete_and_consistent():
             assert isinstance(row[lang], str)
             if row[lang]:                                   # ures forditas: a toredek eltunik (pl. "választható")
                 assert sorted(PH.findall(row["hu"])) == sorted(PH.findall(row[lang])), (lang, row)
+                # a {1:n} csak a (magyar) kulcsban jelent valamit; a forditasban az i18n.js csak a {1}-et csereli
+                assert ":n}" not in row[lang], (lang, row)
     assert len(keys) > 1500
 
 
