@@ -19,7 +19,7 @@ function practiceChart(svg, bars, opt = {}) {
   const future = (opt.future || []).slice(0, opt.shown ?? (opt.future || []).length);
   const all = bars.concat(future);
   const W = Math.max(320, svg.parentElement.clientWidth);
-  const H = W < 600 ? 340 : 420;
+  const H = opt.height || (W < 600 ? 340 : 420);
   // a jobb margo a leghosszabb szint-cimkehez igazodik (legfeljebb 112 px)
   const longest = Math.max(0, ...(opt.levels || []).map((h) => String(h.label || "").length));
   const pad = { l: 8, r: Math.min(112, Math.max(64, 14 + 6.4 * longest)), t: 12, b: 24 };
@@ -40,9 +40,13 @@ function practiceChart(svg, bars, opt = {}) {
   const vmax = Math.max(...bars.map((k) => k.v || 0)) || 1;
   const vy = (v) => volTop + volH - (Math.min(v, vmax) / vmax) * volH;
   const parts = [];
-  const ticks = niceTicks(lo, hi, 6);
-  parts.push(`<g class="grid">${ticks.map((t) => `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(t)}" y2="${y(t)}"/>`).join("")}</g>`);
-  parts.push(`<g class="axis">${ticks.map((t) => `<text x="${W - pad.r + 6}" y="${y(t) + 4}">${fmt(t, 0)}</text>`).join("")}</g>`);
+  // Y-tengely (#79 a): ar, vagy a dontes napi zarohoz (= 100) viszonyitva %-ban / ATR-ben - a geometria ugyanaz, csak a cimkek
+  const axis = opt.axis && opt.axis.mode !== "price" && (opt.axis.mode === "pct" || opt.axis.atr > 0) ? opt.axis : null;
+  const per = axis ? (axis.mode === "pct" ? 1 : axis.atr) : 1;
+  const ticks = axis ? niceTicks((lo - 100) / per, (hi - 100) / per, 6).map((u) => ({ v: 100 + u * per, u })) : niceTicks(lo, hi, 6).map((v) => ({ v }));
+  const tickLabel = (t) => (!axis ? fmt(t.v, 0) : `${t.u > 0 ? "+" : ""}${fmt(t.u, Number.isInteger(t.u) ? 0 : 1)}${axis.mode === "pct" ? "%" : " ATR"}`);
+  parts.push(`<g class="grid">${ticks.map((t) => `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(t.v)}" y2="${y(t.v)}"/>`).join("")}</g>`);
+  parts.push(`<g class="axis yaxis">${ticks.map((t) => `<text x="${W - pad.r + 6}" y="${y(t.v) + 4}">${tickLabel(t)}</text>`).join("")}</g>`);
   const zero = bars.length - 1;
   const labels = [];
   for (let j = 0; j < slots; j += 1) { const rel = j - zero; if (rel % 20 === 0 || (rel > 0 && rel % 10 === 0)) labels.push(j); }
@@ -68,6 +72,10 @@ function practiceChart(svg, bars, opt = {}) {
   (opt.segments || []).forEach((s) => {
     parts.push(`<line class="hline ${s.dash ? "dash" : ""}" x1="${x(zero + s.k1)}" y1="${y(s.v1)}" x2="${x(zero + s.k2)}" y2="${y(s.v2)}" stroke="${s.color}"/>`);
   });
+  (opt.bands || []).forEach((b) => {               // a belepo es a stop / cel kozti sav (#77)
+    const top = y(Math.max(b.from, b.to)), bot = y(Math.min(b.from, b.to));
+    parts.push(`<rect class="band" x="${pad.l}" y="${top}" width="${W - pad.l - pad.r}" height="${Math.max(0, bot - top)}" fill="${b.color}"/>`);
+  });
   let prevLabel = -Infinity;                       // az egymashoz kozeli cimkek nem fedik egymast
   levels.slice().sort((a, b) => b.v - a.v).forEach((h) => {
     const yy = y(h.v);
@@ -79,11 +87,22 @@ function practiceChart(svg, bars, opt = {}) {
     parts.push(`<rect ${tip} class="hlabel-bg" x="${W - pad.r + 1}" y="${ly - 9}" width="${pad.r - 2}" height="18" rx="4" fill="${h.color}"/>`);
     parts.push(`<text ${tip} class="hlabel" x="${W - pad.r + 5}" y="${ly + 4}" fill="#fff">${esc(h.label)}</text>`);
   });
+  // huzhato fogantyuk (#77): a vonal jobb vegen, legalabb 44 px-es erintesi feluettel; billentyuvel is allithato
+  (opt.handles || []).forEach((h) => {
+    const yy = y(h.v), hx = W - pad.r - 26;
+    parts.push(`<g class="handle${h.bad ? " bad" : ""}${h.ghost ? " ghost" : ""}" data-handle="${h.key}" data-v="${h.v}" tabindex="0" role="slider" aria-label="${esc(h.label)}"
+      aria-valuenow="${h.v}" aria-valuetext="${esc(`${fmt(h.v, 2)} ${h.info || ""}`)}" aria-invalid="${!!h.bad}">
+      <rect class="handle-hit" x="${hx - 26}" y="${yy - 22}" width="52" height="44"/>
+      <circle cx="${hx}" cy="${yy}" r="9" fill="${h.bad ? "var(--down)" : h.color}" stroke="var(--surface)" stroke-width="2"/>
+      <text class="hinfo" x="${hx - 16}" y="${yy - 7}" text-anchor="end">${esc(h.info || "")}</text></g>`);
+  });
+  const focused = document.activeElement && svg.contains(document.activeElement) ? document.activeElement.dataset.handle : null;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.setAttribute("height", H);
   svg.innerHTML = parts.join("");
+  if (focused) { const el = svg.querySelector(`[data-handle="${focused}"]`); if (el) el.focus({ preventScroll: true }); }   // ujrarajzolas utan is ott marad
   svg.__map = { lo, hi, padT: pad.t, priceH, step, padL: pad.l, zero, W, H };     // erintes -> (nap, ar): chartPoint
-  svg.__tip = { all, zero, levels, marks: opt.marks || [] };
+  svg.__tip = { all, zero, levels, marks: opt.marks || [], dayLabel: opt.dayLabel || "Nap" };
   chartTips(svg);
 }
 
@@ -95,14 +114,15 @@ function chartTips(svg) {
   if (svg.__tipBound || !tooltip) return;
   svg.__tipBound = true;
   const day = (j) => { const rel = j - svg.__tip.zero; return `${rel > 0 ? "+" : ""}${rel}`; };
+  const dl = () => svg.__tip.dayLabel;
   const row = (k, v) => `<div class="row"><span>${esc(k)}</span><span>${v}</span></div>`;
   const content = (tip, ev) => {
     const { all, levels, marks } = svg.__tip;
     const [kind, n] = tip.split(":");
     if (kind === "c" || kind === "v") {
       const k = all[Number(n)];
-      if (kind === "v") return `<strong>Relatív volumen</strong>${row("a 20 napos átlaghoz képest", `${fmt(k.v, 2)}×`)}${row("Nap", day(Number(n)))}`;
-      return `<strong>${k.c >= k.o ? "Emelkedő gyertya" : "Eső gyertya"}</strong>${row("Nap", day(Number(n)))}${row("Nyitó", fmt(k.o, 2))}`
+      if (kind === "v") return `<strong>Relatív volumen</strong>${row("a 20 napos átlaghoz képest", `${fmt(k.v, 2)}×`)}${row(dl(), day(Number(n)))}`;
+      return `<strong>${k.c >= k.o ? "Emelkedő gyertya" : "Eső gyertya"}</strong>${row(dl(), day(Number(n)))}${row("Nyitó", fmt(k.o, 2))}`
         + `${row("Csúcs", fmt(k.h, 2))}${row("Mélypont", fmt(k.l, 2))}${row("Záró", fmt(k.c, 2))}`;
     }
     if (EMA_NAMES[kind]) {                       // a vonal erteke a mutato alatti napon

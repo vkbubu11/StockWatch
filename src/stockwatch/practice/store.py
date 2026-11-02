@@ -61,7 +61,7 @@ def load_pool() -> dict | None:
 # ---------------------------------------------------------------------------
 # Korok (adatbazis)
 # ---------------------------------------------------------------------------
-SESSION_COLS = "id, created_at, seed, rounds, mix, pool_fingerprint, code, warning, summary, lesson, daily, duel, exam"
+SESSION_COLS = "id, created_at, seed, rounds, mix, pool_fingerprint, code, warning, summary, lesson, daily, duel, exam, manage, boss"
 TASK_COLS = "k, task_id, symbol, day, category, source, breakout, decision, decided_at, points, kind, params, quality"
 
 
@@ -75,10 +75,10 @@ def _iso(value) -> str | None:
 
 
 def _session(row, tasks: list[dict]) -> dict:
-    sid, created, seed, rounds, mix, fingerprint, code, warning, summary, lesson, daily, duel, exam = row
+    sid, created, seed, rounds, mix, fingerprint, code, warning, summary, lesson, daily, duel, exam, manage, boss = row
     out = {"id": sid, "created": _iso(created), "seed": seed, "rounds": rounds, "mix": mix,
            "pool_fingerprint": fingerprint, "code": code, "warning": warning, "lesson": lesson,
-           "daily": f"{daily:%Y-%m-%d}" if daily else None, "duel": duel, "exam": exam, "tasks": tasks}
+           "daily": f"{daily:%Y-%m-%d}" if daily else None, "duel": duel, "exam": exam, "manage": manage, "boss": boss, "tasks": tasks}
     return out | ({"summary": summary} if summary is not None else {})
 
 
@@ -110,11 +110,12 @@ def load_session(session_id: str, user_id: int) -> dict | None:
 def _save(conn, session: dict, user_id: int, only: list[int] | None = None) -> None:
     conn.execute(
         "INSERT INTO practice_sessions (id, user_id, seed, rounds, mix, pool_fingerprint, code, warning, summary, lesson, "
-        "daily, duel, exam) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO UPDATE SET summary = EXCLUDED.summary "
+        "daily, duel, exam, manage, boss) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO UPDATE SET summary = EXCLUDED.summary "
         "WHERE practice_sessions.user_id = EXCLUDED.user_id",
         (session["id"], user_id, session["seed"], session["rounds"], Jsonb(session["mix"]), session["pool_fingerprint"],
          session["code"], session.get("warning"), Jsonb(session["summary"]) if session.get("summary") else None,
-         session.get("lesson"), session.get("daily"), session.get("duel"), bool(session.get("exam"))))
+         session.get("lesson"), session.get("daily"), session.get("duel"), bool(session.get("exam")),
+         bool(session.get("manage")), session.get("boss")))
     rows = []
     for k, t in enumerate(session["tasks"]):
         if only is not None and k not in only:

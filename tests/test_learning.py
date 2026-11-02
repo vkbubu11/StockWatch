@@ -34,6 +34,8 @@ def test_targeted_tasks_match_the_level_theme(user, pool):
     with learning.db.connection() as conn, conn.cursor() as cur:    # minden szint nyitva a szuro-teszthez
         cur.executemany("INSERT INTO lesson_progress (user_id, level, best_share, completed_at) VALUES (%s, %s, 1, now())",
                          [(user, level) for level in range(1, 10)])
+        cur.executemany("INSERT INTO chapter_bosses (user_id, chapter, best_share, completed_at) "
+                        "VALUES (%s, %s, 1, now())", [(user, c) for c in (1, 2, 3)])   # a fejezetzarok (#79 b) is
     for item in learning.lessons():
         only = item["tasks"]["only"]
         created = learning.start(user, item["level"], SETTINGS)

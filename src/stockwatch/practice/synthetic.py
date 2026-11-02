@@ -22,7 +22,7 @@ import pandas as pd
 
 GENERATOR_VERSION = 1
 PREFIX = "SYN"
-SYMBOL_RE = re.compile(r"^SYN\d{4}$")
+SYMBOL_RE = re.compile(r"^SYN[CVD]?\d{4}$")         # SYN0001; a fejezetzarok (#79 b) rezsimjei: SYNC / SYNV / SYND
 N_BARS = 2600                                    # ~10 ev kereskedesi nap
 END = pd.Timestamp("2025-03-31")                 # a sampler.VISIBLE_END (a holdout elotti nap)
 SUCCESS_RATE = 0.55                              # a beepitett alakzat utan ekkora esellyel jon kitores
@@ -57,12 +57,21 @@ def _rng(symbol: str) -> np.random.Generator:
     return np.random.default_rng(int(hashlib.sha1(raw).hexdigest()[:12], 16))
 
 
-def _base_returns(rng: np.random.Generator, n: int) -> tuple[np.ndarray, np.ndarray]:
+def regime_of(symbol: str) -> str | None:
+    """A fejezetzaro (#79 b) rezsimje: C = erme-dobas (sodrodas es alakzat nelkul), V = nagy volatilitas,
+    D = tartos eso trend; a regi papirok (SYN0001) None - azok sora valtozatlan."""
+    return symbol[3] if len(symbol) == 8 else None
+
+
+def _base_returns(rng: np.random.Generator, n: int, regime_kind: str | None = None) -> tuple[np.ndarray, np.ndarray]:
     """(napi log-hozam, napi szigma): GARCH(1,1), Student-t(5) zaj, Markov-rezsim a sodrodasban."""
     vol = rng.uniform(0.011, 0.024)                       # a papir hosszu tavu napi volatilitasa
+    if regime_kind == "V":
+        vol *= 2.5
     alpha, beta = 0.08, 0.90
     omega = vol ** 2 * (1 - alpha - beta)
-    drifts = np.array([0.0008, -0.0009, 0.0])             # emelkedo, eso, oldalazo
+    drifts = {"C": np.zeros(3), "D": np.array([-0.0012, -0.0016, -0.0006])}.get(
+        regime_kind, np.array([0.0008, -0.0009, 0.0]))     # emelkedo, eso, oldalazo
     stay = 0.992
     z = np.clip(rng.standard_t(5, n) / np.sqrt(5 / 3), -7, 7)   # egysegnyi szorasu vastag farku zaj
     r, sig = np.empty(n), np.empty(n)
@@ -104,12 +113,13 @@ def generate(symbol: str) -> tuple[pd.DataFrame, tuple]:
         raise ValueError(f"Nem szintetikus papir: {symbol}")
     rng = _rng(symbol)
     n = N_BARS
-    r, sig = _base_returns(rng, n)
+    kind = regime_of(symbol)
+    r, sig = _base_returns(rng, n, kind)
     lc = np.log(rng.uniform(20, 300)) + np.cumsum(r)
     names = sorted(TEMPLATES)
     embedded = []
     pos = 260 + int(rng.integers(0, 80))
-    while pos < n - 160:
+    while pos < n - 160 and kind != "C":                  # erme-dobas: nincs beultetett alakzat
         name = names[int(rng.integers(len(names)))]
         sign = 1.0 if DIRECTION[name] == "bullish" else -1.0
         last_t, last_y = TEMPLATES[name][-1]

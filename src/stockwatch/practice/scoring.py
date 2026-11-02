@@ -95,17 +95,19 @@ def mirror(feat: pd.DataFrame) -> tuple[float, pd.DataFrame]:
 
 def simulate(feat: pd.DataFrame, i: int, limit: float, stop: float, target: float | None, days: int,
              cost: float, side: str = "long", mirrored: tuple[float, pd.DataFrame] | None = None,
-             borrow: float = 0.0) -> meanrev.Trade:
+             borrow: float = 0.0, exits: np.ndarray | None = None, stops: np.ndarray | None = None) -> meanrev.Trade:
     """A gyakorlo kotes: `limit` = math.inf -> belepes a kovetkezo nyitason. Short: eladasi limit (a belepo
-    FELETT teljesul), stop a belepo felett, cel alatta - ugyanaz a motor tukrozott arakon."""
-    exits = np.zeros(len(feat), dtype=bool)
+    FELETT teljesul), stop a belepo felett, cel alatta - ugyanaz a motor tukrozott arakon. A poziciokezeles (#76):
+    `exits` (a zaron kiszallas -> kovetkezo nyitas) es `stops` (naponkenti stop); alapbol nincs."""
+    exits = np.zeros(len(feat), dtype=bool) if exits is None else exits
     if side != "short":
         return meanrev.simulate_trade("practice", feat, exits, i, practice_params(days, cost), levels=(limit, stop),
-                                      target=target, target_intraday=True)
+                                      target=target, target_intraday=True, stops=stops)
     k, frame = mirrored or mirror(feat)
     trade = meanrev.simulate_trade("practice", frame, exits, i, practice_params(days, cost),
                                    levels=(math.inf if math.isinf(limit) else k - limit, k - stop),
-                                   target=None if target is None else k - target, target_intraday=True)
+                                   target=None if target is None else k - target, target_intraday=True,
+                                   stops=None if stops is None else k - stops)
     trade.limit, trade.stop = limit, stop
     if trade.entry_price is not None:
         trade.entry_price = k - trade.entry_price

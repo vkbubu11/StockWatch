@@ -150,7 +150,7 @@
     ],
     "figure": {"kind": "trend"},
     "caption": "Szintetikus példa: ugyanaz a papír, eltérő volatilitású időszakok.",
-    "tasks": {"rounds": 8, "only": {"strategy": null, "pattern": null, "short": null, "nothing": null}, "kinds": {"decision": 1, "sizing": 1}}
+    "tasks": {"rounds": 8, "only": {"strategy": null, "pattern": null, "short": null, "nothing": null}, "kinds": {"decision": 1, "sizing": 1}, "manage": true}
   },
   {
     "level": 10,

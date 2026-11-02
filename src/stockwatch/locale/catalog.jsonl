@@ -3372,3 +3372,117 @@
 {"hu": "Túl sok próbálkozás – regisztrálj, és korlátlanul gyakorolhatsz.", "en": "Too many attempts – sign up to practise without limits.", "de": "Zu viele Versuche – registriere dich, um unbegrenzt zu üben.", "es": "Demasiados intentos: regístrate para practicar sin límites."}
 {"hu": "Kezdőoldali próba", "en": "Landing-page try-out", "de": "Test auf der Startseite", "es": "Prueba en la portada"}
 {"hu": "határidő:", "en": "deadline:", "de": "Frist:", "es": "plazo:"}
+{"hu": "Billentyűparancsok", "en": "Keyboard shortcuts", "de": "Tastenkürzel", "es": "Atajos de teclado"}
+{"hu": "Billentyűparancsok (?)", "en": "Keyboard shortcuts (?)", "de": "Tastenkürzel (?)", "es": "Atajos de teclado (?)"}
+{"hu": "Mágnes: a húzott vonal a közeli gyertya csúcsára / aljára ugrik", "en": "Magnet: the dragged line snaps to the nearby candle's high / low", "de": "Magnet: die gezogene Linie rastet am Hoch / Tief der nahen Kerze ein", "es": "Imán: la línea arrastrada se ajusta al máximo / mínimo de la vela cercana"}
+{"hu": "A stopot és a célt a charton is húzhatod.", "en": "You can also drag the stop and the target on the chart.", "de": "Stop und Ziel kannst du auch im Chart ziehen.", "es": "También puedes arrastrar el stop y el objetivo en el gráfico."}
+{"hu": "Stop ✗", "en": "Stop ✗", "de": "Stop ✗", "es": "Stop ✗"}
+{"hu": "Cél ✗", "en": "Target ✗", "de": "Ziel ✗", "es": "Objetivo ✗"}
+{"hu": "Limit ✗", "en": "Limit ✗", "de": "Limit ✗", "es": "Límite ✗"}
+{"hu": "Cél? (húzd)", "en": "Target? (drag)", "de": "Ziel? (ziehen)", "es": "¿Objetivo? (arrastra)"}
+{"hu": "Új stop", "en": "New stop", "de": "Neuer Stop", "es": "Nuevo stop"}
+{"hu": "Beküldés / mutasd egyben", "en": "Submit / show all at once", "de": "Absenden / alles auf einmal zeigen", "es": "Enviar / mostrar todo de una vez"}
+{"hu": "Következő gyertya / helyzet", "en": "Next candle / situation", "de": "Nächste Kerze / Situation", "es": "Siguiente vela / situación"}
+{"hu": "Szóköz", "en": "Space", "de": "Leertaste", "es": "Espacio"}
+{"hu": "Lejátszás / szünet", "en": "Play / pause", "de": "Abspielen / Pause", "es": "Reproducir / pausa"}
+{"hu": "A kijelölt vonal mozgatása (0,1 ATR)", "en": "Move the selected line (0.1 ATR)", "de": "Ausgewählte Linie verschieben (0,1 ATR)", "es": "Mover la línea seleccionada (0,1 ATR)"}
+{"hu": "Súgó", "en": "Help", "de": "Hilfe", "es": "Ayuda"}
+{"hu": "Szünet", "en": "Pause", "de": "Pause", "es": "Pausa"}
+{"hu": "Lejátszás", "en": "Play", "de": "Abspielen", "es": "Reproducir"}
+{"hu": "+1 gyertya", "en": "+1 candle", "de": "+1 Kerze", "es": "+1 vela"}
+{"hu": "Sebesség", "en": "Speed", "de": "Tempo", "es": "Velocidad"}
+{"hu": "Ami a döntés után történt – léptesd vagy játszd le.", "en": "What happened after the decision – step through it or play it.", "de": "Was nach der Entscheidung geschah – schrittweise oder als Wiedergabe.", "es": "Lo que pasó después de la decisión: avanza paso a paso o reprodúcelo."}
+{"hu": "Visszajátszás és kezelés", "en": "Replay and management", "de": "Wiedergabe und Positionsführung", "es": "Repetición y gestión"}
+{"hu": "A jövő gyertyánként jön; nyitott pozíciónál a stopot csak a javadra húzhatod, a felét lezárhatod, vagy kiszállhatsz. Minden művelet a következő nyitáson teljesül.", "en": "The future arrives candle by candle; with an open position you can move the stop only in your favour, close half, or exit. Every action is filled at the next open.", "de": "Die Zukunft kommt Kerze für Kerze; bei offener Position kannst du den Stop nur zu deinen Gunsten verschieben, die Hälfte schließen oder aussteigen. Jede Aktion wird zur nächsten Eröffnung ausgeführt.", "es": "El futuro llega vela a vela; con una posición abierta puedes mover el stop solo a tu favor, cerrar la mitad o salir. Cada acción se ejecuta en la siguiente apertura."}
+{"hu": "Stop áthúzása", "en": "Move stop", "de": "Stop verschieben", "es": "Mover stop"}
+{"hu": "Részleges zárás (50%)", "en": "Partial close (50%)", "de": "Teilschließung (50%)", "es": "Cierre parcial (50%)"}
+{"hu": "Kiszállás most", "en": "Exit now", "de": "Jetzt aussteigen", "es": "Salir ahora"}
+{"hu": "Stop áthúzva", "en": "Stop moved", "de": "Stop verschoben", "es": "Stop movido"}
+{"hu": "Kiszállás", "en": "Exit", "de": "Ausstieg", "es": "Salida"}
+{"hu": "{0}. nap után:", "en": "After day {0}:", "de": "Nach Tag {0}:", "es": "Tras el día {0}:"}
+{"hu": "A limit nem teljesült – nincs pozíció.", "en": "The limit was not filled – no position.", "de": "Das Limit wurde nicht ausgeführt – keine Position.", "es": "El límite no se ejecutó: no hay posición."}
+{"hu": "A belépés a következő nyitáson.", "en": "Entry at the next open.", "de": "Einstieg zur nächsten Eröffnung.", "es": "Entrada en la siguiente apertura."}
+{"hu": "Lezárva: {0}", "en": "Closed: {0}", "de": "Geschlossen: {0}", "es": "Cerrada: {0}"}
+{"hu": "Kiszállás a következő nyitáson.", "en": "Exit at the next open.", "de": "Ausstieg zur nächsten Eröffnung.", "es": "Salida en la siguiente apertura."}
+{"hu": "Nyitott long pozíció", "en": "Open long position", "de": "Offene Long-Position", "es": "Posición larga abierta"}
+{"hu": "Nyitott short pozíció", "en": "Open short position", "de": "Offene Short-Position", "es": "Posición corta abierta"}
+{"hu": "Nyitott long pozíció (a fele már lezárva)", "en": "Open long position (half already closed)", "de": "Offene Long-Position (Hälfte bereits geschlossen)", "es": "Posición larga abierta (la mitad ya cerrada)"}
+{"hu": "Nyitott short pozíció (a fele már lezárva)", "en": "Open short position (half already closed)", "de": "Offene Short-Position (Hälfte bereits geschlossen)", "es": "Posición corta abierta (la mitad ya cerrada)"}
+{"hu": "belépő", "en": "entry", "de": "Einstieg", "es": "entrada"}
+{"hu": "Kezelés", "en": "Management", "de": "Positionsführung", "es": "Gestión"}
+{"hu": "Terv szerint", "en": "As planned", "de": "Wie geplant", "es": "Según el plan"}
+{"hu": "kezelés nélkül", "en": "without management", "de": "ohne Positionsführung", "es": "sin gestión"}
+{"hu": "Kezelve", "en": "Managed", "de": "Geführt", "es": "Gestionada"}
+{"hu": "különbség:", "en": "difference:", "de": "Differenz:", "es": "diferencia:"}
+{"hu": "Elérhető legjobb", "en": "Best available", "de": "Bestes erreichbares", "es": "Mejor alcanzable"}
+{"hu": "a terv szerinti tartás alatt", "en": "during the planned holding period", "de": "während der geplanten Haltedauer", "es": "durante el periodo previsto"}
+{"hu": "A kezelés pontja a kezelt és a terv szerinti R különbségéből jön (+1 R = +5 pont, 0–10 pont). A belépés ítélete ettől független.", "en": "Management points come from the difference between the managed and the planned R (+1 R = +5 points, 0–10 points). The entry verdict does not depend on it.", "de": "Die Punkte für die Positionsführung ergeben sich aus der Differenz zwischen geführtem und geplantem R (+1 R = +5 Punkte, 0–10 Punkte). Das Urteil über den Einstieg hängt nicht davon ab.", "es": "Los puntos de gestión salen de la diferencia entre la R gestionada y la prevista (+1 R = +5 puntos, 0–10 puntos). El veredicto de la entrada no depende de ello."}
+{"hu": "Kilépés (kezelve)", "en": "Exit (managed)", "de": "Ausstieg (geführt)", "es": "Salida (gestionada)"}
+{"hu": "Gyertyánkénti visszajátszás pozíciókezeléssel (stop húzása, részleges zárás, kiszállás)", "en": "Candle-by-candle replay with position management (move stop, partial close, exit)", "de": "Kerzenweise Wiedergabe mit Positionsführung (Stop verschieben, Teilschließung, Ausstieg)", "es": "Repetición vela a vela con gestión de la posición (mover stop, cierre parcial, salida)"}
+{"hu": "kiszállás (kezelés)", "en": "exit (management)", "de": "Ausstieg (Positionsführung)", "es": "salida (gestión)"}
+{"hu": "Egyszerre 1-{0} gyertya kérhető.", "en": "You can request 1-{0} candles at a time.", "de": "Pro Anfrage sind 1-{0} Kerzen möglich.", "es": "Se pueden pedir de 1 a {0} velas a la vez."}
+{"hu": "Ismeretlen kezelési művelet.", "en": "Unknown management action.", "de": "Unbekannte Aktion.", "es": "Acción de gestión desconocida."}
+{"hu": "Kezelni csak a már látott gyertyák alapján lehet.", "en": "You can only manage based on candles you have already seen.", "de": "Positionsführung ist nur auf Basis bereits gesehener Kerzen möglich.", "es": "Solo se puede gestionar con las velas ya vistas."}
+{"hu": "A pozíció felét már lezártad.", "en": "You have already closed half of the position.", "de": "Du hast die Hälfte der Position bereits geschlossen.", "es": "Ya has cerrado la mitad de la posición."}
+{"hu": "A stop csak a pozíció javára mozdulhat (longnál feljebb, shortnál lejjebb).", "en": "The stop can only move in the position's favour (up for a long, down for a short).", "de": "Der Stop darf sich nur zugunsten der Position bewegen (Long: nach oben, Short: nach unten).", "es": "El stop solo puede moverse a favor de la posición (hacia arriba en largo, hacia abajo en corto)."}
+{"hu": "A stop a legutóbbi záró alatt legyen (shortnál felette).", "en": "The stop must be below the latest close (above it for a short).", "de": "Der Stop muss unter dem letzten Schlusskurs liegen (bei Short darüber).", "es": "El stop debe estar por debajo del último cierre (por encima en corto)."}
+{"hu": "Ehhez a helyzethez nincs folyamatban visszajátszás.", "en": "There is no replay in progress for this situation.", "de": "Für diese Situation läuft keine Wiedergabe.", "es": "No hay ninguna repetición en curso para esta situación."}
+{"hu": "Y-tengely", "en": "Y axis", "de": "Y-Achse", "es": "Eje Y"}
+{"hu": "Heti nézet (5 napos gyertyák)", "en": "Weekly view (5-day candles)", "de": "Wochenansicht (5-Tage-Kerzen)", "es": "Vista semanal (velas de 5 días)"}
+{"hu": "Heti gyertyák – ugyanaz a múlt, a döntés napjáig", "en": "Weekly candles – the same past, up to the decision day", "de": "Wochenkerzen – dieselbe Vergangenheit bis zum Entscheidungstag", "es": "Velas semanales: el mismo pasado, hasta el día de la decisión"}
+{"hu": "Heti chart", "en": "Weekly chart", "de": "Wochenchart", "es": "Gráfico semanal"}
+{"hu": "Statisztikám", "en": "My statistics", "de": "Meine Statistik", "es": "Mis estadísticas"}
+{"hu": "A döntéseid eloszlása R-ben: várható érték, tőkegörbe, Monte Carlo, naptár és bontás típus szerint – itt vannak a gyengeségeid is.", "en": "The distribution of your decisions in R: expectancy, equity curve, Monte Carlo, calendar and breakdown by type – your weaknesses are here too.", "de": "Die Verteilung deiner Entscheidungen in R: Erwartungswert, Kapitalkurve, Monte Carlo, Kalender und Aufschlüsselung nach Typ – auch deine Schwächen findest du hier.", "es": "La distribución de tus decisiones en R: valor esperado, curva de capital, Monte Carlo, calendario y desglose por tipo; aquí están también tus puntos débiles."}
+{"hu": "Statisztikám megnyitása", "en": "Open my statistics", "de": "Meine Statistik öffnen", "es": "Abrir mis estadísticas"}
+{"hu": "← Profil", "en": "← Profile", "de": "← Profil", "es": "← Perfil"}
+{"hu": "A saját értékelt döntéseid – csak R-ben, pénzbeli érték nélkül. Leírás, nem ajánlás.", "en": "Your own evaluated decisions – in R only, with no monetary value. A description, not a recommendation.", "de": "Deine eigenen bewerteten Entscheidungen – nur in R, ohne Geldwert. Eine Beschreibung, keine Empfehlung.", "es": "Tus propias decisiones evaluadas, solo en R, sin valor monetario. Una descripción, no una recomendación."}
+{"hu": "30 nap", "en": "30 days", "de": "30 Tage", "es": "30 días"}
+{"hu": "90 nap", "en": "90 days", "de": "90 Tage", "es": "90 días"}
+{"hu": "Összes", "en": "All", "de": "Alle", "es": "Todo"}
+{"hu": "Minden forrás", "en": "All sources", "de": "Alle Quellen", "es": "Todas las fuentes"}
+{"hu": "Döntések", "en": "Decisions", "de": "Entscheidungen", "es": "Decisiones"}
+{"hu": "belépési arány:", "en": "entry rate:", "de": "Einstiegsquote:", "es": "tasa de entrada:"}
+{"hu": "lezárt kötés", "en": "closed trades", "de": "abgeschlossene Trades", "es": "operaciones cerradas"}
+{"hu": "Várható érték", "en": "Expectancy", "de": "Erwartungswert", "es": "Valor esperado"}
+{"hu": "R / lezárt kötés", "en": "R / closed trade", "de": "R / abgeschlossenem Trade", "es": "R / operación cerrada"}
+{"hu": "Átlagos nyerő / vesztő", "en": "Average win / loss", "de": "Durchschnittlicher Gewinn / Verlust", "es": "Ganancia / pérdida media"}
+{"hu": "Profit faktor", "en": "Profit factor", "de": "Profitfaktor", "es": "Factor de beneficio"}
+{"hu": "nyerő R / vesztő R", "en": "winning R / losing R", "de": "Gewinn-R / Verlust-R", "es": "R ganadora / R perdedora"}
+{"hu": "Leghosszabb vesztes sorozat", "en": "Longest losing streak", "de": "Längste Verlustserie", "es": "Racha perdedora más larga"}
+{"hu": "legnagyobb visszaesés:", "en": "max drawdown:", "de": "maximaler Rückgang:", "es": "caída máxima:"}
+{"hu": "Még kevés a döntés.", "en": "Not enough decisions yet.", "de": "Noch zu wenige Entscheidungen.", "es": "Todavía hay pocas decisiones."}
+{"hu": "Az eloszláshoz és a Monte Carlo-hoz legalább", "en": "The distribution and the Monte Carlo need at least", "de": "Für die Verteilung und das Monte Carlo braucht es mindestens", "es": "La distribución y el Monte Carlo necesitan al menos"}
+{"hu": "lezárt kötés kell (most:", "en": "closed trades (now:", "de": "abgeschlossene Trades (jetzt:", "es": "operaciones cerradas (ahora:"}
+{"hu": "R-eloszlás", "en": "R distribution", "de": "R-Verteilung", "es": "Distribución de R"}
+{"hu": "Sávonként a kötések aránya. A stratégiák és a véletlen alapvonal ugyanazokon a helyzeteken – egy jó folyamatnál is vannak vesztes kötések.", "en": "The share of trades per band. The strategies and the random baseline on the same situations – a good process has losing trades too.", "de": "Anteil der Trades je Band. Die Strategien und die Zufallsbasis auf denselben Situationen – auch ein guter Prozess hat Verlusttrades.", "es": "La proporción de operaciones por tramo. Las estrategias y la línea base aleatoria en las mismas situaciones: un buen proceso también tiene operaciones perdedoras."}
+{"hu": "A döntéseid", "en": "Your decisions", "de": "Deine Entscheidungen", "es": "Tus decisiones"}
+{"hu": "Stratégiák ugyanazokon a helyzeteken", "en": "Strategies on the same situations", "de": "Strategien auf denselben Situationen", "es": "Estrategias en las mismas situaciones"}
+{"hu": "Tőkegörbe R-ben", "en": "Equity curve in R", "de": "Kapitalkurve in R", "es": "Curva de capital en R"}
+{"hu": "Összesített R", "en": "Cumulative R", "de": "Kumuliertes R", "es": "R acumulada"}
+{"hu": "Monte Carlo", "en": "Monte Carlo", "de": "Monte Carlo", "es": "Monte Carlo"}
+{"hu": "Ugyanazok a döntések", "en": "The same decisions", "de": "Dieselben Entscheidungen", "es": "Las mismas decisiones"}
+{"hu": "-szer, véletlen sorrendben: ennyi múlik a sorrenden.", "en": "times in random order: this is how much the order matters.", "de": "-mal in zufälliger Reihenfolge: so viel hängt von der Reihenfolge ab.", "es": "veces en orden aleatorio: esto es lo que depende del orden."}
+{"hu": "A te sorrended", "en": "Your order", "de": "Deine Reihenfolge", "es": "Tu orden"}
+{"hu": "Legnagyobb visszaesés", "en": "Max drawdown", "de": "Maximaler Rückgang", "es": "Caída máxima"}
+{"hu": "Ugyanaz a döntéssor más sorrendben jóval mélyebb visszaesést vagy hosszabb vesztes sorozatot is hozhatott volna – egy jó folyamatnál is.", "en": "The same decisions in a different order could have produced a much deeper drawdown or a longer losing streak – even with a good process.", "de": "Dieselben Entscheidungen in anderer Reihenfolge hätten einen deutlich tieferen Rückgang oder eine längere Verlustserie bringen können – auch bei einem guten Prozess.", "es": "Las mismas decisiones en otro orden podrían haber dado una caída mucho mayor o una racha perdedora más larga, incluso con un buen proceso."}
+{"hu": "Napi döntésszám az utolsó 12 hétben", "en": "Daily number of decisions in the last 12 weeks", "de": "Entscheidungen pro Tag in den letzten 12 Wochen", "es": "Decisiones diarias en las últimas 12 semanas"}
+{"hu": "Oszloponként egy hét (hétfőtől vasárnapig); minél sötétebb, annál több döntés. Rámutatva: a napi átlagos R.", "en": "One week per column (Monday to Sunday); the darker, the more decisions. Hover to see the day's average R.", "de": "Eine Woche pro Spalte (Montag bis Sonntag); je dunkler, desto mehr Entscheidungen. Beim Darüberfahren: das durchschnittliche R des Tages.", "es": "Una semana por columna (de lunes a domingo); cuanto más oscuro, más decisiones. Al pasar el cursor: la R media del día."}
+{"hu": "{0}: {1} döntés", "en": "{0}: {1} decisions", "de": "{0}: {1} Entscheidungen", "es": "{0}: {1} decisiones"}
+{"hu": "{0}: {1} döntés, átlag {2}", "en": "{0}: {1} decisions, average {2}", "de": "{0}: {1} Entscheidungen, Durchschnitt {2}", "es": "{0}: {1} decisiones, media {2}"}
+{"hu": "Ismeretlen szűrő.", "en": "Unknown filter.", "de": "Unbekannter Filter.", "es": "Filtro desconocido."}
+{"hu": "{0}. fejezet", "en": "Chapter {0}", "de": "Kapitel {0}", "es": "Capítulo {0}"}
+{"hu": "Fejezetzáró", "en": "Chapter test", "de": "Kapiteltest", "es": "Prueba de capítulo"}
+{"hu": "Érmedobás: tiszta véletlen, jelzés nélkül – itt a kihagyás a jó döntés.", "en": "Coin flip: pure chance, no signal – here skipping is the good decision.", "de": "Münzwurf: reiner Zufall, kein Signal – hier ist Auslassen die gute Entscheidung.", "es": "Lanzar una moneda: puro azar, sin señal; aquí saltar es la buena decisión."}
+{"hu": "Nagy volatilitás: szélesebb gyertyák, nagyobb kilengések.", "en": "High volatility: wider candles, bigger swings.", "de": "Hohe Volatilität: breitere Kerzen, größere Ausschläge.", "es": "Alta volatilidad: velas más anchas, oscilaciones mayores."}
+{"hu": "Tartós eső trend: a long oldal nehezebb.", "en": "Persistent downtrend: the long side is harder.", "de": "Anhaltender Abwärtstrend: die Long-Seite ist schwieriger.", "es": "Tendencia bajista persistente: el lado largo es más difícil."}
+{"hu": "Indítás", "en": "Start", "de": "Starten", "es": "Empezar"}
+{"hu": "Újra", "en": "Again", "de": "Erneut", "es": "Otra vez"}
+{"hu": "A fejezetzáró a fejezet utolsó szintjének teljesítése után nyílik.", "en": "The chapter test opens after you complete the chapter's last level.", "de": "Der Kapiteltest öffnet sich nach Abschluss der letzten Stufe des Kapitels.", "es": "La prueba de capítulo se abre al completar el último nivel del capítulo."}
+{"hu": "Nincs ilyen fejezet.", "en": "No such chapter.", "de": "Kein solches Kapitel.", "es": "No existe ese capítulo."}
+{"hu": "A következő fejezet előtt:", "en": "Before the next chapter:", "de": "Vor dem nächsten Kapitel:", "es": "Antes del siguiente capítulo:"}
+{"hu": "fejezetzáró feladatsor más piaci helyzetekből.", "en": "a chapter test with situations from a different market.", "de": "ein Kapiteltest mit Situationen aus einem anderen Markt.", "es": "una prueba de capítulo con situaciones de otro mercado."}
+{"hu": "{0}. fejezetzáró: teljesítve", "en": "Chapter {0} test: passed", "de": "Kapiteltest {0}: bestanden", "es": "Prueba del capítulo {0}: superada"}
+{"hu": "{0}. fejezetzáró: még nem teljesült", "en": "Chapter {0} test: not passed yet", "de": "Kapiteltest {0}: noch nicht bestanden", "es": "Prueba del capítulo {0}: aún no superada"}
+{"hu": "érmedobás", "en": "coin flip", "de": "Münzwurf", "es": "lanzamiento de moneda"}
+{"hu": "nagy volatilitás", "en": "high volatility", "de": "hohe Volatilität", "es": "alta volatilidad"}
+{"hu": "Enter", "en": "Enter", "de": "Enter", "es": "Intro"}

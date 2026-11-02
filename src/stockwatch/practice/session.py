@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from .. import analytics, calibration, indicators, market, progress
 from ..config import Settings, load_settings
-from . import kinds, sampler, scoring, store, synthetic
+from . import boss as bosses, kinds, replay, sampler, scoring, store, synthetic
 from .templates import STRATEGY_LABELS, Line
 
 FEW = 10
@@ -106,6 +106,28 @@ def hidden_chart(df: pd.DataFrame, i: int) -> dict:
     return {"bars": bars, "atr": _r2(atr), "last": 100.0}
 
 
+WEEK = 5                                         # egy heti gyertya = 5 kereskedesi nap (#79 c)
+WEEKS = 52
+
+
+def weekly_chart(df: pd.DataFrame, i: int) -> dict:
+    """Heti (5 napos) gyertyak a dontes napjaig - a csoportok a dontes napjan zarulnak, CSAK az addigi adatbol
+    (a jovo itt sem latszik), ugyanazzal a normalizalassal, mint a napi chart (az utolso zaro = 100)."""
+    hist = df.iloc[: i + 1]
+    scale = 100.0 / float(hist["close"].iloc[-1])
+    n = min(WEEKS, len(hist) // WEEK)
+    rows = []
+    for w in range(n):
+        end = len(hist) - (n - 1 - w) * WEEK
+        g = hist.iloc[end - WEEK: end]
+        rows.append({"i": w - (n - 1), "o": _r2(float(g["open"].iloc[0]) * scale), "h": _r2(float(g["high"].max()) * scale),
+                     "l": _r2(float(g["low"].min()) * scale), "c": _r2(float(g["close"].iloc[-1]) * scale), "v": None})
+    weekly = pd.DataFrame([{k: r[k] / scale for k in ("o", "h", "l", "c")} for r in rows]).rename(
+        columns={"o": "open", "h": "high", "l": "low", "c": "close"})
+    atr = float(scoring.atr_series(weekly).iloc[-1]) * scale if len(weekly) > scoring.ATR_PERIOD else None
+    return {"bars": rows, "atr": _r2(atr) if atr else None}
+
+
 # ---------------------------------------------------------------------------
 # Munkamenet
 # ---------------------------------------------------------------------------
@@ -118,21 +140,25 @@ def public(session: dict) -> dict:
     decided = sum(1 for t in session["tasks"] if t.get("decision"))
     # parbaj (#55), vizsga (#37): a kod nem latszik - vele a helyzetsor elore kiprobalhato lenne
     return {"id": session["id"], "created": session["created"], "rounds": len(session["tasks"]),
-            "code": None if session.get("duel") or session.get("exam") else session["code"], "duel": session.get("duel"),
-            "exam": bool(session.get("exam")),
+            "code": None if session.get("duel") or session.get("exam") or session.get("boss") else session["code"], "duel": session.get("duel"),
+            "exam": bool(session.get("exam")), "manage": bool(session.get("manage")),
             "decided": decided, "done": decided == len(session["tasks"]), "warning": session.get("warning"),
             "next": next((k for k, t in enumerate(session["tasks"]) if not t.get("decision")), None),
-            "mean_r": session.get("summary", {}).get("mean_r") if decided == len(session["tasks"]) else None,
-            "lesson": session.get("lesson"), "daily": session.get("daily"),
+            # folyamatban levo visszajatszas (#76): a kor atlaga a meg rejtett kimenetet arulna el
+            "mean_r": session.get("summary", {}).get("mean_r")
+            if decided == len(session["tasks"]) and not any(replay.active(t) for t in session["tasks"]) else None,
+            "lesson": session.get("lesson"), "daily": session.get("daily"), "boss": session.get("boss"),
             "deadline": deadline(session).isoformat(timespec="seconds") if deadline(session) else None}
 
 
 def create(user_id: int, settings: Settings | None = None, seed: int | None = None,
            rounds: int = 20, mix: dict | None = None, code: str | None = None,
            only: dict | None = None, lesson: int | None = None, daily: str | None = None,
-           kinds_mix: dict | None = None, duel: str | None = None, exam: bool = False) -> dict:
+           kinds_mix: dict | None = None, duel: str | None = None, exam: bool = False, manage: bool = False,
+           boss: int | None = None) -> dict:
     """Uj kor. `only` es `lesson`: a tanulasi ut (#33) celzott feladatsora (learning.py); `daily`: a napi
-    kihivas napja (daily.py); `kinds_mix`: feladattipus -> suly (#49; None: csak dontes). shortcut: a megosztasi
+    kihivas napja (daily.py); `kinds_mix`: feladattipus -> suly (#49; None: csak dontes); `manage`: gyertyankenti
+    visszajatszas poziciokezelessel (#76; napi kihivasban, vizsgaban, parbajban soha). shortcut: a megosztasi
     kod a tipusokat nem tartalmazza - vegyes kort csak a dontesi feladatokra reprodukal."""
     settings = settings or load_settings()
     pool = store.load_pool()
@@ -147,7 +173,8 @@ def create(user_id: int, settings: Settings | None = None, seed: int | None = No
         seed = secrets.randbelow(sampler.SEED_MAX)
     if not 0 <= int(seed) < sampler.SEED_MAX:
         raise ValueError("seed: 0 es 2^31 kozott")
-    picks = sampler.sample(pool, int(seed), int(rounds), mix, only)
+    # fejezetzaro (#79 b): kulon rezsimu szintetikus papirok, a keszleten kivul
+    picks = bosses.picks(boss, int(seed), int(rounds)) if boss else sampler.sample(pool, int(seed), int(rounds), mix, only)
     weights = kinds.normalize_kinds(kinds_mix)
     rng = np.random.default_rng([int(seed), 49])                  # a tipusok sorsolasa a seedbol, kulon folyamban
     names, probs = list(weights), list(weights.values())
@@ -157,7 +184,7 @@ def create(user_id: int, settings: Settings | None = None, seed: int | None = No
     session = {"id": store.new_id(), "created": _now(), "seed": int(seed), "rounds": int(rounds),
                "mix": sampler.normalize_mix(mix), "pool_fingerprint": pool["fingerprint"],
                "code": sampler.share_code(int(seed), pool["fingerprint"], int(rounds)), "warning": warning, "lesson": lesson,
-               "daily": daily, "duel": duel, "exam": exam,
+               "daily": daily, "duel": duel, "exam": exam, "manage": bool(manage) and not (daily or duel or exam), "boss": boss,
                "tasks": [p | {"task_id": store.new_id(10), "decision": None, "result": None} for p in picks]}
     store.create_session(session, user_id)
     return public(session)
@@ -234,13 +261,16 @@ def task_payload(user_id: int, session_id: str, k: int, settings: Settings | Non
     task = _task(session, k)
     df, i = _frame(task, settings)
     out = {"session": session["id"], "k": k, "rounds": len(session["tasks"]), "task_id": task["task_id"],
-           "chart": hidden_chart(df, i), "max_days": sampler.MAX_DAYS, "decided": task.get("decision") is not None,
+           "chart": hidden_chart(df, i), "weekly": weekly_chart(df, i), "max_days": sampler.MAX_DAYS, "decided": task.get("decision") is not None,
            "kind": task.get("kind") or "decision", "prompt": (task.get("params") or {}).get("prompt"),
            "hints": _hints(session),
            # magabiztossag (#54): a 6. szinttol alapbol; maskor a felhasznalo kapcsolhatja be (Profil)
            "confidence": bool(session.get("lesson") and int(session["lesson"]) >= 6)}
     if out["decided"] and not hidden(session):
-        out["reveal"] = reveal(task)
+        if replay.active(task):                  # kezelesi mod (#76): csak a mar kiadott gyertyak
+            out["replay"] = replay.state(task, df, i, settings)
+        else:
+            out["reveal"] = reveal(task)
     return out
 
 
@@ -296,6 +326,9 @@ def decide(user_id: int, session_id: str, k: int, body: dict, settings: Settings
         task["quality"] = result.get("quality")
         task["decision"] = answer
         task["decided_at"] = _now()
+        if session.get("manage") and (task.get("kind") or "decision") == "decision" and scoring.side_of(answer) \
+                and not deadline(session):
+            task["result"]["replay"] = replay.start()          # a jovo lepesenkent, kezelessel (#76)
         if all(t.get("decision") for t in session["tasks"]):
             session["summary"] = scoring.summary(decision_tasks(session["tasks"]))
         save(k)
@@ -311,13 +344,51 @@ def decide(user_id: int, session_id: str, k: int, body: dict, settings: Settings
             ver = (result.get("review") or {}).get("verdict") or {}
             repetition.update(conn, user_id, task["category"], task["source"], ver.get("category"), ver.get("flags"),
                               progress.today())
-    if session.get("lesson") and session.get("summary"):
-        from .. import learning                      # a tanulasi ut (#33) szintje teljesult-e
+    if (session.get("lesson") or session.get("boss")) and session.get("summary"):
+        from .. import learning                      # a tanulasi ut (#33) szintje / fejezetzaroja teljesult-e
 
-        learning.record(user_id, session)
+        learning.record_boss(user_id, session) if session.get("boss") else learning.record(user_id, session)
     if hidden(session):                          # napi kihivas: az eredmeny (es a pont) csak a beadas utan
         return {"session": public(session), "k": k, "hidden": True}
+    if replay.active(task):
+        df, i = _frame(task, settings)
+        return {"session": public(session), "k": k, "replay": replay.state(task, df, i, settings), "progress": prog}
     return {"session": public(session), "k": k, "reveal": reveal(task), "progress": prog}
+
+
+def replay_action(user_id: int, session_id: str, k: int, what: str, body: dict, settings: Settings | None = None) -> dict:
+    """Visszajatszas (#76): `step` (n uj gyertya), `manage` (kezelesi muvelet), `finish` (vege: teljes felfedes)."""
+    settings = settings or load_settings()
+    body = body if isinstance(body, dict) else {}
+    prog = None
+    with store.editing(session_id, user_id) as (session, save, conn):
+        task = _task(session, k)
+        if not replay.active(task):
+            raise ValueError("Ehhez a helyzethez nincs folyamatban visszajátszás.")
+        df, i = _frame(task, settings)
+        if what == "step":
+            replay.step(task, body.get("n", 1))
+        elif what == "manage":
+            replay.act(task, body, df, i, settings)
+            analytics.track("manage", user_id, conn, action=body.get("type"), at=body.get("at"))
+        else:
+            prog = _finish(conn, user_id, task, df, i, settings)
+        save(k)
+    if what != "finish":
+        return {"session": public(session), "k": k, "replay": replay.state(task, df, i, settings)}
+    return {"session": public(session), "k": k, "reveal": reveal(task), "progress": prog}
+
+
+def _finish(conn, user_id: int, task: dict, df: pd.DataFrame, i: int, settings: Settings) -> dict:
+    """A visszajatszas lezarasa: a kezeles pontja a dontes pontja melle (es az XP-be)."""
+    points = replay.finish(task, df, i, settings)
+    manage = task["result"].get("manage")
+    if manage is not None:
+        task["points"] = int(task.get("points") or 0) + points
+        parts = (task["result"].get("points") or {}).get("parts", [])
+        task["result"]["points"] = {"points": task["points"], "parts": parts + [{"key": "manage", "label": "Kezelés", "value": points}]}
+        analytics.track("manage_done", user_id, conn, actions=len(manage["actions"]), delta=manage["delta"])
+    return progress.record(conn, user_id, points, progress.today())
 
 
 # ---------------------------------------------------------------------------
@@ -368,6 +439,9 @@ def lines(s: dict) -> list[dict]:
 
 def summary_payload(user_id: int, session_id: str) -> dict:
     session = _load(session_id, user_id)
+    pending = next((k for k, t in enumerate(session["tasks"]) if replay.active(t)), None)
+    if pending is not None:                      # folyamatban levo visszajatszas (#76): elobb az fejezodjon be
+        return {"session": public(session), "hidden": True, "replay": pending}
     if hidden(session):                          # napi kihivas kozben: csak az allapot, eredmeny nelkul
         return {"session": public(session), "hidden": True}
     s = scoring.summary(decision_tasks(session["tasks"]))
@@ -388,7 +462,8 @@ def summary_payload(user_id: int, session_id: str) -> dict:
 
     return {"session": public(session), "summary": s, "lines": lines(s) if s["decided"] else [], "tasks": tasks,
             "kinds": kinds_summary(session["tasks"]),
-            "lesson": learning.record(user_id, session) if session.get("lesson") else None}
+            "lesson": learning.record(user_id, session) if session.get("lesson") else None,
+            "boss": learning.record_boss(user_id, session) if session.get("boss") else None}
 
 
 def listing(user_id: int) -> list[dict]:

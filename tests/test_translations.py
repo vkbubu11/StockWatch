@@ -95,6 +95,8 @@ def test_every_page_is_translated(site, browser, env, outbox):  # noqa: F811
         conn.execute("UPDATE users SET onboarded_at = NULL WHERE id = %s", (user,))
         cur.executemany("INSERT INTO lesson_progress (user_id, level, best_share, completed_at) VALUES (%s, %s, 0.8, now())",
                         [(user, n) for n in range(1, 10)])
+        cur.executemany("INSERT INTO chapter_bosses (user_id, chapter, best_share, completed_at) "
+                        "VALUES (%s, %s, 1, now())", [(user, c) for c in (1, 2, 3)])   # a fejezetzarok (#79 b) is
     token = accounts.login("anna@example.com", PW, "127.0.0.1")
     page = _page(browser, site, token=token)
     for step in range(3):
@@ -102,9 +104,12 @@ def test_every_page_is_translated(site, browser, env, outbox):  # noqa: F811
     page.click("#trial")
     page.wait_for_selector("#pr-dform")
     _settle(page)
-    page.fill("input[name=stop]", "150")                                   # ervenytelen stop: hibauzenet
-    page.click("#pr-dform button[type=submit]")
+    page.fill("input[name=stop]", "150")                                   # ervenytelen stop: hibauzenet (bekuldes nelkul)
     page.wait_for_timeout(800)
+    page.click("#pr-keys-btn")                                              # billentyuparancsok (#79 d)
+    page.click("[data-axis=atr]")                                           # Y-tengely (#79 a)
+    page.check("#pr-weekly-on")                                             # heti nezet (#79 c)
+    page.wait_for_timeout(300)
     missing |= _missing(page)
     page.fill("input[name=stop]", "95")
     page.click("#pr-dform button[type=submit]")
@@ -118,8 +123,20 @@ def test_every_page_is_translated(site, browser, env, outbox):  # noqa: F811
     for level in range(1, 11):
         _visit(page, f"{site}/#/learn/{level}", missing)
     lesson = learning_round(user, env)
-    for path in ("/#/learn", "/#/practice", f"/#/practice/{lesson}", "/#/daily", "/#/leaderboard", "/#/profile", "/#/info"):
+    for path in ("/#/learn", "/#/practice", f"/#/practice/{lesson}", "/#/daily", "/#/leaderboard", "/#/profile", "/#/stats", "/#/info"):
         _visit(page, site + path, missing)
+    # visszajatszas kezelessel (#76): folyamatban, majd a kezeles kartyaja
+    managed = session.create(user, env["settings"], seed=11, rounds=1, manage=True)["id"]
+    atr = session.task_payload(user, managed, 0)["chart"]["atr"]
+    session.decide(user, managed, 0, {"action": "long", "stop": round(100 - 2 * atr, 2), "days": 15})
+    session.replay_action(user, managed, 0, "step", {"n": 2})
+    _visit(page, f"{site}/#/practice/{managed}", missing)
+    if session.task_payload(user, managed, 0)["replay"]["position"]["open"]:
+        session.replay_action(user, managed, 0, "manage", {"type": "half", "at": 2})
+        session.replay_action(user, managed, 0, "manage", {"type": "exit", "at": 2})
+        _visit(page, f"{site}/#/practice/{managed}", missing)
+    session.replay_action(user, managed, 0, "finish", {})
+    _visit(page, f"{site}/#/practice/{managed}", missing)
     # napi kihivas: folyamatban (rejtett), majd kesz
     sid = daily.start(user, env["settings"])["id"]
     _visit(page, site + "/#/daily", missing)

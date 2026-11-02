@@ -1,5 +1,5 @@
 /* StockWatch oktatasi felulet - vanilla JS, keretrendszer nelkul.
- * Utvonalak (hash): #/ (= #/learn)  #/learn/N  #/practice  #/practice/ID  #/daily  #/leaderboard  #/welcome  #/profile  #/info
+ * Utvonalak (hash): #/ (= #/learn)  #/learn/N  #/practice  #/practice/ID  #/daily  #/leaderboard  #/welcome  #/profile  #/stats  #/info
  */
 "use strict";
 
@@ -53,7 +53,7 @@ function bindRowLinks() {
 // ---------------------------------------------------------------------------
 async function route() {
   const hash = location.hash || "#/";
-  const tab = hash.startsWith("#/info") ? "info" : hash.startsWith("#/profile") ? "profile"
+  const tab = hash.startsWith("#/info") ? "info" : hash.startsWith("#/profile") || hash.startsWith("#/stats") ? "profile"
     : hash.startsWith("#/practice") ? "practice" : hash.startsWith("#/daily") || hash.startsWith("#/duel") ? "daily"
     : hash.startsWith("#/leaderboard") ? "leaderboard" : "learn";
   document.querySelectorAll(".tabs a, .bottom-nav a, .more-list a").forEach((a) => {
@@ -62,6 +62,7 @@ async function route() {
   });
   closeMoreSheet();
   tooltip.hidden = true;
+  leavePractice();
   view.innerHTML = `<div class="loading">Betöltés…</div>`;      // a regi nezet ne latszodjon az uj adat helyett
   try {
     const pm = hash.match(/^#\/practice\/([a-z]{12})$/);
@@ -71,7 +72,7 @@ async function route() {
     const lm = hash.match(/^#\/learn\/(\d{1,2})$/);
     if (tab === "info") pageInfo(me.contact);
     else if (tab === "learn") { if (lm) await pageLesson(Number(lm[1])); else await pageLearn(); }
-    else if (tab === "profile") await pageProfile();
+    else if (tab === "profile") { if (hash.startsWith("#/stats")) await pageStats(); else await pageProfile(); }
     else if (tab === "daily") { if (dm) await pageDuel(dm[1]); else await pageDaily(); }
     else if (tab === "leaderboard") await pageLeaderboard();
     else if (pm) await pagePracticeSession(pm[1]);
@@ -157,6 +158,19 @@ function examCard(x) {
     <p class="muted small">A sikeres vizsga tanúsítványa nyilvános linken, az ellenőrző kóddal visszaellenőrizhető (becenév, dátum, eredmény). A becenevet a Profil oldalon állíthatod be. Oktatási célú gyakorlás múltbeli adaton, nem befektetési képesítés.</p></div></section>`;
 }
 
+// fejezetzaro (#79 b): a fejezet vegen egy rovid sor mas piaci rezsimbol; a kovetkezo fejezet csak utana nyilik
+const BOSS_REGIME = { coin: "Érmedobás: tiszta véletlen, jelzés nélkül – itt a kihagyás a jó döntés.",
+  volatile: "Nagy volatilitás: szélesebb gyertyák, nagyobb kilengések.", downtrend: "Tartós eső trend: a long oldal nehezebb." };
+function bossCard(b) {
+  return `<div class="card learn-card boss ${b.unlocked ? "" : "locked"}"><div class="card-body">
+    <div class="learn-level">${b.chapter}. fejezet</div><h2>Fejezetzáró</h2>
+    <p class="small">${esc(BOSS_REGIME[b.source] || "")}</p>
+    ${b.completed ? `<span class="badge go">Teljesítve</span>` : b.unlocked ? `<span class="badge watch">Elérhető</span>` : `<span class="badge fail">Zárolt</span>`}
+    ${b.best_share != null ? `<span class="muted small">legjobb: ${fmt(b.best_share * 100, 0)}%</span>` : ""}
+    ${b.unlocked ? `<p><button class="btn primary" type="button" data-boss="${b.chapter}">${b.completed ? "Újra" : "Indítás"}</button> <span class="small boss-msg"></span></p>` : ""}
+  </div></div>`;
+}
+
 async function pageLearn() {
   const [levels, exams] = await Promise.all([api("/api/lessons"), api("/api/exams")]);
   view.innerHTML = `
@@ -166,8 +180,12 @@ async function pageLearn() {
       <a class="card learn-card ${l.unlocked ? "" : "locked"}" ${l.unlocked ? `href="#/learn/${l.level}"` : `aria-disabled="true"`}>
         <div class="card-body"><div class="learn-level">${l.level}. szint</div><h2>${esc(l.title)}</h2>
           ${l.completed ? `<span class="badge go">Teljesítve</span>` : l.unlocked ? `<span class="badge watch">Elérhető</span>` : `<span class="badge fail">Zárolt</span>`}
-          ${l.best_share != null ? `<span class="muted small">legjobb: ${fmt(l.best_share * 100, 0)}%</span>` : ""}</div></a>`).join("")}</div>
+          ${l.best_share != null ? `<span class="muted small">legjobb: ${fmt(l.best_share * 100, 0)}%</span>` : ""}</div></a>${l.boss ? bossCard(l.boss) : ""}`).join("")}</div>
     ${examCard(exams)}`;
+  view.querySelectorAll("[data-boss]").forEach((b) => b.addEventListener("click", async () => {
+    try { const r = await api(`/api/bosses/${b.dataset.boss}/start`, { method: "POST", body: "{}" }); location.hash = `#/practice/${r.session.id}`; }
+    catch (e) { const m = b.parentElement.querySelector(".boss-msg"); m.className = "msg err small boss-msg"; m.textContent = e.message; }
+  }));
   const start = $("#exam-start");
   if (start) start.addEventListener("click", async () => {
     try { const r = await api("/api/exams/start", { method: "POST", body: "{}" }); location.hash = `#/practice/${r.session.id}`; }
@@ -402,10 +420,128 @@ async function pageLeaderboard() {
 }
 
 // ---------------------------------------------------------------------------
+// Statisztikam (#78): a sajat ertekelt dontesek eloszlasa - csak R, leiro szoveg
+// ---------------------------------------------------------------------------
+const ST_PERIODS = { 30: "30 nap", 90: "90 nap", all: "Összes" };
+const ST_SOURCES = { all: "Minden forrás", practice: "Gyakorlás", daily: "Napi kihívás", exam: "Vizsga" };
+const ST_SERIES = [["mine", "A döntéseid", "var(--series-1)"], ["strategies", "Stratégiák ugyanazokon a helyzeteken", "var(--warn)"],
+  ["baseline", "Véletlen alapvonal", "var(--series-2)"]];
+const ST_DIMS = { category: "Helyzettípus", pattern: "Alakzat", level: "Szint", side: "Irány" };
+let statsFilter = { period: "all", source: "all" };
+
+function statsBins(edges) {
+  const minus = (v) => (v < 0 ? `−${Math.abs(v)}` : `${v}`);
+  return [`< ${minus(edges[0])}`].concat(edges.slice(0, -1).map((e, n) => `${minus(e)}…${minus(edges[n + 1])}`), [`≥ ${minus(edges[edges.length - 1])}`]);
+}
+
+function statsHistogram(h, edges) {
+  const bins = statsBins(edges);
+  const W = 640, H = 220, pad = { l: 36, r: 8, t: 10, b: 30 };
+  const max = Math.max(0.01, ...ST_SERIES.flatMap(([key]) => h[key]));
+  const gw = (W - pad.l - pad.r) / bins.length, bw = Math.max(2, (gw - 6) / ST_SERIES.length);
+  const y = (v) => pad.t + (1 - v / max) * (H - pad.t - pad.b);
+  const ticks = niceTicks(0, max, 4);
+  const parts = ticks.map((t) => `<line class="st-grid" x1="${pad.l}" x2="${W - pad.r}" y1="${y(t)}" y2="${y(t)}"/><text class="st-axis" x="${pad.l - 4}" y="${y(t) + 4}" text-anchor="end">${fmt(t * 100, 0)}%</text>`);
+  bins.forEach((label, b) => {
+    ST_SERIES.forEach(([key, name, color], s) => {
+      const v = h[key][b];
+      parts.push(`<rect x="${pad.l + b * gw + 3 + s * bw}" y="${y(v)}" width="${bw - 1}" height="${Math.max(0, H - pad.b - y(v))}" fill="${color}"><title>${esc(name)}: ${esc(label)} R – ${fmt(v * 100, 1)}%</title></rect>`);
+    });
+    parts.push(`<text class="st-axis" x="${pad.l + b * gw + gw / 2}" y="${H - 10}" text-anchor="middle">${esc(label)}</text>`);
+  });
+  return `<svg class="st-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="R-eloszlás">${parts.join("")}</svg>
+    <div class="chart-legend">${ST_SERIES.map(([, name, color]) => `<span><span class="swatch" style="background:${color}"></span> ${esc(name)}</span>`).join("")}</div>`;
+}
+
+function statsEquity(points) {
+  const W = 640, H = 200, pad = { l: 40, r: 8, t: 10, b: 20 };
+  let cum = 0;
+  const ys = [0].concat(points.map((p) => (cum += p.r)));
+  const lo = Math.min(0, ...ys), hi = Math.max(0, ...ys);
+  const x = (n) => pad.l + (n / Math.max(1, ys.length - 1)) * (W - pad.l - pad.r);
+  const y = (v) => pad.t + (hi - v) / (hi - lo || 1) * (H - pad.t - pad.b);
+  const ticks = niceTicks(lo, hi || 1, 4);
+  const parts = ticks.map((t) => `<line class="st-grid" x1="${pad.l}" x2="${W - pad.r}" y1="${y(t)}" y2="${y(t)}"/><text class="st-axis" x="${pad.l - 4}" y="${y(t) + 4}" text-anchor="end">${fmt(t, 0)} R</text>`);
+  parts.push(`<line class="st-zero" x1="${pad.l}" x2="${W - pad.r}" y1="${y(0)}" y2="${y(0)}"/>`);
+  parts.push(`<path class="st-line" d="${ys.map((v, n) => `${n ? "L" : "M"}${x(n).toFixed(1)},${y(v).toFixed(1)}`).join("")}"/>`);
+  points.forEach((p, n) => {
+    if (p.verdict !== "lucky" && p.verdict !== "unlucky") return;
+    const [label, color] = p.verdict === "lucky" ? ["Szerencsés", "var(--warn)"] : ["Balszerencsés", "var(--info)"];
+    parts.push(`<circle cx="${x(n + 1)}" cy="${y(ys[n + 1])}" r="4" fill="${color}" stroke="var(--surface)" stroke-width="1.5"><title>${esc(label)}: ${signed(p.r, 2, " R")}</title></circle>`);
+  });
+  return `<svg class="st-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Tőkegörbe R-ben">${parts.join("")}</svg>
+    <div class="chart-legend"><span><span class="swatch" style="background:var(--series-1)"></span> Összesített R</span>
+      <span><span class="swatch dot" style="background:var(--warn)"></span> Szerencsés</span><span><span class="swatch dot" style="background:var(--info)"></span> Balszerencsés</span></div>`;
+}
+
+function statsCalendar(days) {
+  const max = Math.max(1, ...days.map((d) => d.n));
+  const offset = (new Date(`${days[0].date}T00:00:00Z`).getUTCDay() + 6) % 7;          // hetfo = 0
+  const cells = Array(offset).fill(`<span class="heat-cell out"></span>`).concat(days.map((d) => {
+    const tip = `${d.date}: ${d.n} döntés${d.mean_r != null ? `, átlag ${signed(d.mean_r, 2, " R")}` : ""}`;
+    return `<span class="heat-cell${d.n ? "" : " zero"}" style="${d.n ? `opacity:${(0.3 + 0.7 * d.n / max).toFixed(2)}` : ""}" title="${esc(tip)}" aria-label="${esc(tip)}" role="img"></span>`;
+  }));
+  return `<div class="heat" role="group" aria-label="Napi döntésszám az utolsó 12 hétben">${cells.join("")}</div>
+    <p class="muted small">Oszloponként egy hét (hétfőtől vasárnapig); minél sötétebb, annál több döntés. Rámutatva: a napi átlagos R.</p>`;
+}
+
+function statsMonteCarlo(mc) {
+  const row = (label, band, actual, unit) => `<tr><td>${esc(label)}</td><td class="num">${fmt(band["5"], 1)}${unit}</td><td class="num">${fmt(band["50"], 1)}${unit}</td>
+    <td class="num">${fmt(band["95"], 1)}${unit}</td><td class="num"><strong>${fmt(actual, 1)}${unit}</strong></td></tr>`;
+  return `<p><span>Ugyanazok a döntések</span> ${mc.runs}<span>-szer, véletlen sorrendben: ennyi múlik a sorrenden.</span></p>
+    <div class="table-scroll"><table class="table"><thead><tr><th></th><th>5%</th><th>50%</th><th>95%</th><th>A te sorrended</th></tr></thead><tbody>
+    ${row("Legnagyobb visszaesés", mc.drawdown, mc.actual.drawdown, " R")}${row("Leghosszabb vesztes sorozat", mc.streak, mc.actual.streak, "")}</tbody></table></div>
+    <p class="muted small">Ugyanaz a döntéssor más sorrendben jóval mélyebb visszaesést vagy hosszabb vesztes sorozatot is hozhatott volna – egy jó folyamatnál is.</p>`;
+}
+
+function statsBreakdown(b) {
+  const label = (dim, key) => (dim === "category" ? PR_CAT[key] || key : dim === "level" ? `${key}. szint` : dim === "side" ? PR_SIDE[key] || key : key);
+  return Object.entries(ST_DIMS).filter(([dim]) => b[dim].length).map(([dim, title]) => `<h3>${esc(title)}</h3>
+    <table class="table cards-on-phone"><thead><tr><th>${esc(title)}</th><th>Döntés</th><th>Belépés</th><th>Lezárt kötés</th><th>Találati arány</th><th>Átlag R</th><th>Rossz vagy szerencsés</th><th>Szoros stop</th></tr></thead><tbody>
+    ${b[dim].map((g) => `<tr><td>${esc(label(dim, g.key))}</td><td class="num">${g.n}</td><td class="num">${g.entered}</td><td class="num">${g.closed}</td>
+      <td class="num">${g.win_rate == null ? "–" : `${fmt(g.win_rate * 100, 0)}%`}</td><td class="num ${rCls(g.mean_r)}">${signed(g.mean_r, 2, " R")}</td>
+      <td class="num">${g.misses} (${fmt((g.miss_rate || 0) * 100, 0)}%)</td><td class="num">${g.tight}</td></tr>`).join("")}</tbody></table>`).join("");
+}
+
+async function pageStats() {
+  const [s, rv] = await Promise.all([api(`/api/stats?period=${statsFilter.period}&source=${statsFilter.source}`), api("/api/review")]);
+  const m = s.metrics;
+  const pctv = (v) => (v == null ? "–" : `${fmt(v * 100, 0)}%`);
+  view.innerHTML = `
+    <div class="page-head"><a href="#/profile" class="muted">← Profil</a><h1>Statisztikám</h1>
+      <span class="muted">A saját értékelt döntéseid – csak R-ben, pénzbeli érték nélkül. Leírás, nem ajánlás.</span></div>
+    <section class="card"><div class="card-body st-filters">
+      <span class="segmented" role="group" aria-label="Időszak">${Object.entries(ST_PERIODS).map(([key, label]) =>
+        `<button type="button" class="seg${key === statsFilter.period ? " on" : ""}" data-period="${key}" aria-pressed="${key === statsFilter.period}">${esc(label)}</button>`).join("")}</span>
+      <label class="small">Forrás <select id="st-source">${Object.entries(ST_SOURCES).map(([key, label]) =>
+        `<option value="${key}"${key === statsFilter.source ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label></div></section>
+    <div class="kpis">
+      <div class="kpi"><div class="label">Döntések</div><div class="value">${m.decisions}</div><div class="sub"><span>belépési arány:</span> ${pctv(m.entry_rate)}</div></div>
+      <div class="kpi"><div class="label">Találati arány</div><div class="value">${pctv(m.win_rate)}</div><div class="sub">${m.closed} <span>lezárt kötés</span></div></div>
+      <div class="kpi"><div class="label">Várható érték</div><div class="value ${rCls(m.expectancy)}">${signed(m.expectancy, 2, " R")}</div><div class="sub">R / lezárt kötés</div></div>
+      <div class="kpi"><div class="label">Átlagos nyerő / vesztő</div><div class="value">${signed(m.avg_win, 2)} / ${signed(m.avg_loss, 2)}</div><div class="sub">R</div></div>
+      <div class="kpi"><div class="label">Profit faktor</div><div class="value">${fmt(m.profit_factor, 2)}</div><div class="sub">nyerő R / vesztő R</div></div>
+      <div class="kpi"><div class="label">Leghosszabb vesztes sorozat</div><div class="value">${m.losing_streak}</div><div class="sub"><span>legnagyobb visszaesés:</span> ${fmt(m.max_drawdown, 2)} R</div></div>
+    </div>
+    ${s.few ? `<section class="card"><div class="card-body"><p><strong>Még kevés a döntés.</strong> <span>Az eloszláshoz és a Monte Carlo-hoz legalább</span> ${s.min_n} <span>lezárt kötés kell (most:</span> ${m.closed}<span>).</span></p></div></section>` : `
+    <section class="card"><h2>R-eloszlás</h2><div class="card-body">${statsHistogram(s.histogram, s.edges)}
+      <p class="muted small">Sávonként a kötések aránya. A stratégiák és a véletlen alapvonal ugyanazokon a helyzeteken – egy jó folyamatnál is vannak vesztes kötések.</p></div></section>`}
+    ${s.equity.length ? `<section class="card"><h2>Tőkegörbe R-ben</h2><div class="card-body">${statsEquity(s.equity)}</div></section>` : ""}
+    ${s.few ? "" : `<section class="card"><h2>Monte Carlo</h2><div class="card-body">${statsMonteCarlo(s.monte_carlo)}</div></section>`}
+    <section class="card"><h2>Naptár</h2><div class="card-body">${statsCalendar(s.calendar)}</div></section>
+    ${weaknessCard(rv)}
+    ${m.decisions ? `<section class="card"><h2>Bontás</h2><div class="card-body st-breakdown">${statsBreakdown(s.breakdown)}</div></section>` : ""}
+    ${Object.keys(s.kinds).length ? `<section class="card"><h2>Feladattípusok</h2><div class="card-body"><ul class="digest-list">
+      ${Object.entries(s.kinds).map(([key, v]) => `<li><span>${esc(PR_KIND[key] || key)}: ${v.n} feladat, átlagos értékelés ${fmt(v.mean_quality * 100, 0)}%</span></li>`).join("")}</ul></div></section>` : ""}`;
+  view.querySelectorAll("[data-period]").forEach((b) => b.addEventListener("click", () => { statsFilter.period = b.dataset.period; pageStats(); }));
+  $("#st-source").addEventListener("change", (ev) => { statsFilter.source = ev.target.value; pageStats(); });
+}
+
+// ---------------------------------------------------------------------------
 // Profil: a fiok, kilepes (mindenhonnan is)
 // ---------------------------------------------------------------------------
 async function pageProfile() {
-  const [s, g, sh, rv, lg] = await Promise.all([api("/api/session"), api("/api/progress"), api("/api/shares"), api("/api/review"), api("/api/league")]);
+  const [s, g, sh, lg] = await Promise.all([api("/api/session"), api("/api/progress"), api("/api/shares"), api("/api/league")]);
   view.innerHTML = `
     <div class="page-head"><h1>Profil</h1><span class="muted" translate="no">${esc(s.email)}</span>
       ${s.admin ? `<a class="btn" href="/admin">Admin felület</a>` : ""}</div>
@@ -433,7 +569,9 @@ async function pageProfile() {
     <section class="card"><h2>Magabiztosság és kalibráció</h2><div class="card-body">
       <label class="check"><input type="checkbox" id="conf-toggle" ${prefConfidence() ? "checked" : ""}> <span>Magabiztosság megadása minden döntésnél (a leckékben a 6. szinttől mindig)</span></label>
       ${g.calibration.n ? calibrationView(g.calibration) : `<p class="muted">Még nincs magabiztossággal megadott döntés.</p>`}</div></section>
-    ${weaknessCard(rv)}
+    <section class="card"><h2>Statisztikám</h2><div class="card-body">
+      <p>A döntéseid eloszlása R-ben: várható érték, tőkegörbe, Monte Carlo, naptár és bontás típus szerint – itt vannak a gyengeségeid is.</p>
+      <p><a class="btn primary" href="#/stats">Statisztikám megnyitása</a></p></div></section>
     <section class="card"><h2>Heti liga</h2><div class="card-body">
       <label class="check"><input type="checkbox" id="league-toggle" ${lg.opted_out ? "" : "checked"}> <span>Részt veszek a heti ligában</span></label>
       <p class="muted small">Kilépéskor azonnal kikerülsz a heti csoportodból; visszalépés után a következő döntéseddel kerülsz be újra.</p></div></section>
@@ -510,10 +648,11 @@ $("#logout").addEventListener("click", () => {
 // Gyakorlas: rejtett multbeli helyzetek (practice/) - a papir es a datum csak a dontes utan derul ki
 // ---------------------------------------------------------------------------
 let practiceTimer = null;
-const PR_REASON = { stop: "stop", gap_stop: "stop (nyitási rés)", target: "cél", time: "időkorlát", signal: "kilépési jel" };
+const PR_REASON = { stop: "stop", gap_stop: "stop (nyitási rés)", target: "cél", time: "időkorlát", signal: "kilépési jel", manual: "kiszállás (kezelés)" };
 const PR_STRAT = { pullback: "Visszahúzás (RSI2)", deep: "Mély visszahúzás", breakout: "Kitörés", short: "Short (kísérleti)" };
 const PR_CAT = { strategy: "stratégia-jelzés", pattern: "formálódó alakzat", short: "short-gyanús helyzet", nothing: "semmi különös" };
 const PR_SIDE = { long: "Long", short: "Short", enter: "Long", skip: "Kihagyás" };
+const PR_SOURCE = { downtrend: "eső trend", coin: "érmedobás", volatile: "nagy volatilitás" };   // a fejezetzarok (#79 b) rezsimjei is
 // itelet: szin + ikon + szoveg (nem csak szin)
 const PR_VERDICT = { good: ["Jó döntés", "ok", "✓"], lucky: ["Szerencsés", "warn", "≈"], unlucky: ["Balszerencsés", "info", "↺"], bad: ["Rossz döntés", "bad", "✗"] };
 const PR_LEVEL = { stop: ["Stop", "var(--down)"], target: ["Cél", "var(--up)", true], limit: ["Limit", "var(--info)"],
@@ -568,6 +707,7 @@ async function pagePractice(msg = "") {
         <label>Formálódó alakzat (%)<input name="m_pattern" type="number" min="0" value="${d.defaults.mix.pattern}"></label>
         <label>Short-gyanús (%)<input name="m_short" type="number" min="0" value="${d.defaults.mix.short ?? 0}"></label>
         <label>Semmi különös (%)<input name="m_nothing" type="number" min="0" value="${d.defaults.mix.nothing}"></label>
+        <label class="check-inline wide"><input name="manage" type="checkbox"> <span>Gyertyánkénti visszajátszás pozíciókezeléssel (stop húzása, részleges zárás, kiszállás)</span></label>
         <label>Feladattípus<select name="kind">${Object.entries(PR_KIND).map(([key, label]) => `<option value="${key}">${esc(label)}</option>`).join("")}<option value="mixed">Vegyes</option></select></label>
         <div class="wide"><button class="btn primary" type="submit">Kör indítása</button> <span id="pr-msg" class="small"></span>
           <span class="muted small">Megosztási kóddal a helyzetek száma és sorrendje a kódból jön.</span></div>
@@ -591,7 +731,7 @@ async function pagePractice(msg = "") {
     const v = (n) => form.elements[n].value.trim();
     const body = { rounds: Number(v("rounds")), seed: v("seed") === "" ? null : Number(v("seed")), code: v("code") || null,
       mix: { strategy: Number(v("m_strategy")), pattern: Number(v("m_pattern")), short: Number(v("m_short")), nothing: Number(v("m_nothing")) },
-      kinds: v("kind") === "mixed" ? PR_MIXED : { [v("kind")]: 1 } };
+      kinds: v("kind") === "mixed" ? PR_MIXED : { [v("kind")]: 1 }, manage: form.elements.manage.checked };
     try { const r = await api("/api/practice/session", { method: "POST", body: JSON.stringify(body) }); location.hash = `#/practice/${r.session.id}`; }
     catch (e) { const m = $("#pr-msg"); m.className = "msg err small"; m.textContent = e.message; }
   });
@@ -607,51 +747,71 @@ async function pagePractice(msg = "") {
 async function pagePracticeSession(id) {
   clearInterval(practiceTimer);
   const s = await api(`/api/practice/session/${id}/summary`);
+  if (s.replay != null) { await pagePracticeTask(id, s.replay, s.session); return; }   // a visszajatszas (#76) folytatodik
   const expired = s.session.deadline && new Date(s.session.deadline) < new Date();
   if (!s.hidden && (s.session.done || expired)) { renderPracticeSummary(s); return; }
   await pagePracticeTask(id, s.session.next, s.session);
 }
 
-function practiceLevels(f) {
+function practiceLevels(f, bad = {}) {
   const out = [];
   if (!f || !["enter", "long", "short"].includes(f.action)) return out;
-  if (f.entry === "limit" && f.limit) out.push({ v: f.limit, label: "Limit", color: "var(--info)" });
-  if (f.stop) out.push({ v: f.stop, label: "Stop", color: "var(--down)" });
-  if (f.target) out.push({ v: f.target, label: "Cél", color: "var(--up)", dash: true });
+  const mark = (key, label) => (bad[key] ? `${label} ✗` : label);
+  if (f.entry === "limit" && f.limit) out.push({ v: f.limit, label: mark("limit", "Limit"), color: bad.limit ? "var(--down)" : "var(--info)", dash: !!bad.limit });
+  if (f.stop) out.push({ v: f.stop, label: mark("stop", "Stop"), color: "var(--down)", dash: !!bad.stop });
+  if (f.target) out.push({ v: f.target, label: mark("target", "Cél"), color: bad.target ? "var(--down)" : "var(--up)", dash: true });
   return out;
 }
 
+// Y-tengely (#79 a): ar / % / ATR - a valasztas eszkozonkent megmarad
+const PR_AXES = { price: "Ár", pct: "%", atr: "ATR" };
+const prefAxis = () => { try { const v = localStorage.getItem("sw-axis"); return PR_AXES[v] ? v : "price"; } catch (e) { return "price"; } };
+
+// a gyakorlo oldal elhagyasakor: nincs billentyuparancs, nincs also dontesi sav (#79 d, e)
+function leavePractice() { prKeys = null; document.body.classList.remove("has-dock"); }
+
 async function pagePracticeTask(id, k, sess) {
   clearInterval(practiceTimer);
+  leavePractice();
   const t = await api(`/api/practice/session/${id}/task/${k}`);
   if (t.kind && t.kind !== "decision") { await pageKindTask(id, k, sess, t); return; }
   const atr = t.chart.atr || 1;
   view.innerHTML = `
-    <div class="page-head"><a href="${sess.daily ? "#/daily" : sess.exam ? "#/learn" : "#/practice"}" class="muted">← ${sess.daily ? "Napi kihívás" : sess.exam ? "Tanulás" : "Gyakorlás"}</a><h1>Helyzet ${k + 1} / ${t.rounds}</h1>
+    <div class="page-head"><a href="${sess.daily ? "#/daily" : sess.exam || sess.boss || sess.lesson ? "#/learn" : "#/practice"}" class="muted">← ${sess.daily ? "Napi kihívás" : sess.exam || sess.boss || sess.lesson ? "Tanulás" : "Gyakorlás"}</a><h1>Helyzet ${k + 1} / ${t.rounds}</h1>
       ${sess.deadline ? `<span class="badge watch">Beadás: ${esc(new Date(sess.deadline).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" }))}-ig</span>` : ""}
-      <span class="muted">Az utolsó látható záró = 100; a vízszintes tengely kereskedési napokban (0 = a döntés napja). ATR (14): ${fmt(atr, 2)}</span></div>
+      <span class="muted">Az utolsó látható záró = 100; a vízszintes tengely kereskedési napokban (0 = a döntés napja). ATR (14): ${fmt(atr, 2)}</span>
+      <button class="btn icon" id="pr-keys-btn" type="button" aria-expanded="false" aria-controls="pr-keys" title="Billentyűparancsok (?)" aria-label="Billentyűparancsok">?</button></div>
+    ${keysHelp()}
     ${sess.warning === "other_pool" ? `<section class="card"><div class="card-body">Ez a megosztási kód más feladatkészlethez készült: itt ugyanaz a kód más helyzeteket ad.</div></section>` : ""}
     <section class="card chart-card"><div class="chart-legend"><span><span class="swatch" style="background:var(--ema20)"></span> EMA20</span>
       <span><span class="swatch" style="background:var(--ema50)"></span> EMA50</span><span><span class="swatch" style="background:var(--ema200)"></span> EMA200</span>
-      <span class="muted">Volumen: a 20 napos átlaghoz viszonyítva</span></div>
-      <div class="card-body"><svg id="pr-chart" role="img" aria-label="Rejtett chart"></svg></div></section>
+      <span class="muted">Volumen: a 20 napos átlaghoz viszonyítva</span>
+      <span class="segmented pr-axis" role="group" aria-label="Y-tengely">${Object.entries(PR_AXES).map(([key, label]) =>
+        `<button type="button" class="seg${key === prefAxis() ? " on" : ""}" data-axis="${key}" aria-pressed="${key === prefAxis()}">${esc(label)}</button>`).join("")}</span>
+      ${t.weekly ? `<label class="check-inline small"><input type="checkbox" id="pr-weekly-on"> <span>Heti nézet (5 napos gyertyák)</span></label>` : ""}</div>
+      <div class="card-body"><svg id="pr-chart" role="group" aria-label="Rejtett chart"></svg>
+        <div id="pr-weekly" hidden><h3 class="small muted">Heti gyertyák – ugyanaz a múlt, a döntés napjáig</h3><svg id="pr-weekly-chart" role="img" aria-label="Heti chart"></svg></div></div></section>
     <section class="card" id="pr-decision"><h2>Döntés</h2><div class="card-body">
       <form id="pr-dform" class="ag-form">
-        <div class="wide"><span class="small muted">Döntés</span><br><div class="segmented pr-sides" role="group" aria-label="Döntés">
-          <button type="button" class="seg" data-side="skip">Kihagyom</button><button type="button" class="seg on" data-side="long">Long</button><button type="button" class="seg" data-side="short">Short</button></div>
-          <input type="hidden" name="action" value="long"></div>
         <label>Belépés módja<select name="entry"><option value="open">Következő nyitás</option><option value="limit">Limit (egynapos, a következő napra; shortnál a belépő fölött teljesül)</option></select></label>
         <label>Limit ár<input name="limit" type="number" step="0.01" value="${fmtIn(100 - 0.5 * atr)}"></label>
         <label>Stop (kötelező)<input name="stop" type="number" step="0.01" value="${fmtIn(100 - 2 * atr)}"></label>
         <label>Cél (üres: nincs)<input name="target" type="number" step="0.01"></label>
         <label>Időkorlát (nap)<input name="days" type="number" min="1" max="${t.max_days}" value="10"></label>
+        <label class="check-inline"><input name="magnet" type="checkbox" checked> <span>Mágnes: a húzott vonal a közeli gyertya csúcsára / aljára ugrik</span></label>
         ${t.confidence || prefConfidence() ? `<label class="wide">Magabiztosság: <output id="pr-conf-out">70%</output> – ennyire vagy biztos benne, hogy ez a jó döntés
           <input name="confidence" type="range" min="50" max="95" step="5" value="70"></label>` : ""}
-        <div class="wide"><span id="pr-risk" class="small muted"></span></div>
-        <div class="wide"><button class="btn primary" type="submit">Döntés rögzítése</button> <span class="muted small">A döntés után nem módosítható.</span> <span id="pr-err" class="small"></span></div>
+        <div class="wide"><span id="pr-risk" class="small muted"></span> <span id="pr-drag-hint" class="small muted">A stopot és a célt a charton is húzhatod.</span></div>
+        <div class="wide"><span id="pr-err" class="small" role="alert"></span> <span class="muted small">A döntés után nem módosítható.</span></div>
+        <div class="wide pr-dock"><div class="segmented pr-sides" role="group" aria-label="Döntés">
+          <button type="button" class="seg" data-side="skip">Kihagyom</button><button type="button" class="seg on" data-side="long">Long</button><button type="button" class="seg" data-side="short">Short</button></div>
+          <input type="hidden" name="action" value="long">
+          <button class="btn primary" type="submit">Döntés rögzítése</button></div>
       </form></div></section>
     ${practiceCriteriaBefore(t.hints)}
     <div id="pr-reveal"></div>`;
+  wireKeysHelp();
+  document.body.classList.add("has-dock");
   const svg = $("#pr-chart");
   const form = $("#pr-dform");
   const read = () => {
@@ -660,14 +820,28 @@ async function pagePracticeTask(id, k, sess) {
       confidence: form.elements.confidence ? n("confidence") : null };
   };
   let chartOpt = {};
-  const draw = () => practiceChart(svg, t.chart.bars, chartOpt);
+  let axisMode = prefAxis();
+  const weekly = $("#pr-weekly-chart"), weeklyBox = $("#pr-weekly");   // elhagyott oldalon is a sajat elemei
+  const draw = () => {
+    practiceChart(svg, t.chart.bars, { ...chartOpt, axis: { mode: axisMode, atr } });
+    if (weekly && !weeklyBox.hidden) practiceChart(weekly, t.weekly.bars, { height: 220, dayLabel: "Hét", axis: { mode: axisMode, atr: t.weekly.atr } });
+  };
+  view.querySelectorAll("[data-axis]").forEach((b) => b.addEventListener("click", () => {
+    axisMode = b.dataset.axis;
+    try { localStorage.setItem("sw-axis", axisMode); } catch (e) { /* nem baj */ }
+    view.querySelectorAll("[data-axis]").forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-pressed", x === b); });
+    draw();
+  }));
+  if (weekly) $("#pr-weekly-on").addEventListener("change", (ev) => { weeklyBox.hidden = !ev.target.checked; draw(); });
   let edited = false;
   form.querySelectorAll("input[name=stop], input[name=target], input[name=limit]").forEach((el) => el.addEventListener("input", () => { edited = true; }));
   const setSide = (side) => {
+    if (form.dataset.done) return;
     const prev = form.elements.action.value;
     form.elements.action.value = side;
     form.querySelectorAll(".pr-sides .seg").forEach((b) => { b.classList.toggle("on", b.dataset.side === side); b.setAttribute("aria-pressed", b.dataset.side === side); });
-    if (side !== "skip" && side !== prev && (!edited || prev === "skip")) {
+    const wrong = side !== "skip" && Object.keys(decisionProblems(read())).length;    // a masik oldalon ervenytelen szintek
+    if (side !== "skip" && side !== prev && (!edited || prev === "skip" || wrong)) {
       const sign = side === "long" ? 1 : -1;
       form.elements.limit.value = fmtIn(100 - sign * 0.5 * atr);
       form.elements.stop.value = fmtIn(100 - sign * 2 * atr);
@@ -681,38 +855,155 @@ async function pagePracticeTask(id, k, sess) {
     const f = read();
     const enter = f.action !== "skip";
     const sign = f.action === "short" ? -1 : 1;
-    ["entry", "limit", "stop", "target", "days"].forEach((name) => { form.elements[name].closest("label").hidden = !enter || (name === "limit" && f.entry !== "limit"); });
+    ["entry", "limit", "stop", "target", "days", "magnet"].forEach((name) => { form.elements[name].closest("label").hidden = !enter || (name === "limit" && f.entry !== "limit"); });
+    $("#pr-drag-hint").hidden = !enter;
     const ref = f.entry === "limit" ? f.limit : 100;
+    const bad = enter ? decisionProblems(f) : {};
     $("#pr-risk").textContent = enter && f.stop != null && ref ? `Stop-távolság: ${fmt(sign * (ref - f.stop) / atr, 2)} ATR (${fmt(sign * (ref - f.stop) / ref * 100, 1)}%)`
       + (f.target ? ` · cél: ${fmt((f.target - ref) / (ref - f.stop), 2)} R` : "") : "";
+    const reason = Object.values(bad)[0];
+    if (!form.dataset.done) {
+      const err = $("#pr-err");
+      err.className = reason ? "msg err small" : "small";
+      err.textContent = reason || "";
+      form.querySelector("button[type=submit]").disabled = !!reason;
+    }
     if (form.elements.confidence) $("#pr-conf-out").textContent = `${f.confidence}%`;
-    chartOpt = { levels: practiceLevels(f) };
+    chartOpt = { levels: practiceLevels(f, bad), ...(enter && !form.dataset.done ? decisionHandles(f, atr, bad) : {}) };
     draw();
   };
+  // a vonal huzasa / billentyuje -> az urlap mezoje (egy forras: a mezo; a vonal mindig a mezo kerekitett erteket mutatja)
+  const set = (key, v, pxPerPrice) => {
+    if (form.dataset.done) return;
+    if (pxPerPrice && form.elements.magnet.checked) v = magnet(t.chart.bars, v, pxPerPrice);
+    form.elements[key].value = fmtIn(v);
+    edited = true;
+    preview();
+  };
+  chartDrag(svg, 0.1 * atr, set);
   form.addEventListener("input", preview);
   form.addEventListener("change", preview);
   if (chartRO) chartRO.disconnect();
   chartRO = new ResizeObserver(() => draw());
   chartRO.observe(svg.parentElement);
   preview();
-  if (t.decided) { showPracticeReveal(id, k, t, t.reveal, (o) => { chartOpt = o; draw(); }, true); return; }
+  prKeys = { k: () => setSide("skip"), l: () => setSide("long"), s: () => setSide("short"), Enter: () => form.requestSubmit() };
+  const redraw = (o) => { chartOpt = o; draw(); };
+  if (t.decided) { form.dataset.done = "1"; if (t.replay) showReplay(id, k, t, t.replay, redraw, sess); else showPracticeReveal(id, k, t, t.reveal, redraw, true); return; }
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const f = read();
+    if (form.dataset.done || (f.action !== "skip" && Object.keys(decisionProblems(f)).length)) return;
     const body = f.action === "skip" ? { action: "skip", confidence: f.confidence } : { ...f, limit: f.entry === "limit" ? f.limit : null };
     try {
       const r = await api(`/api/practice/session/${id}/task/${k}/decision`, { method: "POST", body: JSON.stringify(body) });
+      form.dataset.done = "1";
       if (r.hidden) {                          // napi kihivas: az eredmeny csak a vegen
         form.querySelectorAll("input, select, button").forEach((el) => { el.disabled = true; });
+        preview();
         $("#pr-reveal").innerHTML = `<section class="card"><div class="card-body"><p><strong>Rögzítve.</strong> A napi kihívás eredménye a beadás után derül ki.</p>
           <button class="btn primary" id="pr-next" type="button">Következő helyzet</button></div></section>`;
         $("#pr-next").addEventListener("click", () => pagePracticeSession(id));
+        const next = () => pagePracticeSession(id);
+        prKeys = { ArrowRight: next, " ": next, Enter: next };
         return;
       }
-      showPracticeReveal(id, k, t, { ...r.reveal, progress: r.progress }, (o) => { chartOpt = o; draw(); }, false, r.session);
+      if (r.replay) { showReplay(id, k, t, r.replay, redraw, r.session); return; }   // kezelesi mod (#76)
+      showPracticeReveal(id, k, t, { ...r.reveal, progress: r.progress }, redraw, false, r.session);
     } catch (e) { const m = $("#pr-err"); m.className = "msg err small"; m.textContent = e.message; }
   });
 }
+
+// az urlap ervenyessege a szerver szabalyaival (session.Decision): mezo -> ok; ervenytelen allas nem kuldheto be (#77)
+function decisionProblems(f) {
+  const out = {};
+  const long = f.action !== "short";
+  const ref = f.entry === "limit" ? f.limit : 100;
+  if (f.entry === "limit" && !(f.limit > 0 && f.limit <= 150)) out.limit = "A limitár 0 és 150 között legyen (normalizált ár).";
+  if (f.stop == null || !Number.isFinite(f.stop)) out.stop = "A stop kötelező.";
+  else if (long && !(f.stop > 0 && f.stop < ref)) out.stop = "Longnál a stop a belépő alatt legyen.";
+  else if (!long && !(f.stop > ref && f.stop <= 1000)) out.stop = "Shortnál a stop a belépő felett legyen.";
+  if (f.target != null && long && !(f.target > ref && f.target <= 1000)) out.target = "Longnál a cél a belépő felett legyen.";
+  if (f.target != null && !long && !(f.target > 0 && f.target < ref)) out.target = "Shortnál a cél a belépő alatt legyen.";
+  return out;
+}
+
+// a huzhato fogantyuk es a savok: cimke = tavolsag ATR-ben es %-ban, a cele R-ben; cel nelkul egy halvany "Cél?" fogantyu
+function decisionHandles(f, atr, bad) {
+  const sign = f.action === "short" ? -1 : 1;
+  const ref = f.entry === "limit" ? f.limit : 100;
+  const handles = [], bands = [];
+  const risk = f.stop != null ? sign * (ref - f.stop) : null;
+  if (f.entry === "limit" && f.limit != null) handles.push({ key: "limit", v: f.limit, label: "Limit", color: "var(--info)", bad: !!bad.limit, info: `${signed((f.limit - 100) / atr, 1)} ATR` });
+  if (f.stop != null) {
+    handles.push({ key: "stop", v: f.stop, label: "Stop", color: "var(--down)", bad: !!bad.stop, info: `${fmt(risk / atr, 1)} ATR · ${fmt(risk / ref * 100, 1)}%` });
+    if (!bad.stop && !bad.limit) bands.push({ from: ref, to: f.stop, color: "var(--down)" });
+  }
+  if (f.target != null) {
+    handles.push({ key: "target", v: f.target, label: "Cél", color: "var(--up)", bad: !!bad.target, info: risk > 0 ? `${fmt(sign * (f.target - ref) / risk, 2)} R` : "" });
+    if (!bad.target && !bad.limit) bands.push({ from: ref, to: f.target, color: "var(--up)" });
+  } else if (risk > 0) {
+    handles.push({ key: "target", v: Math.round((ref + sign * 2 * risk) * 100) / 100, label: "Cél", color: "var(--up)", ghost: true, info: "Cél? (húzd)" });
+  }
+  return { handles, bands };
+}
+
+// magnes (#77): a kozeli (8 px-en beluli) gyertya csucsa / alja
+function magnet(bars, v, pxPerPrice) {
+  let best = v, dist = 8 / pxPerPrice;
+  bars.forEach((b) => [b.h, b.l].forEach((p) => { if (Math.abs(p - v) < dist) { dist = Math.abs(p - v); best = p; } }));
+  return best;
+}
+
+// huzhato szintek a charton (#77, #76): eger, erintes (a fogantyun az oldal nem gorget), billentyu (fel / le = `step`)
+function chartDrag(svg, step, onSet) {
+  let key = null;
+  svg.addEventListener("pointerdown", (ev) => {
+    const h = ev.target.closest("[data-handle]");
+    if (!h) return;
+    key = h.dataset.handle;
+    svg.setPointerCapture(ev.pointerId);
+    ev.preventDefault();
+    h.focus({ preventScroll: true });
+  });
+  // erintes a fogantyun: az oldal ne goregjen (az SVG-elemek touch-action-jet nem minden bongeszo veszi figyelembe)
+  svg.addEventListener("touchstart", (ev) => { if (ev.target.closest("[data-handle]")) ev.preventDefault(); }, { passive: false });
+  svg.addEventListener("pointermove", (ev) => { if (!key) return; const p = chartPoint(svg, ev); if (p) onSet(key, p.v, p.pxPerPrice); });
+  const up = () => { key = null; };
+  svg.addEventListener("pointerup", up);
+  svg.addEventListener("pointercancel", up);
+  svg.addEventListener("keydown", (ev) => {
+    const h = ev.target.closest("[data-handle]");
+    if (!h || (ev.key !== "ArrowUp" && ev.key !== "ArrowDown")) return;
+    ev.preventDefault();
+    onSet(h.dataset.handle, Number(h.dataset.v) + (ev.key === "ArrowUp" ? step : -step));
+  });
+}
+
+// billentyuparancsok (#79 d): a jelenlegi gyakorlo oldal allitja be (prKeys); beviteli mezoben gepeleskor nem elnek
+let prKeys = null;
+const KEYS_HELP = [["K", "Kihagyás"], ["L", "Long"], ["S", "Short"], ["Enter", "Beküldés / mutasd egyben"], ["→", "Következő gyertya / helyzet"],
+  ["Szóköz", "Lejátszás / szünet"], ["↑ ↓", "A kijelölt vonal mozgatása (0,1 ATR)"], ["?", "Súgó"]];
+function keysHelp() {
+  return `<section class="card" id="pr-keys" hidden><h2>Billentyűparancsok</h2><div class="card-body"><dl class="keys">
+    ${KEYS_HELP.map(([key, what]) => `<div><dt><kbd>${esc(key)}</kbd></dt><dd>${esc(what)}</dd></div>`).join("")}</dl></div></section>`;
+}
+function toggleKeysHelp() {
+  const box = $("#pr-keys"), btn = $("#pr-keys-btn");
+  if (!box) return;
+  box.hidden = !box.hidden;
+  if (btn) btn.setAttribute("aria-expanded", String(!box.hidden));
+}
+function wireKeysHelp() { const btn = $("#pr-keys-btn"); if (btn) btn.addEventListener("click", toggleKeysHelp); }
+document.addEventListener("keydown", (e) => {
+  if (!prKeys || !$("#pr-dform") || e.ctrlKey || e.metaKey || e.altKey) return;
+  const el = e.target;
+  if (el.closest && el.closest("input, select, textarea, [contenteditable=true], [data-handle]")) return;
+  if ((e.key === "Enter" || e.key === " ") && el.closest && el.closest("button, a, summary, .pr-step")) return;   // a fokuszalt gomb sajat muvelete
+  if (e.key === "?") { e.preventDefault(); toggleKeysHelp(); return; }
+  const fn = prKeys[e.key.length === 1 && e.key !== " " ? e.key.toLowerCase() : e.key];
+  if (fn) { e.preventDefault(); fn(); }
+});
 
 function prLevels(list) {
   return (list || []).map((h) => { const m = PR_LEVEL[h.kind] || [h.kind, "var(--muted)"]; return { v: h.v, label: m[0], color: m[1], dash: !!m[2] }; });
@@ -723,25 +1014,79 @@ function prMarks(list) {
     color: m.kind === "entry" ? "var(--info)" : m.r > 0 ? "var(--up)" : "var(--down)" }));
 }
 
-function showPracticeReveal(id, k, t, rev, redraw, instant, sess) {
-  const d = rev.decision || {};
-  const u = rev.user;
+// a dontes utan: a beviteli mezok zarolva, a dontes gombsora nem ragad tobbe alulra (a helyet a visszajatszas kapja)
+function lockDecision(d) {
   const form = $("#pr-dform");
+  form.dataset.done = "1";
   form.querySelectorAll("input, select, button").forEach((el) => { el.disabled = true; });
   const side = d.action === "enter" ? "long" : d.action;
   form.querySelectorAll(".pr-sides .seg").forEach((b) => b.classList.toggle("on", b.dataset.side === side));
+  const dock = form.querySelector(".pr-dock");
+  if (dock) dock.classList.remove("pr-dock");
+}
+
+// visszajatszas-vezerlo (#76): kovetkezo gyertya, +5, lejatszas / szunet, sebesseg, mutasd egyben; telefonon alul
+const PR_SPEEDS = [0.5, 1, 2, 4, 8];
+const PR_BASE_MS = 140;                          // 1x: ennyi ms gyertyankent (alapbol 2x)
+function replayBar(n) {
+  return `<div class="pr-replay-bar pr-dock" role="group" aria-label="Visszajátszás">
+      <button class="btn" id="pr-play" type="button" aria-pressed="true"><span aria-hidden="true">⏸</span> <span>Szünet</span></button>
+      <button class="btn" id="pr-step" type="button">+1 gyertya</button>
+      <button class="btn" id="pr-step5" type="button">+5</button>
+      <label class="small pr-speed"><span>Sebesség</span> <select id="pr-speed">${PR_SPEEDS.map((s) => `<option value="${s}"${s === 2 ? " selected" : ""}>${fmt(s, s < 1 ? 1 : 0)}×</option>`).join("")}</select></label>
+      <button class="btn primary" id="pr-skipanim" type="button">Mutasd egyben</button>
+      <span class="muted small" id="pr-replay-pos" aria-live="polite">0 / ${n}</span></div>`;
+}
+
+// a lejatszas idozitoje es gombjai: `advance(n)` lep (igaz: van meg), `done()` a vege
+function replayControls(n, advance, done) {
+  let playing = false;
+  const btn = $("#pr-play");
+  const speed = () => Number($("#pr-speed").value) || 2;
+  const stop = () => { playing = false; clearInterval(practiceTimer); btn.innerHTML = `<span aria-hidden="true">▶</span> <span>Lejátszás</span>`; btn.setAttribute("aria-pressed", "false"); };
+  const play = () => {
+    playing = true;
+    btn.innerHTML = `<span aria-hidden="true">⏸</span> <span>Szünet</span>`;
+    btn.setAttribute("aria-pressed", "true");
+    clearInterval(practiceTimer);
+    let busy = false;
+    practiceTimer = setInterval(async () => {
+      if (!$("#pr-play")) { clearInterval(practiceTimer); return; }
+      if (busy) return;
+      busy = true;
+      try { if (!(await advance(1))) stop(); } finally { busy = false; }
+    }, PR_BASE_MS / speed());
+  };
+  const toggle = () => (playing ? stop() : play());
+  btn.addEventListener("click", toggle);
+  $("#pr-step").addEventListener("click", () => { stop(); advance(1); });
+  $("#pr-step5").addEventListener("click", () => { stop(); advance(5); });
+  $("#pr-speed").addEventListener("change", () => { if (playing) play(); });
+  $("#pr-skipanim").addEventListener("click", () => { stop(); done(); });
+  prKeys = { ArrowRight: () => { stop(); advance(1); }, " ": toggle, Enter: () => { stop(); done(); } };
+  return { play, stop };
+}
+
+function showPracticeReveal(id, k, t, rev, redraw, instant, sess) {
+  const d = rev.decision || {};
+  const u = rev.user;
+  lockDecision(d);
   const levels = practiceLevels(d.action !== "skip" ? d : null);
   const marks = u && u.entry_k != null ? [{ k: u.entry_k, v: u.entry, color: "var(--info)", label: "Belépés" }] : [];
   if (u && u.exit_k != null) marks.push({ k: u.exit_k, v: u.exit, color: u.r > 0 ? "var(--up)" : "var(--down)", label: "Kilépés" });
+  const m = rev.manage && rev.manage.user;          // a kezelt kotes kilepese (#76)
+  if (m && m.exit_k != null) marks.push({ k: m.exit_k, v: m.exit, color: "var(--warn)", label: "Kilépés (kezelve)" });
   const n = rev.future.length;
   let shown = instant ? n : 0;
   const box = $("#pr-reveal");
+  const next = () => pagePracticeSession(id);
   const finish = () => {
     clearInterval(practiceTimer);
     shown = n;
     redraw({ levels, future: rev.future, shown, marks });
     box.innerHTML = practiceOutcome(k, t, rev, sess);
-    $("#pr-next").addEventListener("click", () => pagePracticeSession(id));
+    $("#pr-next").addEventListener("click", next);
+    prKeys = { ArrowRight: next, " ": next, Enter: next };
     // a levezetes lepesei es az alternativak sorai: a chart a hozzajuk tartozo szinteket emeli ki
     box.querySelectorAll("[data-pr-focus]").forEach((el) => el.addEventListener("click", () => {
       box.querySelectorAll("[data-pr-focus].focused").forEach((x) => x.classList.remove("focused"));
@@ -751,15 +1096,102 @@ function showPracticeReveal(id, k, t, rev, redraw, instant, sess) {
     }));
   };
   if (instant) { finish(); return; }
-  box.innerHTML = `<section class="card"><div class="card-body"><button class="btn" id="pr-skipanim" type="button">Mutasd egyben</button> <span class="muted small">Ami a döntés után történt…</span></div></section>`;
-  $("#pr-skipanim").addEventListener("click", finish);
-  clearInterval(practiceTimer);
-  practiceTimer = setInterval(() => {
-    if (!location.hash.startsWith(`#/practice/${id}`)) { clearInterval(practiceTimer); return; }
-    shown += 1;
-    redraw({ levels, future: rev.future, shown, marks: marks.filter((m) => m.k <= shown) });
-    if (shown >= n) finish();
-  }, 70);
+  // kezeles nelkul a jovo mar a kliensnel van (a dontes vegleges): a lepteto csak a megjelenitest vezerli
+  box.innerHTML = `<section class="card"><div class="card-body"><p class="muted small">Ami a döntés után történt – léptesd vagy játszd le.</p>${replayBar(n)}</div></section>`;
+  const advance = (step) => {
+    shown = Math.min(n, shown + step);
+    redraw({ levels, future: rev.future, shown, marks: marks.filter((x) => x.k <= shown) });
+    $("#pr-replay-pos").textContent = `${shown} / ${n}`;
+    if (shown >= n) { finish(); return false; }
+    return true;
+  };
+  replayControls(n, advance, finish).play();
+}
+
+// kezelesi mod (#76): a jovo gyertyankent a szervertol; nyitott poziciot a legutobb latott gyertya utan lehet kezelni
+const PR_MANAGE = { stop: "Stop áthúzva", half: "Részleges zárás (50%)", exit: "Kiszállás" };
+function showReplay(id, k, t, st, redraw, sess) {
+  const d = st.decision;
+  lockDecision(d);
+  const atr = t.chart.atr || 1;
+  const box = $("#pr-reveal");
+  box.innerHTML = `<section class="card" id="pr-manage"><h2>Visszajátszás és kezelés</h2><div class="card-body">
+      <p class="muted small">A jövő gyertyánként jön; nyitott pozíciónál a stopot csak a javadra húzhatod, a felét lezárhatod, vagy kiszállhatsz. Minden művelet a következő nyitáson teljesül.</p>
+      <div id="pr-pos" class="pr-pos" aria-live="polite"></div>
+      <div class="digest-controls pr-manage-actions">
+        <label class="small">Új stop <input id="pr-mstop" type="number" step="0.01" inputmode="decimal"></label>
+        <button class="btn" id="pr-mstop-go" type="button">Stop áthúzása</button>
+        <button class="btn" id="pr-half" type="button">Részleges zárás (50%)</button>
+        <button class="btn" id="pr-exit" type="button">Kiszállás most</button>
+        <span id="pr-merr" class="small" role="alert"></span></div>
+      ${replayBar(st.total)}</div></section>`;
+  const msg = (text) => { const e = $("#pr-merr"); e.className = text ? "msg err small" : "small"; e.textContent = text || ""; };
+  const render = () => {
+    const p = st.position;
+    const sign = p.side === "short" ? -1 : 1;
+    const bars = st.bars;
+    const marks = [];
+    if (p.entered) marks.push({ k: p.entry_k, v: p.entry, color: "var(--info)", label: "Belépés" });
+    if (p.closed) marks.push({ k: p.exit_k, v: p.exit, color: "var(--warn)", label: "Kilépés" });
+    const levels = [{ v: p.stop, label: "Stop", color: "var(--down)" }].concat(p.target ? [{ v: p.target, label: "Cél", color: "var(--up)", dash: true }] : []);
+    const pending = Number($("#pr-mstop").value);
+    const handles = p.open ? [{ key: "mstop", v: Number.isFinite(pending) && $("#pr-mstop").value !== "" ? pending : p.stop, label: "Új stop",
+      color: "var(--down)", info: p.entered ? `${fmt(sign * (p.entry - (Number.isFinite(pending) && $("#pr-mstop").value !== "" ? pending : p.stop)) / atr, 1)} ATR` : "" }] : [];
+    redraw({ levels, future: bars.concat(Array(st.total - bars.length).fill(null)), shown: bars.length, marks, handles });
+    $("#pr-replay-pos").textContent = `${st.shown} / ${st.total}`;
+    const state = p.unfilled ? "A limit nem teljesült – nincs pozíció." : !p.entered ? "A belépés a következő nyitáson."
+      : p.closed ? `Lezárva: ${fmt(p.exit, 2)}` : p.exiting ? "Kiszállás a következő nyitáson."
+        : `Nyitott ${p.side === "short" ? "short" : "long"} pozíció${p.halved ? " (a fele már lezárva)" : ""}`;
+    $("#pr-pos").innerHTML = `<strong>${esc(state)}</strong>${p.entered ? ` <span class="muted">· <span>belépő</span> ${fmt(p.entry, 2)} · <span>stop</span> ${fmt(p.stop, 2)}</span>` : ""}
+      ${st.actions.length ? `<ul class="digest-list">${st.actions.map((a) => `<li><span>${a.at}. nap után:</span> <span>${esc(PR_MANAGE[a.type])}</span>${a.stop != null ? ` → ${fmt(a.stop, 2)}` : ""}</li>`).join("")}</ul>` : ""}`;
+    ["pr-mstop", "pr-mstop-go", "pr-exit"].forEach((x) => { $(`#${x}`).disabled = !p.open; });
+    $("#pr-half").disabled = !p.open || p.halved;
+  };
+  const call = async (what, body) => {
+    const r = await api(`/api/practice/session/${id}/task/${k}/${what}`, { method: "POST", body: JSON.stringify(body) });
+    if (r.reveal) { done(r); return false; }
+    st = r.replay;
+    render();
+    return true;
+  };
+  const advance = async (n) => {
+    msg("");
+    if (st.shown >= st.total) { finishReplay(); return false; }
+    try { return await call("step", { n }) && st.shown < st.total; } catch (e) { msg(e.message); return false; }
+  };
+  const manage = async (body) => {
+    controls.stop();
+    msg("");
+    try { await call("manage", { ...body, at: st.shown }); $("#pr-mstop").value = ""; render(); } catch (e) { msg(e.message); }
+  };
+  const done = (r) => { clearInterval(practiceTimer); showPracticeReveal(id, k, t, { ...r.reveal, progress: r.progress }, redraw, true, r.session); };
+  const finishReplay = async () => { try { await call("finish", {}); } catch (e) { msg(e.message); } };
+  $("#pr-mstop-go").addEventListener("click", () => { const v = Number($("#pr-mstop").value); if ($("#pr-mstop").value !== "" && Number.isFinite(v)) manage({ type: "stop", stop: v }); });
+  $("#pr-half").addEventListener("click", () => manage({ type: "half" }));
+  $("#pr-exit").addEventListener("click", () => manage({ type: "exit" }));
+  $("#pr-mstop").addEventListener("input", render);
+  chartDrag($("#pr-chart"), 0.1 * atr, (key, v) => {
+    if (key !== "mstop" || !st.position.open) return;
+    controls.stop();
+    $("#pr-mstop").value = fmtIn(v);
+    render();
+  });
+  const controls = replayControls(st.total, advance, finishReplay);
+  render();
+  controls.stop();                                // kezelesnel nem indul magatol: a felhasznalo lep
+}
+
+function manageCard(m) {
+  if (!m) return "";
+  return `<section class="card"><h2>Kezelés</h2><div class="card-body">
+    <div class="kpis check-kpis">
+      <div class="kpi"><div class="label">Terv szerint</div><div class="value ${rCls(m.plan_r)}">${signed(m.plan_r, 2, " R")}</div><div class="sub">kezelés nélkül</div></div>
+      <div class="kpi"><div class="label">Kezelve</div><div class="value ${rCls(m.r)}">${signed(m.r, 2, " R")}</div><div class="sub"><span>különbség:</span> ${signed(m.delta, 2, " R")}</div></div>
+      <div class="kpi"><div class="label">Elérhető legjobb</div><div class="value">${signed(m.best_r, 2, " R")}</div><div class="sub">a terv szerinti tartás alatt</div></div>
+    </div>
+    <ol class="digest-list">${m.actions.map((a) => `<li><span>${a.at}. nap után:</span> <span>${esc(PR_MANAGE[a.type])}</span>${a.stop != null ? ` → ${fmt(a.stop, 2)}` : ""}</li>`).join("")}</ol>
+    <p class="muted small">A kezelés pontja a kezelt és a terv szerinti R különbségéből jön (+1 R = +5 pont, 0–10 pont). A belépés ítélete ettől független.</p>
+  </div></section>`;
 }
 
 // itelet-szempontok (#59): a dontes elott altalanos lista (nem az adott helyzetrol), a felfedeskor ugyanez pipakkal
@@ -858,7 +1290,7 @@ function practiceOutcome(k, t, rev, sess) {
     <td class="small muted">${s.signaled && s.reason ? `${esc(PR_REASON[s.reason] || s.reason)}${s.held ? ` · ${s.held} nap` : ""}` : ""}</td></tr>`).join("");
   const last = sess ? sess.done : k + 1 >= t.rounds;
   return `<section class="card"><h2>Ítélet</h2><div class="card-body">${practiceVerdict(rev.review)}${practicePoints(rev)}</div></section>
-    ${practiceCriteriaAfter(rev.review)}
+    ${manageCard(rev.manage)}${practiceCriteriaAfter(rev.review)}
     <section class="card"><h2>Eredmény</h2><div class="card-body">
     <div class="kpis check-kpis">
       <div class="kpi"><div class="label">A te döntésed</div><div class="value ${mine[1]}">${mine[0]}</div><div class="sub">${mine[2]}</div></div>
@@ -868,7 +1300,7 @@ function practiceOutcome(k, t, rev, sess) {
         <div class="sub">${base.n} véletlen nap ugyanezen a papíron, azonos stop-távolsággal</div></div>
     </div>
     <div class="table-scroll"><table class="table"><thead><tr><th>Stratégia ugyanezen a ponton</th><th>Jelzés</th><th>Eredmény</th><th>Kilépés</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="pr-name"><strong>${esc(rev.symbol)}</strong>${rev.date ? ` · ${esc(rev.date)}` : ""} · ${esc(PR_CAT[rev.category] || rev.category)}${rev.source && rev.category !== "strategy" ? ` (${esc(rev.source === "downtrend" ? "eső trend" : rev.source)})` : ""}</p>
+    <p class="pr-name"><strong>${esc(rev.symbol)}</strong>${rev.date ? ` · ${esc(rev.date)}` : ""} · ${esc(PR_CAT[rev.category] || rev.category)}${rev.source && rev.category !== "strategy" ? ` (${esc(PR_SOURCE[rev.source] || rev.source)})` : ""}</p>
   </div></section>
   ${practiceSteps(rev.review)}
   <section class="card"><div class="card-body"><div class="digest-controls"><button class="btn primary" id="pr-next" type="button">${last ? "Összegzés" : "Következő helyzet"}</button>
@@ -1097,6 +1529,7 @@ async function wireShare() {
 }
 
 function renderPracticeSummary(p) {
+  leavePractice();
   const s = p.summary;
   const lines = `<ul class="digest-list">${p.lines.map((l) => `<li><span>${esc(l.text)}</span></li>`).join("")}</ul>`;
   const maxb = Math.max(1, ...s.stop_buckets.map((b) => b.n));
@@ -1110,15 +1543,22 @@ function renderPracticeSummary(p) {
       <span class="pr-verdict-icon" aria-hidden="true">${ls.passed ? "✓" : "↺"}</span>
       <div><div class="pr-verdict-label">${ls.level}. szint: ${ls.passed ? "teljesítve" : "még nem teljesült"}</div>
         <div class="small">Jó vagy balszerencsés döntés: ${fmt(ls.share * 100, 0)}% (kell: ${fmt(ls.needed * 100, 0)}%).</div></div></div>
-      <div class="digest-controls">${ls.next ? `<a class="btn primary" href="#/learn/${ls.next}">Tovább a ${ls.next}. szintre</a>` : ""}
+      ${ls.boss ? `<p class="small"><strong>A következő fejezet előtt:</strong> <span>fejezetzáró feladatsor más piaci helyzetekből.</span></p>` : ""}
+      <div class="digest-controls">${ls.next ? `<a class="btn primary" href="#/learn/${ls.next}">Tovább a ${ls.next}. szintre</a>` : ""}${ls.boss ? `<a class="btn primary" href="#/learn">Fejezetzáró</a>` : ""}
         <a class="btn" href="#/learn/${ls.level}">${ls.passed ? "A lecke újra" : "Újrapróbálom"}</a></div></div></section>${ls.passed ? shareBox("level", ls.level) : ""}` : "";
+  const bs = p.boss;
+  const bossBox = bs ? `<section class="card"><div class="card-body"><div class="pr-verdict ${bs.passed ? "ok" : "warn"}" role="status">
+      <span class="pr-verdict-icon" aria-hidden="true">${bs.passed ? "✓" : "↺"}</span>
+      <div><div class="pr-verdict-label">${bs.chapter}. fejezetzáró: ${bs.passed ? "teljesítve" : "még nem teljesült"}</div>
+        <div class="small">Jó vagy balszerencsés döntés: ${fmt(bs.share * 100, 0)}% (kell: ${fmt(bs.needed * 100, 0)}%).</div></div></div>
+      <div class="digest-controls">${bs.next ? `<a class="btn primary" href="#/learn/${bs.next}">Tovább a ${bs.next}. szintre</a>` : ""}<a class="btn" href="#/learn">Tanulás</a></div></div></section>` : "";
   const kindsBox = Object.keys(p.kinds || {}).length ? `<section class="card"><h2>Feladattípusok</h2><div class="card-body"><ul class="digest-list">
       ${Object.entries(p.kinds).map(([key, v]) => `<li><span>${esc(PR_KIND[key] || key)}: ${v.n} feladat, átlagos értékelés ${fmt(v.mean_quality * 100, 0)}%</span></li>`).join("")}
     </ul></div></section>` : "";
   view.innerHTML = `
-    <div class="page-head"><a href="${ls ? "#/learn" : "#/practice"}" class="muted">← ${ls ? "Tanulás" : "Gyakorlás"}</a><h1>A kör összegzése</h1>
+    <div class="page-head"><a href="${ls || bs ? "#/learn" : "#/practice"}" class="muted">← ${ls || bs ? "Tanulás" : "Gyakorlás"}</a><h1>A kör összegzése</h1>
       ${p.session.code ? `<span class="muted">Megosztási kód: <code>${esc(p.session.code)}</code> – ugyanazzal a feladatkészlettel ugyanazt a helyzetsort adja.</span>` : ""}</div>
-    ${lessonBox}${dailyBox}${p.session.duel ? `<section class="card"><div class="card-body"><a class="btn primary" href="#/duel/${esc(p.session.duel)}">Vissza a párbajhoz</a></div></section>` : ""}${p.session.exam
+    ${lessonBox}${bossBox}${dailyBox}${p.session.duel ? `<section class="card"><div class="card-body"><a class="btn primary" href="#/duel/${esc(p.session.duel)}">Vissza a párbajhoz</a></div></section>` : ""}${p.session.exam
       ? `<section class="card"><div class="card-body"><a class="btn primary" href="#/learn">Vizsgaeredmény és tanúsítvány</a></div></section>` : ""}${kindsBox}
     ${s.decided ? `<div class="kpis">
       <div class="kpi"><div class="label">Teljesült kötés</div><div class="value">${s.filled}</div><div class="sub">${s.entered} belépési döntés, ${s.skipped} kihagyás</div></div>

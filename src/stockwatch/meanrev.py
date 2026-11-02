@@ -142,14 +142,15 @@ def net_return(entry: float, exit_: float, cost_bps: float) -> tuple[float, floa
 
 def simulate_trade(symbol: str, feat: pd.DataFrame, exits: np.ndarray, i: int, params: PullbackParams,
                    levels: tuple[float, float] | None = None, target: float | None = None,
-                   target_intraday: bool = False) -> Trade:
+                   target_intraday: bool = False, stops: np.ndarray | None = None) -> Trade:
     """A t=i napi jelzes kimenetele. `exits`: a kilepesi jel naponta (zaron). `levels`: a kikuldott
     (limit, stop) - elesben a jelzesben szereplo szintekkel kovetunk (osztalek-korrekcio utan is).
 
     `target` + `target_intraday=True` (csak a gyakorlo mod): napkozbeni cel. Ha ugyanazon a gyertyan a stop
     es a cel is elerheto, a stop teljesul; ha a nyito a cel felett van, a nyitoaron. A belepes napjan a cel
     csak nyitoari belepesnel szamit (napkozbeni limit-teljesulesnel nem tudjuk, a csucs elotte volt-e).
-    Alapbol (a strategiak es a kutatas) a viselkedes valtozatlan."""
+    `stops` (csak a gyakorlo mod poziciokezelese, #76): naponkenti stop a belepes utani naptol (a belepes napjan
+    a kezdo stop). Alapbol (a strategiak es a kutatas) a viselkedes valtozatlan."""
     idx = feat.index
     o, h, l = (feat[c].to_numpy() for c in ("open", "high", "low"))
     use_target = target_intraday and target is not None
@@ -189,10 +190,11 @@ def simulate_trade(symbol: str, feat: pd.DataFrame, exits: np.ndarray, i: int, p
         if pending:
             return close(k, o[k], pending)               # a zaron szuletett jel -> kovetkezo nyitas
         trade.held += 1
-        if o[k] <= stop:
+        sk = stop if stops is None else float(stops[k])
+        if o[k] <= sk:
             return close(k, o[k], "gap_stop")
-        if l[k] <= stop:
-            return close(k, stop, "stop")
+        if l[k] <= sk:
+            return close(k, sk, "stop")
         if use_target and (done := hit_target(k)) is not None:
             return done
         pending = "signal" if exits[k] else ("time" if trade.held >= params.time_stop else "")

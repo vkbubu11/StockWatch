@@ -45,6 +45,7 @@ AI_FILES = {"/llms.txt": "llms.txt", "/ai.json": "ai.json", "/.well-known/ai.jso
             "/.well-known/ecp.json": "ecp.json"}
 SITEMAP = ("/", "/about", "/register", "/login", "/aszf", "/adatkezeles", "/sutik")
 LESSON_RE = re.compile(r"/api/lessons/(\d{1,2})(/start)?")
+BOSS_RE = re.compile(r"/api/bosses/(\d)/start")
 # admin felulet (#58): nem adminnak minden /admin es /api/admin utvonal 404
 ADMIN_FILES = {"/admin": "index.html", "/admin/": "index.html", "/admin/admin.js": "admin.js"}
 ADMIN_GET = re.compile(r"/api/admin/(state|overview|users|users/(\d{1,12})|content|groups|system|audit)")
@@ -57,7 +58,7 @@ DUEL_LINK_RE = re.compile(r"/d/([a-z]{12})")             # parbaj-meghivo (#55);
 DUEL_RE = re.compile(r"/api/duels/([a-z]{12})(?:/(accept|revoke|rematch))?")
 SHARE_RE = re.compile(r"/s/([a-z]{12})(\.png)?")      # megosztott eredmeny (#57): nyilvanos oldal es kartya
 CERT_RE = re.compile(r"/c/([a-z]{12})(\.png)?")       # vizsga-tanusitvany (#37): visszaellenorzes a koddal
-PRACTICE_SESSION_RE = re.compile(r"/api/practice/session/([a-z]{12})/(task/(\d{1,2})(/decision)?|summary)")
+PRACTICE_SESSION_RE = re.compile(r"/api/practice/session/([a-z]{12})/(task/(\d{1,2})(/decision|/step|/manage|/finish)?|summary)")
 
 # az urlapok visszajelzesei (?e=kod): (fajta, szoveg)
 NOTICES = {
@@ -130,7 +131,8 @@ def practice_action(action: str, body: dict, user_id: int) -> dict:
         seed = body.get("seed")
         created = practice.create(user_id, load_settings(), seed=int(seed) if seed not in (None, "") else None,
                                   rounds=int(body.get("rounds") or 20), mix=body.get("mix") or None,
-                                  code=str(body.get("code") or "").strip() or None, kinds_mix=body.get("kinds") or None)
+                                  code=str(body.get("code") or "").strip() or None, kinds_mix=body.get("kinds") or None,
+                                  manage=body.get("manage") is True)
         return {"session": created}
     if action == "delete":
         if not practice.delete(user_id, str(body.get("id") or "")):
@@ -471,6 +473,13 @@ def make_handler(trust_proxy: bool = False):
                     from . import shares
 
                     return self._json(shares.mine(user["id"]))
+                if path == "/api/stats":                       # Statisztikam (#78): csak a sajat dontesek
+                    from . import stats
+
+                    try:
+                        return self._json(stats.mine(user["id"], query.get("period", ["all"])[0], query.get("source", ["all"])[0]))
+                    except ValueError as exc:
+                        return self._error(400, str(exc))
                 if path == "/api/review":
                     from . import repetition
 
@@ -849,12 +858,19 @@ def make_handler(trust_proxy: bool = False):
                 if m and m.group(4):
                     from .practice import session as practice
 
+                    if m.group(4) != "/decision":            # visszajatszas es poziciokezeles (#76)
+                        return self._json(practice.replay_action(user["id"], m.group(1), int(m.group(3)), m.group(4)[1:], body))
                     return self._json(practice.decide(user["id"], m.group(1), int(m.group(3)), body))
                 m = LESSON_RE.fullmatch(path)
                 if m and m.group(2):
                     from . import learning
 
                     return self._json({"session": learning.start(user["id"], int(m.group(1)), load_settings())})
+                m = BOSS_RE.fullmatch(path)
+                if m:                                          # fejezetzaro feladatsor (#79 b)
+                    from . import learning
+
+                    return self._json({"session": learning.start_boss(user["id"], int(m.group(1)), load_settings())})
                 if path.startswith("/api/practice/"):
                     return self._json(practice_action(path.rsplit("/", 1)[-1], body, user["id"]))
                 return self._error(404, "Nem talalhato")

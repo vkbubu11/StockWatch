@@ -17,9 +17,10 @@ import psycopg
 from . import analytics, db, walkthrough
 from .config import Settings
 from .practice import session as practice
-from .practice import synthetic
+from .practice import boss as practice_boss, synthetic
 
 PASS_SHARE = 0.6
+CHAPTERS = ((1, 2, 3), (4, 5, 6), (7, 8, 9))      # fejezetek; a vegukon fejezetzaro feladatsor (#79 b)
 HINTS = ("show", "toggle", "hidden")             # az itelet-szempontok a dontes elott (#59): latszik / osszecsukva / nem
 GOOD = ("good", "unlucky")                       # a szabaly szerint indokolt dontes
 LESSONS_PATH = Path(__file__).with_name("locale") / "lessons.hu.json"
@@ -57,6 +58,8 @@ def validate(data) -> list[dict]:
                 or not all(v is None or (isinstance(v, list) and all(isinstance(s, str) for s in v)) for v in only.values()):
             raise ValueError(f"{n}. szint: rossz feladat-szuro (tasks.only): kategoria -> null vagy forrasok listaja; "
                              f"kategoriak: {', '.join(sampler.CATEGORIES)}.")
+        if not isinstance(tasks.get("manage", False), bool):
+            raise ValueError(f"{n}. szint: tasks.manage: true / false (gyertyankenti visszajatszas kezelessel).")
         if tasks.get("hints", "hidden") not in HINTS:
             raise ValueError(f"{n}. szint: tasks.hints: {', '.join(HINTS)}.")
         if "kinds" in tasks:
@@ -134,15 +137,37 @@ def is_admin(user_id: int) -> bool:
     return bool(row and row[0])
 
 
+def chapter_of(level: int) -> int | None:
+    """A fejezet sorszama, ha a szint egy fejezet utolso szintje (utana jon a fejezetzaro)."""
+    return next((n for n, levels in enumerate(CHAPTERS, 1) if levels[-1] == level), None)
+
+
+def boss_progress(user_id: int) -> dict[int, dict]:
+    with db.connection() as conn:
+        rows = conn.execute("SELECT chapter, best_share, completed_at IS NOT NULL FROM chapter_bosses WHERE user_id = %s",
+                            (user_id,)).fetchall()
+    return {c: {"best_share": share, "completed": done} for c, share, done in rows}
+
+
 def overview(user_id: int) -> list[dict]:
+    """A szintek; a fejezet utolso szintjen a fejezetzaro allapota is. A kovetkezo fejezet elso szintje csak a
+    fejezetzaro teljesitese utan nyilik - kiveve, ha a felhasznalo mar korabban elkezdte (ne zarjuk vissza)."""
     done = progress(user_id)
+    bosses = boss_progress(user_id)
     admin = is_admin(user_id)
     out, unlocked = [], True
     for item in lessons():
         state = done.get(item["level"], {})
-        out.append({"level": item["level"], "title": item["title"], "unlocked": unlocked or admin,
-                    "completed": bool(state.get("completed")), "best_share": state.get("best_share")})
+        row = {"level": item["level"], "title": item["title"], "unlocked": unlocked or admin or bool(state),
+               "completed": bool(state.get("completed")), "best_share": state.get("best_share")}
         unlocked = bool(state.get("completed"))
+        chapter = chapter_of(item["level"])
+        if chapter and chapter in practice_boss.REGIMES:
+            b = bosses.get(chapter, {})
+            row["boss"] = {"chapter": chapter, "unlocked": unlocked or admin, "completed": bool(b.get("completed")),
+                           "best_share": b.get("best_share"), "source": practice_boss.SOURCES[practice_boss.REGIMES[chapter]]}
+            unlocked = unlocked and bool(b.get("completed"))
+        out.append(row)
     return out
 
 
@@ -174,9 +199,39 @@ def start(user_id: int, level: int, settings: Settings | None = None) -> dict:
     _require_unlocked(user_id, level)
     tasks = lesson(level)["tasks"]
     created = practice.create(user_id, settings, rounds=tasks["rounds"], only=tasks["only"], lesson=level,
-                              kinds_mix=tasks.get("kinds"))
+                              kinds_mix=tasks.get("kinds"), manage=tasks.get("manage", False))
     analytics.track("lesson_start", user_id, level=level)
     return created
+
+
+def start_boss(user_id: int, chapter: int, settings: Settings | None = None) -> dict:
+    """A fejezetzaro feladatsor (#79 b): a fejezet utolso szintjenek teljesitese utan."""
+    item = next((x for x in overview(user_id) if (x.get("boss") or {}).get("chapter") == chapter), None)
+    if item is None:
+        raise LookupError("Nincs ilyen fejezet.")
+    if not item["boss"]["unlocked"]:
+        raise ValueError("A fejezetzáró a fejezet utolsó szintjének teljesítése után nyílik.")
+    created = practice.create(user_id, settings, rounds=practice_boss.ROUNDS, boss=chapter)
+    analytics.track("boss_start", user_id, chapter=chapter)
+    return created
+
+
+def record_boss(user_id: int, session: dict) -> dict | None:
+    """Egy befejezett fejezetzaro eredmenye: ugyanaz a mertek, mint a szinteknel (jo + balszerencses >= 60%)."""
+    chapter = session.get("boss")
+    if not chapter or not all(t.get("decision") for t in session["tasks"]):
+        return None
+    verdicts = [((t.get("result") or {}).get("review") or {}).get("verdict", {}).get("category") for t in session["tasks"]]
+    share = round(sum(v in GOOD for v in verdicts) / len(verdicts), 3)
+    passed = share >= PASS_SHARE
+    with db.connection() as conn:
+        conn.execute("INSERT INTO chapter_bosses (user_id, chapter, best_share, completed_at) "
+                     "VALUES (%s, %s, %s, CASE WHEN %s THEN now() END) ON CONFLICT (user_id, chapter) DO UPDATE SET "
+                     "best_share = greatest(chapter_bosses.best_share, EXCLUDED.best_share), "
+                     "completed_at = coalesce(chapter_bosses.completed_at, EXCLUDED.completed_at)",
+                     (user_id, chapter, share, passed))
+    nxt = CHAPTERS[chapter][0] if chapter < len(CHAPTERS) else len(lessons())
+    return {"chapter": chapter, "share": share, "passed": passed, "needed": PASS_SHARE, "next": nxt if passed else None}
 
 
 def record(user_id: int, session: dict) -> dict | None:
@@ -197,5 +252,7 @@ def record(user_id: int, session: dict) -> dict | None:
                      "best_share = greatest(lesson_progress.best_share, EXCLUDED.best_share), "
                      "completed_at = coalesce(lesson_progress.completed_at, EXCLUDED.completed_at)",
                      (user_id, level, share, passed))
-    return {"level": level, "share": share, "passed": passed, "needed": PASS_SHARE,
-            "next": level + 1 if passed and level < len(lessons()) else None}
+    chapter = chapter_of(level)
+    boss = chapter if passed and chapter and not boss_progress(user_id).get(chapter, {}).get("completed") else None
+    return {"level": level, "share": share, "passed": passed, "needed": PASS_SHARE, "boss": boss,   # elobb a fejezetzaro
+            "next": level + 1 if passed and level < len(lessons()) and not boss else None}
