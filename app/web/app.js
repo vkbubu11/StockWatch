@@ -765,6 +765,8 @@ function practiceLevels(f, bad = {}) {
 
 // Y-tengely (#79 a): ar / % / ATR - a valasztas eszkozonkent megmarad
 const PR_AXES = { price: "Ár", pct: "%", atr: "ATR" };
+// felismert alakzatok halvanyan a gyakorlo charton: alapbol be, eszkozonkent kikapcsolhato
+const prefPatterns = () => { try { return localStorage.getItem("sw-patterns") !== "0"; } catch (e) { return true; } };
 const prefAxis = () => { try { const v = localStorage.getItem("sw-axis"); return PR_AXES[v] ? v : "price"; } catch (e) { return "price"; } };
 
 // a gyakorlo oldal elhagyasakor: nincs billentyuparancs, nincs also dontesi sav (#79 d, e)
@@ -788,6 +790,7 @@ async function pagePracticeTask(id, k, sess) {
       <span class="muted">Volumen: a 20 napos átlaghoz viszonyítva</span>
       <span class="segmented pr-axis" role="group" aria-label="Y-tengely">${Object.entries(PR_AXES).map(([key, label]) =>
         `<button type="button" class="seg${key === prefAxis() ? " on" : ""}" data-axis="${key}" aria-pressed="${key === prefAxis()}">${esc(label)}</button>`).join("")}</span>
+      ${t.patterns && t.patterns.length ? `<label class="check-inline small"><input type="checkbox" id="pr-patterns-on"${prefPatterns() ? " checked" : ""}> <span>Alakzatok</span></label>` : ""}
       ${t.weekly ? `<label class="check-inline small"><input type="checkbox" id="pr-weekly-on"> <span>Heti nézet (5 napos gyertyák)</span></label>` : ""}</div>
       <div class="card-body"><svg id="pr-chart" role="group" aria-label="Rejtett chart"></svg>
         <div id="pr-weekly" hidden><h3 class="small muted">Heti gyertyák – ugyanaz a múlt, a döntés napjáig</h3><svg id="pr-weekly-chart" role="img" aria-label="Heti chart"></svg></div></div></section>
@@ -822,8 +825,9 @@ async function pagePracticeTask(id, k, sess) {
   let chartOpt = {};
   let axisMode = prefAxis();
   const weekly = $("#pr-weekly-chart"), weeklyBox = $("#pr-weekly");   // elhagyott oldalon is a sajat elemei
+  let showPatterns = prefPatterns();
   const draw = () => {
-    practiceChart(svg, t.chart.bars, { ...chartOpt, axis: { mode: axisMode, atr } });
+    practiceChart(svg, t.chart.bars, { ...chartOpt, axis: { mode: axisMode, atr }, patterns: showPatterns ? t.patterns : [] });
     if (weekly && !weeklyBox.hidden) practiceChart(weekly, t.weekly.bars, { height: 220, dayLabel: "Hét", axis: { mode: axisMode, atr: t.weekly.atr } });
   };
   view.querySelectorAll("[data-axis]").forEach((b) => b.addEventListener("click", () => {
@@ -833,6 +837,12 @@ async function pagePracticeTask(id, k, sess) {
     draw();
   }));
   if (weekly) $("#pr-weekly-on").addEventListener("change", (ev) => { weeklyBox.hidden = !ev.target.checked; draw(); });
+  const pon = $("#pr-patterns-on");
+  if (pon) pon.addEventListener("change", () => {
+    showPatterns = pon.checked;
+    try { localStorage.setItem("sw-patterns", showPatterns ? "1" : "0"); } catch (e) { /* nem baj */ }
+    draw();
+  });
   let edited = false;
   form.querySelectorAll("input[name=stop], input[name=target], input[name=limit]").forEach((el) => el.addEventListener("input", () => { edited = true; }));
   const setSide = (side) => {

@@ -585,6 +585,14 @@ tr.lab-detail h3, #lab-ml h3 { font-size: 13px; margin: 6px 0; }
 .table.compact td, .table.compact th { padding: 4px 8px; }
 .ag-form label.check-inline { flex-direction: row; align-items: center; gap: 8px; }
 .pr-dock { gap: 10px; }
+/* felismert alakzatok halvanyan (kapcsolhato) */
+#pr-chart .pattern path:not(.tip-hit) { fill: none; stroke-width: 2; stroke-linejoin: round; opacity: .35; }
+#pr-chart .pattern .trig { stroke-width: 1.2; stroke-dasharray: 4 4; opacity: .35; }
+#pr-chart .pattern text { font-size: 11px; font-weight: 600; opacity: .55; }
+#pr-chart .pattern.bull path:not(.tip-hit), #pr-chart .pattern.bull .trig { stroke: var(--up); }
+#pr-chart .pattern.bear path:not(.tip-hit), #pr-chart .pattern.bear .trig { stroke: var(--down); }
+#pr-chart .pattern.bull text { fill: var(--up); }
+#pr-chart .pattern.bear text { fill: var(--down); }
 .learn-card.boss { border-style: dashed; border-color: var(--accent); }
 /* Statisztikam (#78) */
 .st-filters { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }

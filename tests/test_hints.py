@@ -30,7 +30,7 @@ def test_payload_carries_only_the_mode_and_reveal_rates_the_same_criteria(env): 
              if session.task_payload(env["user"], sid, k)["kind"] == "decision")
     assert t["hints"] == "show"
     plain = session.task_payload(env["user"], sid, t["k"])
-    assert set(plain) == {"session", "k", "rounds", "task_id", "chart", "weekly", "max_days", "decided", "kind", "prompt", "hints", "confidence"}
+    assert set(plain) == {"session", "k", "rounds", "task_id", "chart", "weekly", "patterns", "max_days", "decided", "kind", "prompt", "hints", "confidence"}
     skip = session.decide(env["user"], sid, t["k"], {"action": "skip"})["reveal"]["review"]["criteria"]
     assert [c["key"] for c in skip] == KEYS
     assert skip[0]["ok"] is None and skip[2]["ok"] is None and skip[3]["ok"] is None   # kihagyasnal nincs irany / stop

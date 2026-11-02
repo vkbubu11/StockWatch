@@ -54,6 +54,16 @@ function practiceChart(svg, bars, opt = {}) {
   parts.push(`<line x1="${x(zero) + step / 2}" x2="${x(zero) + step / 2}" y1="${pad.t}" y2="${volTop + volH}" stroke="var(--muted)" stroke-dasharray="3 3"/>`);
   parts.push(`<line class="tip-hit" data-tip="zero" x1="${x(zero) + step / 2}" x2="${x(zero) + step / 2}" y1="${pad.t}" y2="${volTop + volH}"/>`);
   parts.push(`<g>${bars.map((k, j) => (k.v == null ? "" : `<rect data-tip="v:${j}" class="vol ${k.c >= k.o ? "up" : "down"}" x="${x(j) - step * 0.35}" y="${vy(k.v)}" width="${Math.max(1, step * 0.7)}" height="${volTop + volH - vy(k.v)}"/>`)).join("")}</g>`);
+  // felismert alakzatok halvanyan (kapcsolhato): a kulcspontok tort vonala es a trigger-szint, a gyertyak mogott
+  (opt.patterns || []).forEach((p, n) => {
+    const pts = p.points.filter((q) => zero + q.k >= 0);
+    if (pts.length < 2) return;
+    const d = pts.map((q, m) => `${m ? "L" : "M"}${x(zero + q.k).toFixed(1)},${y(q.v).toFixed(1)}`).join("");
+    const cls = p.direction === "bearish" ? "bear" : "bull";
+    parts.push(`<g class="pattern ${cls}"><path d="${d}"/>${p.trigger != null ? `<line class="trig" x1="${x(zero + pts[0].k)}" x2="${x(zero)}" y1="${y(p.trigger)}" y2="${y(p.trigger)}"/>` : ""}
+      <text x="${x(zero + pts[0].k)}" y="${y(Math.max(...pts.map((q) => q.v))) - 6}">${esc(p.name)}</text>
+      <path class="tip-hit" data-tip="p:${n}" d="${d}"/></g>`);
+  });
   const bw = Math.max(1, step * 0.62);
   parts.push(`<g>${all.map((k, j) => {
     const top = y(Math.max(k.o, k.c)), bot = y(Math.min(k.o, k.c));
@@ -102,7 +112,7 @@ function practiceChart(svg, bars, opt = {}) {
   svg.innerHTML = parts.join("");
   if (focused) { const el = svg.querySelector(`[data-handle="${focused}"]`); if (el) el.focus({ preventScroll: true }); }   // ujrarajzolas utan is ott marad
   svg.__map = { lo, hi, padT: pad.t, priceH, step, padL: pad.l, zero, W, H };     // erintes -> (nap, ar): chartPoint
-  svg.__tip = { all, zero, levels, marks: opt.marks || [], dayLabel: opt.dayLabel || "Nap" };
+  svg.__tip = { all, zero, levels, marks: opt.marks || [], dayLabel: opt.dayLabel || "Nap", patterns: opt.patterns || [] };
   chartTips(svg);
 }
 
@@ -131,6 +141,7 @@ function chartTips(svg) {
       return `<strong>${esc(EMA_NAMES[kind])}</strong>${all[j][kind] != null ? row("Nap", day(j)) + row(kind.toUpperCase(), fmt(all[j][kind], 2)) : ""}`;
     }
     if (kind === "l") return `<strong>${esc(levels[Number(n)].label)}</strong>${row("Szint", fmt(levels[Number(n)].v, 2))}`;
+    if (kind === "p") { const p = svg.__tip.patterns[Number(n)]; return `<strong>${esc(p.name)}</strong>${row("Alakzat", p.direction === "bearish" ? "medvés" : "bikás")}${p.trigger != null ? row("Trigger", fmt(p.trigger, 2)) : ""}`; }
     if (kind === "m") return `<strong>${esc(marks[Number(n)].label)}</strong>${row("Szint", fmt(marks[Number(n)].v, 2))}`;
     return `<strong>A döntés napja</strong>`;
   };

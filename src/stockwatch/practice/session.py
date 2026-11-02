@@ -106,6 +106,35 @@ def hidden_chart(df: pd.DataFrame, i: int) -> dict:
     return {"bars": bars, "atr": _r2(atr), "last": 100.0}
 
 
+PATTERN_SHOW = 3                                 # a gyakorlo charton halvanyan rajzolt alakzatok szama
+
+
+def chart_patterns(symbol: str, df: pd.DataFrame, i: int, settings: Settings) -> list[dict]:
+    """A dontes napjaig felismert alakzatok a halvany rajzhoz: CSAK megerositett pivotokbol (mint a short-motor),
+    a lathato ablakon belul, normalizalt aron; papirnev es datum nelkul."""
+    from .. import patterns
+
+    try:
+        window = df.iloc[max(0, i - sampler.DETECTION_WINDOW): i + 1]
+        matches = patterns.detect(symbol, indicators.enrich(window, settings.structure.atr_period), settings.patterns,
+                                  settings.structure, confirmed_only=True)
+    except Exception:                            # a rajz segitseg: hibaja nem akaszthatja meg a feladatot
+        return []
+    scale = 100.0 / float(df["close"].iloc[i])
+    first = df.index[max(0, i - sampler.VISIBLE_BARS + 1)]
+    out = []
+    for m in matches:
+        pts = [(d, p) for d, p in m.key_points if first <= d <= df.index[i]]
+        if len(pts) < 2:
+            continue
+        out.append({"name": m.name, "direction": m.direction,
+                    "points": [{"k": int(df.index.get_loc(d)) - i, "v": _r2(p * scale)} for d, p in pts],
+                    "trigger": _r2(m.trigger_level * scale)})
+        if len(out) == PATTERN_SHOW:
+            break
+    return out
+
+
 WEEK = 5                                         # egy heti gyertya = 5 kereskedesi nap (#79 c)
 WEEKS = 52
 
@@ -261,7 +290,10 @@ def task_payload(user_id: int, session_id: str, k: int, settings: Settings | Non
     task = _task(session, k)
     df, i = _frame(task, settings)
     out = {"session": session["id"], "k": k, "rounds": len(session["tasks"]), "task_id": task["task_id"],
-           "chart": hidden_chart(df, i), "weekly": weekly_chart(df, i), "max_days": sampler.MAX_DAYS, "decided": task.get("decision") is not None,
+           "chart": hidden_chart(df, i), "weekly": weekly_chart(df, i), "max_days": sampler.MAX_DAYS,
+           # halvany alakzat-rajz (kapcsolhato); napi kihivasban, vizsgaban, parbajban nincs - az osszevethetoseg miatt
+           "patterns": [] if session.get("daily") or session.get("exam") or session.get("duel")
+           else chart_patterns(task["symbol"], df, i, settings), "decided": task.get("decision") is not None,
            "kind": task.get("kind") or "decision", "prompt": (task.get("params") or {}).get("prompt"),
            "hints": _hints(session),
            # magabiztossag (#54): a 6. szinttol alapbol; maskor a felhasznalo kapcsolhatja be (Profil)

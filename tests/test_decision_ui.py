@@ -209,3 +209,52 @@ def test_axis_price_pct_atr_draw_the_same_geometry(server, browser, env):  # noq
     assert page.locator("#pr-weekly-chart .candle").count() == session.WEEKS
     assert page.locator("#pr-weekly-chart .candle.future").count() == 0
     page.close()
+
+
+def _with_patterns():
+    from stockwatch.config import Settings
+    from stockwatch.practice import synthetic
+
+    settings = Settings()
+    for symbol in synthetic.symbols(20):
+        df = synthetic.frame(symbol)
+        for i in range(400, 2400, 97):
+            found = session.chart_patterns(symbol, df, i, settings)
+            if found:
+                return symbol, df, i, settings, found
+    raise AssertionError("nincs felismert alakzat")
+
+
+def test_patterns_use_only_the_past_and_stay_in_view():
+    symbol, df, i, settings, found = _with_patterns()
+    assert found == session.chart_patterns(symbol, df.iloc[: i + 1], i, settings)      # a jovo nem szamit bele
+    assert len(found) <= session.PATTERN_SHOW
+    for p in found:
+        assert p["name"] and p["direction"] in ("bullish", "bearish") and len(p["points"]) >= 2
+        assert all(-119 <= q["k"] <= 0 for q in p["points"])
+        assert "date" not in p and "symbol" not in p
+
+
+def test_patterns_toggle_and_are_off_in_daily(server, browser, env):  # noqa: F811
+    from stockwatch import daily
+
+    sid = None
+    for seed in range(1, 40):                                                             # egy helyzet felismert alakzattal
+        cand = session.create(env["user"], env["settings"], seed=seed, rounds=1)["id"]
+        if session.task_payload(env["user"], cand, 0)["patterns"]:
+            sid = cand
+            break
+    assert sid, "nincs alakzatos helyzet"
+    page = _page(browser, server, env, width=1200)
+    page.goto(f"{server}/#/practice/{sid}")
+    page.wait_for_selector("#pr-chart .pattern", state="attached")                        # alapbol latszik
+    page.uncheck("#pr-patterns-on")
+    assert page.locator("#pr-chart .pattern").count() == 0
+    page.reload()
+    page.wait_for_selector("#pr-chart [data-handle=stop]", state="attached")
+    assert page.locator("#pr-chart .pattern").count() == 0 and not page.is_checked("#pr-patterns-on")   # megmarad
+    page.check("#pr-patterns-on")
+    assert page.locator("#pr-chart .pattern").count() > 0
+    page.close()
+    did = daily.start(env["user"], env["settings"])["id"]
+    assert all(session.task_payload(env["user"], did, k)["patterns"] == [] for k in range(session.DAILY_ROUNDS))
