@@ -708,31 +708,35 @@ def cmd_news(args) -> int:
 
 
 def cmd_target_prob(args) -> int:
-    """A celar-valoszinuseg modelljenek tanitasa es merese (docs/TARGET-PROBABILITY-DESIGN.md); a holdout zarva."""
+    """A celar-valoszinuseg: walk-forward meres (2008-2025 Q1, holdout zarva), az elore rogzitett dontes, es ha van
+    elfogadott modellcsalad, az eles modell tanitasa (docs/TARGET-PROBABILITY-DESIGN.md 8. fejezet)."""
     from stockwatch import indexes as indexes_mod, target_prob as tp
 
     settings = load_settings()
     housekeeping.setup_logging(settings, verbose=args.verbose)
     members = indexes_mod.IndexMembers(settings)
     symbols = list(dict.fromkeys(_universe_symbols() + members.members("nasdaq100") + members.members("sp500")))
-    print(f"Tanito adat {len(symbols)} papirbol (papironkent {tp.DAYS_PER_SYMBOL} veletlen nap)...")
+    print(f"Tanito adat {len(symbols)} papirbol (2000-tol, papironkent {tp.DAYS_PER_SYMBOL} veletlen nap)...")
     data = tp.build(symbols, settings)
-    print(f"{len(data)} sor, {data['symbol'].nunique()} papir. Tanitas (csoportonkent egy modell)...")
-    result = tp.train(data)
-    print(f"\n{'csoport':<38} {'Brier':>8} {'ECE':>7}  marad")
-    for s in result["steps"]:
-        print(f"{s['group'] + ' - ' + tp.GROUP_LABELS[s['group']]:<38} {s['brier']:8.4f} {s['ece']:7.4f}  {'igen' if s['kept'] else 'nem'}")
-    print("\nTajekoztatas - minden csoport EGYEDUL az alap mellett (Brier-javulas):")
-    for g, v in result["single"].items():
-        print(f"  {g} - {tp.GROUP_LABELS[g]:<30} {v['gain'] * 100:+.2f}%")
-    print(f"\nA vegso modell Brier-javulasa az alapeselyhez kepest, 95%-os intervallum (napokra blokkolt bootstrap): "
-          f"{result['gain_ci'][0] * 100:+.2f}% .. {result['gain_ci'][1] * 100:+.2f}%")
-    print("\nEvenkent (validacio) - Brier: modell / alapesely")
-    for year, v in result["years"].items():
-        print(f"  {year}: {v['model']:.4f} / {v['base']:.4f}")
-    print(f"\nElfogadva: {'IGEN' if result['accepted'] else 'NEM - a feluleten csak az alapesely latszik'}"
-          f" (sorok: {result['rows']})")
-    tp.save(result)
+    print(f"{len(data)} sor, {data['symbol'].nunique()} papir. Walk-forward (tesztevek {tp.TEST_YEARS[0]}-{tp.TEST_YEARS[-1]})...")
+    wf = tp.walk_forward(data)
+    m0 = wf["families"]["M0"]["brier"]
+    print(f"\n{'csalad':<44} {'Brier':>8} {'javulas':>8} {'95% (M0-hoz)':>18} {'ECE':>7} {'legrosszabb ev ECE':>19}")
+    for f, r in wf["families"].items():
+        worst = max(r["years"].items(), key=lambda kv: kv[1]["ece"])
+        ci = r["gain_vs_m0"]
+        print(f"{f + ' - ' + tp.FAMILY_LABELS[f]:<44} {r['brier']:8.4f} {(1 - r['brier'] / m0) * 100:+7.2f}% "
+              f"{ci[0] * 100:+7.2f}% .. {ci[1] * 100:+5.2f}% {r['ece']:7.4f} {worst[1]['ece']:12.4f} ({worst[0]})")
+    print("\nEvenkent - Brier (M0 / legjobb):")
+    best = min(wf["families"], key=lambda k: wf["families"][k]["brier"])
+    for year, v in wf["families"]["M0"]["years"].items():
+        print(f"  {year}: {v['brier']:.4f} / {wf['families'][best]['years'][year]['brier']:.4f}")
+    chosen = tp.decide(wf)
+    if chosen is None:
+        print("\nEgyik csalad sem teljesiti az elore rogzitett feltetelt - nincs uj eles modell.")
+        return 1
+    print(f"\nValasztott: {chosen} - {tp.FAMILY_LABELS[chosen]}. Eles modell tanitasa...")
+    tp.save(tp.fit_live(data, chosen, wf))
     print(f"Mentve: {tp.MODEL_PATH}")
     return 0
 

@@ -517,11 +517,11 @@ function targetProbView(r) {
     : `<div class="callout">Nincs elég hasonló múltbeli helyzet (${r.band.n} &lt; 200) – nem írunk ki számot.</div>`;
   return `<div class="kpis check-kpis">${head}
       <div class="kpi"><div class="label">Alapesély</div><div class="value">${p(r.base)}</div><div class="sub">csak a volatilitásból, a távolságból és az időből</div></div>
-      <div class="kpi"><div class="label">Validáció (2022–2025/03)</div><div class="value">${p(r.band.observed)}</div>
+      <div class="kpi"><div class="label">Validáció (2008–2025/03, évenként előre)</div><div class="value">${p(r.band.observed)}</div>
         <div class="sub">${r.band.n} hasonló becslésnél ennyiszer teljesült (95%: ${p(r.band.lo)}–${p(r.band.hi)})</div></div></div>
     ${r.contributions.length ? `<p class="small">Hozzájárulás az alapeselyhez képest: ${r.contributions.map((c) => `<span>${esc(c.label)}</span> ${c.pp > 0 ? "+" : ""}${fmt(c.pp, 1)} pp`).join(" · ")}</p>` : ""}
     ${r.news ? `<p class="small muted"><span>Hírek (a becslésbe nem számít bele):</span> ${esc(r.news)}</p>` : ""}
-    <p class="muted small">A ${esc(r.as_of)} zárás (${fmt(r.close)} $) utáni helyzetre, a múltbeli hasonló helyzetek gyakoriságából; modell: ${esc(r.trained)}. Leírás, nem ajánlás – a múlt nem garantálja a jövőt.</p>`;
+    <p class="muted small">A ${esc(r.as_of)} zárás (${fmt(r.close)} $) utáni helyzetre, a múltbeli hasonló helyzetek gyakoriságából; modell: ${esc(r.method || "alapesély")}, tanítva ${esc(r.trained)}; a validációs sáv 2008–2025 évenkénti, előre nem látott becsléseiből. Leírás, nem ajánlás – a múlt nem garantálja a jövőt.</p>`;
 }
 
 // a SEC XBRL negyedevei (#72): higitott EPS oszlopokkal, ev/ev novekedes; a 4. negyedev az eves ertekbol szarmaztatott

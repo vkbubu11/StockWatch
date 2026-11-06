@@ -19,7 +19,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from . import indicators, store
+from . import barrier, indicators, store
 from .config import DATA_DIR, Settings
 from .entry_research import HOLDOUT_START, wilson
 
@@ -29,9 +29,10 @@ OUT_DIR = DATA_DIR / "research" / "target_prob"
 MODEL_PATH = OUT_DIR / "model.pkl"
 NO_STOP = 99.0                                  # "nincs stop" a stop-tavolsag jellemzoben
 MAX_D, MAX_N = 8.0, 60
-DAYS_PER_SYMBOL = 80
+DAYS_PER_SYMBOL = 160
+HIST_DIR = DATA_DIR / "research" / "history"     # a hosszu (2000-tol) kutatasi arfolyamtar
 COMBOS_PER_DAY = 6                              # (d, N, stop) parok egy naphoz, iranyonkent
-START = pd.Timestamp("2010-01-01")
+START = pd.Timestamp("2001-06-01")
 CALIB_START, VALID_START = pd.Timestamp("2020-01-01"), pd.Timestamp("2022-01-01")
 MIN_GAIN = 0.005                                # egy csoport legalabb ennyivel (relativ) javitsa a Brier-t
 ACCEPT_GAIN = 0.01
@@ -119,8 +120,13 @@ def daily_features(df: pd.DataFrame, bench: pd.DataFrame | None, sector: pd.Data
     out["pos20"] = (c - lo) / (hi - lo).replace(0, np.nan)
     if fund:
         out[["eps_yoy", "revenue_yoy", "eps_acc"]] = fundamental_series(fund, e.index)
+    # v2: HAR-regresszorok (a `t`-ig) es a HAR illesztesehez a JOVOBELI celok (_frv*, jellemzokent soha)
+    var = barrier.daily_variance(e)
+    out = out.join(barrier.har_regressors(var)).join(barrier.har_targets(var))
+    out["close"] = c
     # hianyzo benchmark / szektor / SEC-adat: az oszlop ures (NaN) - a modell ezt "nem ismert"-kent kezeli
-    return out.reindex(columns=["atr"] + [c for g in GROUPS for c in GROUPS[g] if c not in ROW_FEATURES])
+    return out.reindex(columns=["atr", "close", "har_d", "har_w", "har_m", "_frv5", "_frv20", "_frv60"]
+                       + [c for g in GROUPS for c in GROUPS[g] if c not in ROW_FEATURES])
 
 
 def earnings_features(e: pd.DataFrame, dates: list) -> pd.DataFrame:
@@ -206,7 +212,7 @@ def samples(symbol: str, feats: pd.DataFrame, df: pd.DataFrame, rng: np.random.G
     """Veletlen napok (a holdout elott, hogy a t+N is elotte legyen) x (d, N, stop, irany) - cimkevel es jellemzokkel."""
     idx = feats.index
     ok = np.flatnonzero((idx >= START) & (idx < HOLDOUT_START) & feats["atr"].notna().to_numpy()
-                        & feats["vol20"].notna().to_numpy())
+                        & feats["vol20"].notna().to_numpy() & feats["har_m"].notna().to_numpy())
     ok = ok[ok + MAX_N < np.searchsorted(idx, HOLDOUT_START)]
     if not len(ok):
         return pd.DataFrame()
@@ -229,7 +235,7 @@ def samples(symbol: str, feats: pd.DataFrame, df: pd.DataFrame, rng: np.random.G
                 rows.append((symbol, idx[i], side, d[k], n[k], stop[k], own_hit(exc, int(i), d[k], int(n[k]), side),
                              bool(hit[k])))
     out = pd.DataFrame(rows, columns=["symbol", "day", "side", "d", "n", "stop_d", "own_hit", "hit"])
-    out = out.join(feats.drop(columns="atr"), on="day")
+    out = out.join(feats, on="day")
     out["earn_in"] = (out["earn_days"] <= out["n"]).astype(float).where(out["earn_days"].notna())
     return out
 
@@ -329,22 +335,152 @@ def single_groups(tr, ca, va, y, base_brier: float) -> dict:
     return out
 
 
+def load_history(symbol: str, settings: Settings) -> pd.DataFrame:
+    """A hosszu kutatasi tar (2000-tol), ha van; kulonben a 10 eves arfolyamtar."""
+    path = HIST_DIR / f"{symbol}.csv.gz"
+    if path.exists():
+        df = pd.read_csv(path, index_col=0, parse_dates=True)
+        return df.loc[:, ["open", "high", "low", "close", "volume"]].dropna()
+    return store.load(symbol, settings, universe=True)
+
+
+# ---------------------------------------------------------------------------
+# v2: HAR-RV + elso athaladas + volatilitasra normalizalt jellemzok, walk-forward (docs/... 8. fejezet)
+# ---------------------------------------------------------------------------
+FAMILIES = {
+    "M0": GROUPS["A"],
+    "M1": ["p_an"],
+    "M2": ["p_an", "z_b", "z_c", "side", "n", "atr_sig", "rv_ratio", "vix_rel", "earn_in", "earn_jump_sig"],
+}
+FAMILIES["M3"] = FAMILIES["M2"] + [c for g in "BCDEFK" for c in GROUPS[g]]
+FAMILY_LABELS = {"M0": "alapesely (ATR, tavolsag, ido)", "M1": "HAR-RV + elso athaladas (analitikus)",
+                 "M2": "normalizalt gradient boosting", "M3": "normalizalt + piaci / ceges kornyezet"}
+TEST_YEARS = list(range(2008, 2026))             # 2025: csak a holdout elotti negyedev
+PURGE = pd.offsets.BDay(MAX_N)
+TRAIN_CAP = 400_000                              # tanito sorok foldenkent legfeljebb (seedelt mintavetel)
+MIN_TRAIN = 20_000                               # ennel kevesebb tanito sorral az ev kimarad
+Z_NO_STOP = 10.0
+
+
+def prepare(rows: pd.DataFrame, har: dict) -> pd.DataFrame:
+    """A kerdes (d ATR, N, stop, irany) a HAR-szigmaval: log-tavolsag / (sigma sqrt N), analitikus esely, aranyok."""
+    x = rows.copy()
+    sig = barrier.har_sigma(x, x["n"].to_numpy(dtype=float), har)
+    spread = sig * np.sqrt(x["n"].to_numpy(dtype=float))
+    side, close, atr = x["side"].to_numpy(dtype=float), x["close"].to_numpy(), x["atr"].to_numpy()
+    target = close + side * x["d"].to_numpy() * atr
+    b = side * np.log(np.clip(target, 1e-9, None) / close)
+    has_stop = x["stop_d"].to_numpy() < NO_STOP
+    stop = close - side * np.where(has_stop, x["stop_d"].to_numpy(), 0.0) * atr
+    c = np.where(has_stop, -side * np.log(np.clip(stop, 1e-9, None) / close), np.inf)
+    x["z_b"] = b / spread
+    x["z_c"] = np.where(has_stop, c / spread, Z_NO_STOP)
+    x["p_an"] = np.where(has_stop, barrier.target_before_stop(x["z_b"].to_numpy(), x["z_c"].to_numpy()),
+                         barrier.touch_prob(x["z_b"].to_numpy()))
+    x["atr_sig"] = (atr / close) / sig
+    x["rv_ratio"] = x["rv5"] / x["rv60"]
+    x["earn_jump_sig"] = x["earn_jump_atr"] * (atr / close) / spread
+    return x
+
+
+def _finite(x: pd.DataFrame) -> pd.DataFrame:
+    """A hibas arsor (pl. 0 vagy hianyzo ar) napjai kimaradnak: az analitikus esely nem szamolhato."""
+    return x[np.isfinite(x["p_an"].to_numpy())]
+
+
+def _fit_family(fam: str, tr: pd.DataFrame, ca: pd.DataFrame, seed: int = 7) -> dict:
+    from sklearn.isotonic import IsotonicRegression
+
+    if fam == "M1":                              # csak kalibracio: az analitikus esely izotonikusan
+        iso = IsotonicRegression(out_of_bounds="clip", y_min=0, y_max=1).fit(ca["p_an"], ca["hit"])
+        return {"family": fam, "cols": ["p_an"], "clf": None, "iso": iso}
+    return _fit(tr, ca, FAMILIES[fam], seed) | {"family": fam}
+
+
+def predict_any(model: dict, x: pd.DataFrame) -> np.ndarray:
+    if model["clf"] is None:
+        return model["iso"].predict(x["p_an"].to_numpy())
+    return predict(model, x)
+
+
+def walk_forward(data: pd.DataFrame, families=("M0", "M1", "M2", "M3"), seed: int = 7) -> dict:
+    """Evenkent: tanitas a Y-2 elott (PURGE-dzsel), kalibracio [Y-2, Y), teszt Y. A holdout soha."""
+    rng = np.random.default_rng(seed)
+    data = data[data["day"] < HOLDOUT_START]
+    preds = {f: [] for f in families}
+    ys, days = [], []
+    for year in TEST_YEARS:
+        y0, cal0 = pd.Timestamp(f"{year}-01-01"), pd.Timestamp(f"{year - 2}-01-01")
+        tr = data[data["day"] < cal0 - PURGE]
+        ca = data[(data["day"] >= cal0) & (data["day"] < y0 - PURGE)]
+        te = data[(data["day"] >= y0) & (data["day"] < min(pd.Timestamp(f"{year + 1}-01-01"), HOLDOUT_START))]
+        if len(tr) < MIN_TRAIN or ca.empty or te.empty:
+            continue
+        har = barrier.fit_har(tr[tr["day"] < cal0 - PURGE])
+        tr_x = _finite(prepare(tr.sample(n=min(TRAIN_CAP, len(tr)), random_state=int(rng.integers(1 << 31))), har))
+        ca_x, te_x = _finite(prepare(ca, har)), _finite(prepare(te, har))
+        for f in families:
+            preds[f].append(predict_any(_fit_family(f, tr_x, ca_x), te_x))
+        ys.append(te_x["hit"].to_numpy(dtype=float))
+        days.append(te_x["day"].to_numpy())
+        log.info("Walk-forward %d: tanito %d, kalibracio %d, teszt %d", year, len(tr), len(ca), len(te))
+    y, d = np.concatenate(ys), np.concatenate(days)
+    p = {f: np.concatenate(v) for f, v in preds.items()}
+    years = pd.DatetimeIndex(d).year.to_numpy()
+    out = {"families": {}, "y": y, "days": d, "p": p}
+    for f in families:
+        per_year = {int(yr): {"brier": brier(p[f][years == yr], y[years == yr]), "ece": ece(p[f][years == yr], y[years == yr])}
+                    for yr in np.unique(years)}
+        out["families"][f] = {"brier": brier(p[f], y), "ece": ece(p[f], y), "years": per_year,
+                              "gain_vs_m0": boot_gain(p["M0"], p[f], y, d) if f != "M0" and "M0" in p else (0.0, 0.0)}
+    return out
+
+
+def decide(wf: dict) -> str | None:
+    """Az elore rogzitett dontes: a legkisebb Brier, ha kalibralt (osszesen ECE <= 0,03, evente <= 0,05) es (ha nem
+    az M0) az M0-hoz kepesti javulas intervallumanak also hatara > 0."""
+    for f in sorted(wf["families"], key=lambda k: wf["families"][k]["brier"]):
+        r = wf["families"][f]
+        calibrated = r["ece"] <= ACCEPT_ECE and all(v["ece"] <= 0.05 for v in r["years"].values())
+        if calibrated and (f == "M0" or r["gain_vs_m0"][0] > 0):
+            return f
+    return None
+
+
+def fit_live(data: pd.DataFrame, family: str, wf: dict, seed: int = 7) -> dict:
+    """Az eles modell: tanitas 2023 elott (PURGE), kalibracio 2023 - a holdout elotti napig."""
+    cal0 = pd.Timestamp("2023-01-01")
+    data = data[data["day"] < HOLDOUT_START]
+    tr, ca = data[data["day"] < cal0 - PURGE], data[data["day"] >= cal0]
+    har = barrier.fit_har(tr)
+    tr_x = _finite(prepare(tr.sample(n=min(TRAIN_CAP, len(tr)), random_state=seed), har))
+    ca_x = _finite(prepare(ca, har))
+    model, an = _fit_family(family, tr_x, ca_x, seed), _fit_family("M1", tr_x, ca_x, seed)
+    p = wf["p"][family]
+    return {"version": 2, "family": family, "model": model, "analytic": an, "har": har,
+            "wf": {f: {k: v for k, v in r.items()} for f, r in wf["families"].items()},
+            "valid": {"p": np.round(p, 4).tolist(), "y": wf["y"].astype(int).tolist()},
+            "accepted": True, "trained": date.today().isoformat()}
+
+
 def build(symbols: list[str], settings: Settings, seed: int = 26) -> pd.DataFrame:
     """A tanito adat a kutatasi univerzumbol (helyi arfolyamtar; a SEC-kivonat, ha van)."""
     from . import fundamentals, market, sectors
 
     ctx = market.load_context(settings, refresh=False, allow_network=False)
     smap = sectors.sector_map(symbols, allow_network=False)
-    etfs = {name: store.load(etf, settings, universe=True) for name, etf in sectors.SECTOR_ETFS.items()}
+    etfs = {name: load_history(etf, settings) for name, etf in sectors.SECTOR_ETFS.items()}
+    benches = {b: load_history(b, settings) for b in market.REGIME_INDEXES}
     earnings = market.HistoricalEarnings(settings, allow_network=False)
-    vix = store.load("^VIX", settings, universe=True)
+    vix = load_history("^VIX", settings)
     rng = np.random.default_rng(seed)
     parts = []
     for n, symbol in enumerate(symbols, 1):
-        df = store.load(symbol, settings, universe=True)
+        df = load_history(symbol, settings)
         if df.empty or len(df) < 400:
             continue
-        feats = daily_features(df, ctx.bench_for(symbol), etfs.get(smap.get(symbol)), fundamentals.load(symbol),
+        feats = daily_features(df, benches[ctx.index_of(symbol) or market.SP500_INDEX], etfs.get(smap.get(symbol)),
+                               fundamentals.load(symbol),
                                earnings.dates(symbol), vix)
         parts.append(samples(symbol, feats, df, rng))
         if n % 50 == 0:
@@ -371,7 +507,7 @@ def load() -> dict | None:
 # ---------------------------------------------------------------------------
 def estimate(symbol: str, side: str, target: float, days: int, stop: float | None, settings: Settings) -> dict:
     """A felulet kerese: a papir utolso LEZART napja utan (a modell is zaras utani dontesre tanult)."""
-    from . import best, fundamentals, market, sectors, sessions
+    from . import best, feed, fundamentals, market, sectors, sessions
     from .sentiment import service as news
 
     if side not in ("long", "short"):
@@ -388,13 +524,29 @@ def estimate(symbol: str, side: str, target: float, days: int, stop: float | Non
     if len(df) < 260:
         raise ValueError(f"{symbol}: tul rovid historia a becsleshez.")
     ctx = market.load_context(settings, refresh=False, allow_network=False)
-    sector = sectors.sector_map([symbol], allow_network=False).get(symbol)
+    sector = sectors.sector_map([symbol], allow_network=True).get(symbol)
     etf = sectors.SECTOR_ETFS.get(sector)
-    dates = market.HistoricalEarnings(settings, allow_network=False).dates(symbol)
-    upcoming = market.EarningsCalendar(settings, allow_network=False).next_date(symbol)   # a jovobeli: a naptarbol
-    feats = daily_features(df, ctx.bench_for(symbol), store.load(etf, settings, universe=True) if etf else None,
-                           fundamentals.load(symbol), dates + ([upcoming] if upcoming else []),
-                           store.load("^VIX", settings, universe=True))
+    frames = {}
+    for name in [x for x in (etf, "^VIX") if x]:   # a modell bemenete ne legyen csendben ures: elavultnal frissit
+        frame = store.load(name, settings, universe=True)
+        if frame.empty or frame.index[-1] < df.index[-1] - pd.Timedelta(days=7):
+            try:
+                feed.update([name], settings, universe=True)
+                frame = store.load(name, settings, universe=True)
+            except Exception as exc:
+                log.warning("Celar-valoszinuseg: %s nem frissitheto: %s", name, exc)
+        frames[name] = frame
+    try:
+        fund = fundamentals.fetch(symbol)
+        hist = market.HistoricalEarnings(settings, allow_network=True)
+        dates = hist.dates(symbol)
+        hist.save()
+        upcoming = market.EarningsCalendar(settings, allow_network=True).next_date(symbol)   # a jovobeli: a naptarbol
+    except Exception as exc:                     # halozati hiba: a tarolt adattal
+        log.warning("Celar-valoszinuseg: %s kiegeszito adata nem frissult: %s", symbol, exc)
+        fund, dates, upcoming = fundamentals.load(symbol), [], None
+    feats = daily_features(df, ctx.bench_for(symbol), frames.get(etf), fund, dates + ([upcoming] if upcoming else []),
+                           frames.get("^VIX"))
     out = query(result, feats.iloc[-1], float(df["close"].iloc[-1]), side, float(target), days,
                 None if stop is None else float(stop), excursions(df, feats["atr"]), len(df) - 1)
     try:                                         # a hirek csak tajekoztatasul (a #20 validacioja szerint)
@@ -415,18 +567,23 @@ def query(result: dict, feats_today: pd.Series, close: float, side: str, target:
     if not (0 < d <= MAX_D) or not (1 <= days <= MAX_N) or (stop is not None and not 0 < stop_d < NO_STOP):
         return {"ok": False, "reason": "range", "d": None if math.isnan(d) else round(d, 2)}
     earn = feats_today.get("earn_days", math.nan)
-    x = pd.DataFrame([feats_today.drop(labels="atr", errors="ignore").to_dict()
+    x = pd.DataFrame([feats_today.to_dict()
                       | {"d": d, "n": days, "stop_d": stop_d, "side": sign,
                          "earn_in": math.nan if pd.isna(earn) else float(earn <= days),
                          "own_hit": own_hit(exc, t, d, days, sign) if exc is not None and t is not None else math.nan}])
-    base = float(predict(result["models"]["A"], x)[0])
-    prob = float(predict(result["final"], x)[0])
+    if result.get("version") == 2:               # HAR-RV + elso athaladas (+ a valasztott csalad)
+        x = prepare(x, result["har"])
+        if not np.isfinite(x["p_an"].iloc[0]):
+            return {"ok": False, "reason": "data", "d": round(d, 2)}
+        base, prob = float(predict_any(result["analytic"], x)[0]), float(predict_any(result["model"], x)[0])
+    else:
+        base, prob = float(predict(result["models"]["A"], x)[0]), float(predict(result["final"], x)[0])
     vp, vy = np.array(result["valid"]["p"]), np.array(result["valid"]["y"])
     band = np.abs(vp - prob) <= 0.05
     n = int(band.sum())
     lo, hi = wilson(int(vy[band].sum()), n) if n else (None, None)
     contrib, prev = [], base
-    if result["accepted"]:
+    if result["accepted"] and result.get("version") != 2:
         for g in result["groups"][1:]:
             pg = float(predict(result["models"][g], x)[0])
             contrib.append({"group": g, "label": GROUP_LABELS[g], "pp": round((pg - prev) * 100, 1)})
@@ -435,4 +592,5 @@ def query(result: dict, feats_today: pd.Series, close: float, side: str, target:
             "base": round(base, 3), "accepted": result["accepted"], "d": round(d, 2),
             "stop_d": None if stop is None else round(stop_d, 2), "band": {"n": n, "observed": round(float(vy[band].mean()), 3) if n else None,
                                                                          "lo": lo, "hi": hi},
-            "contributions": contrib, "trained": result["trained"]}
+            "contributions": contrib, "trained": result["trained"],
+            "method": FAMILY_LABELS.get(result.get("family"), "alapesely") if result.get("version") == 2 else None}

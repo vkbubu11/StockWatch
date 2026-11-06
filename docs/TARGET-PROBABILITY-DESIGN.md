@@ -124,3 +124,20 @@ technika, fundamentum, a papír karaktere).
 2. az M0-hoz képest a Brier-javulás napokra blokkolt bootstrap-intervallumának alsó határa > 0 (az M0-nál ez nem kell).
 Ha a legjobb nem teljesíti az 1. pontot, a következő legjobb; ha egyik sem, nincs telepítés. Az elfogadott családot
 élesben a 2023 előtti adaton tanítjuk és 2023 – 2025/03-on kalibráljuk.
+
+### 2026-11-06 – második változat: walk-forward 2008 – 2025 Q1 (523 papír, ~1 millió kérdés)
+
+| család | Brier | javulás az M0-hoz | 95% (napokra blokkolt bootstrap) | ECE | legrosszabb év ECE |
+|---|---|---|---|---|---|
+| M0 – alapesély | 0,1651 | – | – | 0,0015 | 0,0204 (2009) |
+| M1 – HAR-RV + első áthaladás | 0,1672 | −1,30% | −1,50 … −1,11% | 0,0026 | 0,0173 (2018) |
+| M2 – normalizált gradient boosting | 0,1650 | +0,05% | −0,09 … +0,20% | 0,0014 | 0,0242 (2009) |
+| M3 – + piac, szektor, momentum, technika, fundamentum, karakter | 0,1649 | +0,11% | −0,08 … +0,27% | 0,0015 | 0,0239 (2009) |
+
+**Döntés (a rögzített szabály szerint): M0.** Az M2 és az M3 javulásának intervalluma átfedi a nullát; az M1 (tisztán
+analitikus) rosszabb. Az M0 17 tesztévben, a 2008-as, 2020-as és 2022-es válsággal együtt is kalibrált (összesen
+0,15 pp, a legrosszabb évben 2 pp eltérés) – ezért élesítve: 2023 előtti tanítás, 2023 – 2025/03 kalibráció.
+
+Tanulság: a hosszú, több rezsimet átfogó történet mellett a feltételek (szektor, technika, piac, fundamentum,
+volatilitás-előrejelzés, jelentés) összesen legfeljebb ~0,1–0,3%-ot javítanak a Brier-pontszámon – ez a jelenlegi
+mintán nem különböztethető meg a véletlentől.

@@ -34,7 +34,9 @@ def test_features_do_not_see_the_future():
     df, bench = _walk(), _walk(seed=9)
     full = tp.daily_features(df, bench, None)
     cut = tp.daily_features(df.iloc[:900], bench.iloc[:900], None)
-    pd.testing.assert_series_equal(full.iloc[899], cut.iloc[-1], check_names=False)
+    feat = [c for c in full.columns if not c.startswith("_")]                      # a _frv* a HAR CELJA, nem jellemzo
+    pd.testing.assert_series_equal(full.iloc[899][feat], cut.iloc[-1][feat], check_names=False)
+    assert not any(c.startswith("_") for f in tp.FAMILIES.values() for c in f)        # a modell soha nem latja
 
 
 def test_fundamentals_known_only_after_filing():
@@ -85,6 +87,12 @@ def test_estimate_endpoint_validates_and_answers(monkeypatch, tmp_path):
     tp.save(tp.train(data))
     df = _walk(bars=600, seed=77, start="2024-01-01")
     monkeypatch.setattr(best, "_frame", lambda symbol, settings: df)
+    from stockwatch import feed, market, sectors                                      # halozat nelkul
+    monkeypatch.setattr(feed, "update", lambda *a, **k: {})
+    monkeypatch.setattr(sectors, "sector_map", lambda symbols, **k: {})
+    monkeypatch.setattr(market.HistoricalEarnings, "dates", lambda self, symbol: [])
+    monkeypatch.setattr(market.HistoricalEarnings, "save", lambda self: None)
+    monkeypatch.setattr(market.EarningsCalendar, "next_date", lambda self, symbol, as_of=None: None)
     monkeypatch.setattr(sessions, "completed_bars", lambda frame, now=None: frame)
     close = float(df["close"].iloc[-1])
     out = tp.estimate("TEST", "long", close * 1.05, 20, None, Settings())
@@ -119,3 +127,35 @@ def test_own_hit_uses_only_closed_outcomes():
     changed.iloc[t + 1:, changed.columns.get_loc("high")] *= 1.5                       # csak a t utani (jovobeli) napok
     assert tp.own_hit(tp.excursions(changed, atr), t, 1.0, 20, 1) == base
     assert 0 <= base <= 1 and np.isnan(tp.own_hit(exc, 50, 1.0, 20, 1))               # keves multbeli kimenet
+
+
+def test_v2_walk_forward_decision_and_query(monkeypatch, tmp_path):
+    monkeypatch.setattr(tp, "DAYS_PER_SYMBOL", 120)
+    monkeypatch.setattr(tp, "START", pd.Timestamp("2009-06-01"))
+    monkeypatch.setattr(tp, "TEST_YEARS", [2017, 2018, 2019])
+    monkeypatch.setattr(tp, "TRAIN_CAP", 50_000)
+    monkeypatch.setattr(tp, "MIN_TRAIN", 1_000)
+    rng = np.random.default_rng(4)
+    parts = []
+    for k in range(8):
+        df = _walk(bars=3000, seed=60 + k, start="2008-01-01")
+        parts.append(tp.samples(f"S{k}", tp.daily_features(df, None, None), df, rng))
+    data = pd.concat(parts, ignore_index=True)
+    wf = tp.walk_forward(data, families=("M0", "M1", "M2"))
+    for f in ("M0", "M1", "M2"):
+        r = wf["families"][f]
+        assert set(r["years"]) == {2017, 2018, 2019} and 0 < r["brier"] < 0.25 and r["ece"] < 0.1
+    # veletlen bolyongason az analitikus (HAR + elso athaladas) esely mar kalibralt kozelito
+    assert wf["families"]["M1"]["ece"] < 0.05
+    chosen = tp.decide(wf)
+    if chosen is not None:
+        live = tp.fit_live(data, chosen, wf)
+        df = _walk(bars=3000, seed=99, start="2008-01-01")
+        feats = tp.daily_features(df, None, None)
+        close = float(df["close"].iloc[-1])
+        near = tp.query(live, feats.iloc[-1], close, "long", close + float(feats["atr"].iloc[-1]), 20)
+        far = tp.query(live, feats.iloc[-1], close, "long", close + 4 * float(feats["atr"].iloc[-1]), 20)
+        stopped = tp.query(live, feats.iloc[-1], close, "long", close + float(feats["atr"].iloc[-1]), 20,
+                           stop=close - 0.5 * float(feats["atr"].iloc[-1]))
+        assert near["probability"] >= far["probability"] and near["probability"] >= stopped["probability"]
+        assert near["method"] in tp.FAMILY_LABELS.values()
