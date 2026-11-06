@@ -35,6 +35,9 @@ hasonló helyzetek számával. Ha a mérés szerint a feltételek nem javítanak
 | **D – momentum** | 12-1 havi, 3 havi, 1 havi hozam, relatív erő 60 napra, távolság a 52 hetes csúcstól |
 | **E – technika** | RSI14, ADX, EMA20/50/200 sorrend, távolság az SMA200-tól ATR-ben, záró a 20 napos sávban |
 | **F – fundamentum** | év/év EPS- és árbevétel-növekedés, EPS-gyorsulás (SEC XBRL, a beadás utáni naptól, #72) |
+| **J – gyorsjelentés** | van-e jelentés a `t+1 … t+N` ablakban, hány kereskedési nap múlva jön, a papír szokásos jelentési mozgása ATR-ben (az utolsó 8 jelentés kétnapos elmozdulásának mediánja, csak a `t` előttiekből) |
+| **V – volatilitás** | realizált volatilitás 5 és 60 napra, Parkinson- és Garman–Klass-volatilitás (20 nap), EWMA-volatilitás (λ = 0,94, a GARCH egyszerű változata), ^VIX és a ^VIX az egyéves mediánjához képest |
+| **K – karakter** | a papír saját múltbeli találati aránya ugyanarra a távolságra (az 5 / 20 / 60 napos legközelebbi időtávra, az utolsó 2 évből, csak a `t`-ig lezárult kimenetekből), a nyitási rések gyakorisága (> 0,5 ATR), 250 napos csúcsosság (kurtózis), 250 napos béta |
 | **G – hírek** | csak ha a #20 validációja átment (`news-research`); különben a kártyán külön, a számba nem |
 
 ## 4. Modell és mérés
@@ -43,7 +46,8 @@ hasonló helyzetek számával. Ha a mérés szerint a feltételek nem javítanak
   `d` nő → az esély nem nő, `N` nő → nem csökken. Kalibráció: izotonikus, külön kalibrációs időszakon.
 - Időrendi felosztás: tanító `< 2020`, kalibráció `2020–2021`, **validáció `2022 – 2025-03`**. Holdout zárva.
 - **Alapesély-modell:** csak az A csoport.
-- **Csoport-kiválasztás (előre rögzítve):** a B–F csoportok egyenként kerülnek az A mellé, sorrendben; egy csoport
+- **Csoport-kiválasztás (előre rögzítve):** a B–F, majd (2026-11-06-i bővítés, a mérés előtt rögzítve) a J, V, K
+  csoportok egyenként kerülnek az addigi modell mellé, sorrendben; egy csoport
   akkor marad, ha a validációs Brier-pontszámot legalább **0,5%-kal** javítja az addigi modellhez képest, és a
   kalibrációs hiba (ECE) nem nő 0,01-nél többel. A G csak akkor jelölt, ha a #20 kapuja átment.
 - **Elfogadás (a végső modell):** a validáción
@@ -51,6 +55,13 @@ hasonló helyzetek számával. Ha a mérés szerint a feltételek nem javítanak
   2. ECE ≤ 0,03 (10 sávban);
   3. évenként (2022, 2023, 2024) a Brier nem rosszabb az alapesélyénél.
   Ha nem megy át: a felület csak az alapesélyt mutatja, a feltételek hatását „nem javít mérhetően” felirattal.
+
+- **Megbízhatóság:** az elfogadott modell és az alapesély Brier-különbségére napokra blokkolt bootstrap 95%-os
+  intervallum (a validáción); csak akkor számít javulásnak, ha az intervallum alsó határa is 0 fölött van.
+- **Korlát:** az árfolyamtár 10 éves (2016-10-től), ezért a tanító időszak valójában 2017 vége – 2019.
+- **J – ismert-e a jelentés dátuma `t`-kor?** A múltbeli tényleges dátumot használjuk; a cégek a dátumot jellemzően
+  4–6 héttel előre bejelentik, a negyedéves ritmus pedig ismert, ezért ez csak enyhe előretekintés. Élesben a
+  meglévő jelentési naptár adja.
 
 ## 5. Megjelenítés
 
