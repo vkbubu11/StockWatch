@@ -221,6 +221,13 @@ def evaluate_symbol(symbol: str, settings: Settings | None = None, refresh: bool
 
     index = ctx.index_of(symbol)
     notes = []
+    from . import fundamentals                   # #72: SEC XBRL negyedevek (frissiteskor letoltve, kulonben a tarolt)
+
+    try:
+        fund = fundamentals.as_of(symbol, date.today(), fundamentals.fetch(symbol) if refresh else None)
+    except Exception as exc:                     # a fundamentum kiegeszites: hibaja nem akaszthatja meg
+        log.warning("Gyors kiertekeles: %s fundamentalis adata nem erheto el: %s", symbol, exc)
+        fund = None
     if "live" in views:
         notes.append("A mai gyertya meg alakul: az 'Elo' nezet ugy szamol, mintha az ar most zarna. "
                      "A napi volumen reszleges, ezert a volumenszuro es -pont ott alulbecsult.")
@@ -236,5 +243,5 @@ def evaluate_symbol(symbol: str, settings: Settings | None = None, refresh: bool
         "computed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "min_score": settings.entry.min_score, "confirm_breakout": settings.entry.confirm_breakout,
         "setup_max_distance_atr": settings.entry.setup_max_distance_atr,
-        "views": views, "notes": notes,
+        "views": views, "notes": notes, "fundamentals": fund,
     }

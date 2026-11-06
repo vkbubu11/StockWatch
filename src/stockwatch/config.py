@@ -169,6 +169,9 @@ class EntrySettings(BaseModel):
     min_momentum_pct: float | None = None   # 12-1 honapos hozam legalabb ennyi % (Jegadeesh-Titman 1993)
     min_rel_strength: float | None = None   # 60 napos hozam - benchmark hozama, szazalekpont
     max_contraction: float = 0.0            # kitores elotti 10 nap atl. sav / elozo 100 nape (VCP), max.
+    # --- fundamentalis szurok (#72, SEC XBRL, point-in-time) - None / False = kikapcsolva ---
+    min_eps_growth_pct: float | None = None  # az utolso negyedev ev/ev EPS-novekedese legalabb ennyi %
+    require_eps_acceleration: bool = False   # az utolso harom ev/ev EPS-novekedes no
 
     # --- belepes modja ---
     # Megerosites: a kitores napja utani zaro is a trigger felett legyen.

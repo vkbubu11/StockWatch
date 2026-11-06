@@ -60,3 +60,12 @@ def _isolated_practice(tmp_path, monkeypatch):
     from stockwatch.practice import store
 
     monkeypatch.setattr(store, "POOL_DIR", tmp_path / "practice")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_fundamentals(tmp_path, monkeypatch):
+    """A SEC XBRL-kivonat (#72) a tesztekben ideiglenes mappaban, halozat nelkul (a fetch csak a tarolt adatot adja)."""
+    from stockwatch import fundamentals
+
+    monkeypatch.setattr(fundamentals, "DIR", tmp_path / "fundamentals")
+    monkeypatch.setattr(fundamentals, "fetch", lambda symbol, *a, **k: fundamentals.load(symbol))
