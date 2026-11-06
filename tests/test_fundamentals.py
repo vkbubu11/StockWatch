@@ -91,3 +91,15 @@ def test_eps_filter_is_off_by_default_and_unknown_without_data():
 def test_study_rows_in_the_existing_form():
     names = [v.name for v in entry_research.study_grid(EntrySettings())]
     assert {"+EPS-novekedes >= 20%", "+EPS gyorsul", "+EPS >= 20% es gyorsul"} <= set(names)
+
+
+def test_eps_filter_runs_in_the_live_check_chain():
+    """A jelzes teljes ellenorzese (entry.evaluate -> run_checks) is latja az EPS-szurot."""
+    from .test_entry import _signal, enrich, lenient, uptrend
+
+    df = enrich(uptrend())
+    off = _signal(df, lenient())
+    assert not any(c.name.startswith("EPS") for c in off.checks)                     # alapbol ki
+    on = _signal(df, lenient().model_copy(update={"min_eps_growth_pct": 20.0}))
+    eps = [c for c in on.checks if c.name == "EPS-novekedes"]
+    assert len(eps) == 1 and eps[0].passed is None                                      # TEST-re nincs SEC-adat

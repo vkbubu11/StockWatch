@@ -496,6 +496,8 @@ def run_checks(
             )
 
     checks += strength_checks(df, cfg, rel_strength)
+    if cfg.min_eps_growth_pct is not None or cfg.require_eps_acceleration:     # #72, alapbol ki
+        checks += fundamental_checks(match.symbol, df.index[-1], cfg)
     return checks
 
 
@@ -546,8 +548,6 @@ def strength_checks(df: pd.DataFrame, cfg: EntrySettings, rel_strength: float | 
                       Check("Relativ ero", rel_strength >= cfg.min_rel_strength,
                             f"{rel_strength:+.1f} pp a {cfg.benchmark}-hoz kepest 60 napra "
                             f"(min. {cfg.min_rel_strength:+.0f})"))
-    if cfg.min_eps_growth_pct is not None or cfg.require_eps_acceleration:
-        checks.extend(fundamental_checks(match.symbol, df.index[-1], cfg))
     if cfg.max_contraction > 0:
         ratio = contraction_ratio(df)
         checks.append(Check("Osszehuzodas", None, "tul rovid historia") if ratio is None else
