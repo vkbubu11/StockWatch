@@ -1,0 +1,161 @@
+"""Celar-valoszinuseg (docs/TARGET-PROBABILITY-DESIGN.md): a cel / stop elso elerese helyes (egy napon mindketto:
+stop); a jellemzok csak a `t` napig ismert adatbol (a jovo nem valtoztat rajtuk); a fundamentum a beadas utani
+naptol; a lekerdezes a tartomanyon kivul nem ad szamot; a tanitas idorendi es a holdoutot nem latja."""
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+
+from stockwatch import target_prob as tp
+
+from .synthetic import random_walk
+
+
+def _walk(bars=1500, seed=3, start="2009-01-01"):
+    df = random_walk(bars=bars, seed=seed)
+    df.index = pd.bdate_range(start, periods=bars, name="date")
+    return df
+
+
+def test_first_touch_target_and_stop_with_pessimistic_same_day():
+    high = np.array([10, 10.5, 11.2, 10.0, 12.5])
+    low = np.array([10, 9.8, 10.9, 8.9, 12.0])
+    d, s = np.array([1.0, 2.0, 5.0]), np.array([1.0, 1.0, 1.0])
+    t, st = tp.first_touch(high, low, 0, 10.0, 1.0, 1, d, s, horizon=4)
+    assert t.tolist() == [1, 3, 4] and st.tolist() == [2, 2, 2]                 # 11 a 2. napon; stop 9: a 3. napon
+    t, st = tp.first_touch(high, low, 0, 10.0, 0.5, -1, np.array([1.0]), np.array([2.0]), horizon=4)
+    assert t.tolist() == [2] and st.tolist() == [1]                             # short: cel 9.5 (3. nap), stop 11 (2.)
+    both_h, both_l = np.array([10, 11.5]), np.array([10, 8.5])
+    t, st = tp.first_touch(both_h, both_l, 0, 10.0, 1.0, 1, np.array([1.0]), np.array([1.0]), horizon=1)
+    assert t[0] == st[0] == 0                                                   # egy napon mindketto -> stop (t < s hamis)
+
+
+def test_features_do_not_see_the_future():
+    df, bench = _walk(), _walk(seed=9)
+    full = tp.daily_features(df, bench, None)
+    cut = tp.daily_features(df.iloc[:900], bench.iloc[:900], None)
+    feat = [c for c in full.columns if not c.startswith("_")]                      # a _frv* a HAR CELJA, nem jellemzo
+    pd.testing.assert_series_equal(full.iloc[899][feat], cut.iloc[-1][feat], check_names=False)
+    assert not any(c.startswith("_") for f in tp.FAMILIES.values() for c in f)        # a modell soha nem latja
+
+
+def test_fundamentals_known_only_after_filing():
+    fund = {"eps": [["2019-01-01", "2019-03-31", 1.0, "2019-05-02", "q"], ["2020-01-01", "2020-03-31", 1.5, "2020-05-04", "q"]],
+            "revenue": []}
+    idx = pd.bdate_range("2020-04-30", "2020-05-08")
+    f = tp.fundamental_series(fund, idx)
+    assert f.loc["2020-05-04", "eps_yoy"] != 50.0 and f.loc["2020-05-05", "eps_yoy"] == 50.0
+
+
+def test_training_is_chronological_and_query_has_a_range(monkeypatch):
+    monkeypatch.setattr(tp, "DAYS_PER_SYMBOL", 60)
+    rng = np.random.default_rng(1)
+    parts = []
+    for k in range(6):
+        df = _walk(bars=4200, seed=20 + k, start="2008-01-01")
+        parts.append(tp.samples(f"S{k}", tp.daily_features(df, None, None), df, rng))
+    data = pd.concat(parts, ignore_index=True)
+    assert data["day"].max() < tp.HOLDOUT_START and data["day"].min() >= tp.START
+    assert set(data["hit"].unique()) <= {True, False}
+    # tobb ido, kozelebbi cel -> gyakoribb talalat (a cimkek ertelmesek)
+    near = data[(data["d"] <= 1) & (data["n"] >= 40) & (data["stop_d"] >= tp.NO_STOP)]["hit"].mean()
+    far = data[(data["d"] >= 4) & (data["n"] <= 10) & (data["stop_d"] >= tp.NO_STOP)]["hit"].mean()
+    assert near > 0.8 and far < 0.2
+    result = tp.train(data)
+    assert result["steps"][0]["group"] == "A" and result["rows"]["valid"] > 0
+    df = _walk(bars=4200, seed=99, start="2008-01-01")
+    today = tp.daily_features(df, None, None).iloc[-1]
+    close = float(df["close"].iloc[-1])
+    out = tp.query(result, today, close, "long", close + 1.0 * float(today["atr"]), 20)
+    assert 0 <= out["probability"] <= 1 and out["d"] == 1.0
+    longer = tp.query(result, today, close, "long", close + 1.0 * float(today["atr"]), 60)
+    farther = tp.query(result, today, close, "long", close + 4.0 * float(today["atr"]), 20)
+    assert longer["probability"] >= out["probability"] >= farther["probability"]        # monoton
+    assert not tp.query(result, today, close, "long", close - 1, 20)["ok"]                # rossz oldalon a cel
+    assert not tp.query(result, today, close, "long", close + 1, 200)["ok"]               # tul hosszu idotav
+
+
+def test_estimate_endpoint_validates_and_answers(monkeypatch, tmp_path):
+    from stockwatch import best, sessions
+    from stockwatch.config import Settings
+
+    monkeypatch.setattr(tp, "DAYS_PER_SYMBOL", 40)
+    monkeypatch.setattr(tp, "MODEL_PATH", tmp_path / "model.pkl")
+    rng = np.random.default_rng(2)
+    data = pd.concat([tp.samples(f"S{k}", tp.daily_features(d, None, None), d, rng)
+                      for k, d in enumerate(_walk(bars=4200, seed=40 + k, start="2008-01-01") for k in range(5))])
+    tp.save(tp.train(data))
+    df = _walk(bars=600, seed=77, start="2024-01-01")
+    monkeypatch.setattr(best, "_frame", lambda symbol, settings: df)
+    from stockwatch import feed, market, sectors                                      # halozat nelkul
+    monkeypatch.setattr(feed, "update", lambda *a, **k: {})
+    monkeypatch.setattr(sectors, "sector_map", lambda symbols, **k: {})
+    monkeypatch.setattr(market.HistoricalEarnings, "dates", lambda self, symbol: [])
+    monkeypatch.setattr(market.HistoricalEarnings, "save", lambda self: None)
+    monkeypatch.setattr(market.EarningsCalendar, "next_date", lambda self, symbol, as_of=None: None)
+    monkeypatch.setattr(sessions, "completed_bars", lambda frame, now=None: frame)
+    close = float(df["close"].iloc[-1])
+    out = tp.estimate("TEST", "long", close * 1.05, 20, None, Settings())
+    assert out["as_of"] == f"{df.index[-1]:%Y-%m-%d}" and 0 <= out["base"] <= 1 and "news" in out
+    for bad in (dict(side="up"), dict(target=float("nan")), dict(days=2.5), dict(target=-1)):
+        args = dict(side="long", target=close * 1.05, days=20) | bad
+        try:
+            tp.estimate("TEST", args["side"], args["target"], args["days"], None, Settings())
+        except ValueError:
+            continue
+        raise AssertionError(f"elfogadta: {bad}")
+
+
+def test_earnings_features_know_only_the_past_moves():
+    df = _walk(bars=400, seed=5, start="2020-01-01")
+    e = tp.indicators.enrich(df)
+    dates = [df.index[100].date(), df.index[200].date(), df.index[300].date()]
+    f = tp.earnings_features(e, dates)
+    assert f["earn_days"].iloc[95] == 5 and f["earn_days"].iloc[100] == 0            # a jelentes napja: 0
+    assert np.isnan(f["earn_jump_atr"].iloc[101]) and not np.isnan(f["earn_jump_atr"].iloc[102])   # D+1 zaras utan
+    assert f["earn_jump_atr"].iloc[250] != f["earn_jump_atr"].iloc[150]              # a 2. jelentes utan frissul
+    assert np.isnan(f["earn_days"].iloc[350])                                         # nincs tobb ismert jelentes
+
+
+def test_own_hit_uses_only_closed_outcomes():
+    df = _walk(bars=900, seed=6)
+    atr = tp.indicators.enrich(df)["atr"]
+    exc = tp.excursions(df, atr)
+    t = 700
+    base = tp.own_hit(exc, t, 1.0, 20, 1)
+    changed = df.copy()
+    changed.iloc[t + 1:, changed.columns.get_loc("high")] *= 1.5                       # csak a t utani (jovobeli) napok
+    assert tp.own_hit(tp.excursions(changed, atr), t, 1.0, 20, 1) == base
+    assert 0 <= base <= 1 and np.isnan(tp.own_hit(exc, 50, 1.0, 20, 1))               # keves multbeli kimenet
+
+
+def test_v2_walk_forward_decision_and_query(monkeypatch, tmp_path):
+    monkeypatch.setattr(tp, "DAYS_PER_SYMBOL", 120)
+    monkeypatch.setattr(tp, "START", pd.Timestamp("2009-06-01"))
+    monkeypatch.setattr(tp, "TEST_YEARS", [2017, 2018, 2019])
+    monkeypatch.setattr(tp, "TRAIN_CAP", 50_000)
+    monkeypatch.setattr(tp, "MIN_TRAIN", 1_000)
+    rng = np.random.default_rng(4)
+    parts = []
+    for k in range(8):
+        df = _walk(bars=3000, seed=60 + k, start="2008-01-01")
+        parts.append(tp.samples(f"S{k}", tp.daily_features(df, None, None), df, rng))
+    data = pd.concat(parts, ignore_index=True)
+    wf = tp.walk_forward(data, families=("M0", "M1", "M2"))
+    for f in ("M0", "M1", "M2"):
+        r = wf["families"][f]
+        assert set(r["years"]) == {2017, 2018, 2019} and 0 < r["brier"] < 0.25 and r["ece"] < 0.1
+    # veletlen bolyongason az analitikus (HAR + elso athaladas) esely mar kalibralt kozelito
+    assert wf["families"]["M1"]["ece"] < 0.05
+    chosen = tp.decide(wf)
+    if chosen is not None:
+        live = tp.fit_live(data, chosen, wf)
+        df = _walk(bars=3000, seed=99, start="2008-01-01")
+        feats = tp.daily_features(df, None, None)
+        close = float(df["close"].iloc[-1])
+        near = tp.query(live, feats.iloc[-1], close, "long", close + float(feats["atr"].iloc[-1]), 20)
+        far = tp.query(live, feats.iloc[-1], close, "long", close + 4 * float(feats["atr"].iloc[-1]), 20)
+        stopped = tp.query(live, feats.iloc[-1], close, "long", close + float(feats["atr"].iloc[-1]), 20,
+                           stop=close - 0.5 * float(feats["atr"].iloc[-1]))
+        assert near["probability"] >= far["probability"] and near["probability"] >= stopped["probability"]
+        assert near["method"] in tp.FAMILY_LABELS.values()

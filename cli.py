@@ -698,12 +698,84 @@ def cmd_news(args) -> int:
         f = news.features_for(symbol, day)
         print(f"\n{symbol} - {len(arts)} tarolt hir / bejelentes. Dontes {f['as_of']} (latott hirek: {f['cutoff']} elott)")
         print(f"  {news.summary(f)}")
-        shown = [a for a in arts if a.published < nf.decision_cutoff(day)][-args.limit:]
+        shown = [a for a in arts if a.published < nf.decision_cutoff(day)][-args.limit:] if args.limit > 0 else []
         for a in reversed(shown):
             when = a.published.tz_convert(nf.MARKET_TZ)
             sc = a.score
             ev = f" [{news.EVENT_LABELS.get(sc.get('event'), sc.get('event'))}]" if sc.get("event") else ""
             print(f"  {when:%Y-%m-%d %H:%M} {a.source:<6} {sc.get('label', '?'):<8} {sc.get('polarity', 0):+.2f}{ev}  {a.title[:100]}")
+    return 0
+
+
+def cmd_target_prob(args) -> int:
+    """A celar-valoszinuseg: walk-forward meres (2008-2025 Q1, holdout zarva), az elore rogzitett dontes, es ha van
+    elfogadott modellcsalad, az eles modell tanitasa (docs/TARGET-PROBABILITY-DESIGN.md 8. fejezet)."""
+    from stockwatch import indexes as indexes_mod, target_prob as tp
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings, verbose=args.verbose)
+    members = indexes_mod.IndexMembers(settings)
+    symbols = list(dict.fromkeys(_universe_symbols() + members.members("nasdaq100") + members.members("sp500")))
+    print(f"Tanito adat {len(symbols)} papirbol (2000-tol, papironkent {tp.DAYS_PER_SYMBOL} veletlen nap)...")
+    data = tp.build(symbols, settings)
+    print(f"{len(data)} sor, {data['symbol'].nunique()} papir. Walk-forward (tesztevek {tp.TEST_YEARS[0]}-{tp.TEST_YEARS[-1]})...")
+    wf = tp.walk_forward(data)
+    m0 = wf["families"]["M0"]["brier"]
+    print(f"\n{'csalad':<44} {'Brier':>8} {'javulas':>8} {'95% (M0-hoz)':>18} {'ECE':>7} {'legrosszabb ev ECE':>19}")
+    for f, r in wf["families"].items():
+        worst = max(r["years"].items(), key=lambda kv: kv[1]["ece"])
+        ci = r["gain_vs_m0"]
+        print(f"{f + ' - ' + tp.FAMILY_LABELS[f]:<44} {r['brier']:8.4f} {(1 - r['brier'] / m0) * 100:+7.2f}% "
+              f"{ci[0] * 100:+7.2f}% .. {ci[1] * 100:+5.2f}% {r['ece']:7.4f} {worst[1]['ece']:12.4f} ({worst[0]})")
+    print("\nEvenkent - Brier (M0 / legjobb):")
+    best = min(wf["families"], key=lambda k: wf["families"][k]["brier"])
+    for year, v in wf["families"]["M0"]["years"].items():
+        print(f"  {year}: {v['brier']:.4f} / {wf['families'][best]['years'][year]['brier']:.4f}")
+    chosen = tp.decide(wf)
+    if chosen is None:
+        print("\nEgyik csalad sem teljesiti az elore rogzitett feltetelt - nincs uj eles modell.")
+        return 1
+    print(f"\nValasztott: {chosen} - {tp.FAMILY_LABELS[chosen]}. Eles modell tanitasa...")
+    tp.save(tp.fit_live(data, chosen, wf))
+    print(f"Mentve: {tp.MODEL_PATH}")
+    return 0
+
+
+def cmd_news_research(args) -> int:
+    """A hirhangulat validalasa (#20, 2. fazis): az elore rogzitett H1 / H2 szurok a kutatasi univerzumon,
+    tanito / validacio bontasban, a kapuval. A holdout zarva marad. Elotte: news <papirok> --fetch --since 2016-10-01."""
+    import json
+
+    import pandas as pd
+
+    from stockwatch import entry_research as er, market, meanrev_research as mr
+    from stockwatch.config import DATA_DIR
+    from stockwatch.sentiment import research
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings)
+    symbols = _universe_symbols()
+    ctx = market.load_context(settings, refresh=False, allow_network=False)
+    earnings = market.HistoricalEarnings(settings, allow_network=False)
+    groups = {}
+    for name, params in (("Visszahuzas", settings.strategies.pullback.params), ("Mely visszahuzas", settings.strategies.deep.params)):
+        data = mr.load_universe(symbols, settings, params, ctx, earnings, end=er.HOLDOUT_START - pd.Timedelta(days=1))
+        groups[name] = [(t.symbol, t.signal_date, t.net_pct) for t in mr.candidates(data, params) if t.status == "closed"]
+    live = er.Variant.from_settings(settings.entry, name="ELO beallitas")
+    out = er.run(symbols, settings, universe=True, grid=[live])
+    groups["Kitores"] = [(r.symbol, r.date, r.r) for r in out["rows"][0]["results"]]
+    report = research.run(groups)
+    unit = {"Visszahuzas": "%", "Mely visszahuzas": "%", "Kitores": " R"}
+    for name, r in report.items():
+        print(f"{name}: {r['signals']} jelzes, ebbol hirforrassal lefedett {r['covered']} (elso: {r['first_covered']})")
+    print()
+    md = research.report_markdown(report, unit)
+    print(md)
+    out_dir = DATA_DIR / "research" / "news"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "report.md").write_text(md + "\n", encoding="utf-8")
+    (out_dir / "summary.json").write_text(json.dumps(report, default=str, indent=1), encoding="utf-8")
+    print(f"\nMentve: {out_dir}")
     return 0
 
 
@@ -1179,6 +1251,37 @@ def cmd_event_sources(args) -> int:
     return 0
 
 
+def cmd_fundamentals(args) -> int:
+    """SEC XBRL negyedeves EPS es arbevetel (#72), a beadas datumaval; papironkent egy keres (<= 8 / mp)."""
+    from datetime import date
+
+    from stockwatch import fundamentals
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings, verbose=args.verbose)
+    if args.indexes:
+        from stockwatch import indexes as indexes_mod
+
+        members = indexes_mod.IndexMembers(settings)
+        symbols = list(dict.fromkeys(members.members("nasdaq100") + members.members("sp500")))
+    else:
+        symbols = _universe_symbols() if args.universe else _symbols(args)
+    ok = 0
+    for n, symbol in enumerate(symbols, 1):
+        data = fundamentals.fetch(symbol, max_age_days=0 if args.force else fundamentals.MAX_AGE_DAYS)
+        f = fundamentals.as_of(symbol, date.today(), data) if data else None
+        ok += f is not None
+        if args.verbose or len(symbols) <= 20:
+            print(f"{symbol:6} " + ("nincs SEC XBRL-adat" if f is None else
+                  f"utolso negyedev {f['last_quarter']}  EPS ev/ev {f['eps_yoy'] if f['eps_yoy'] is not None else '-'}%  "
+                  f"arbevetel ev/ev {f['revenue_yoy'] if f['revenue_yoy'] is not None else '-'}%  "
+                  f"gyorsul: {'igen' if f['eps_accelerating'] else 'nem'}"))
+        elif n % 50 == 0:
+            print(f"{n} / {len(symbols)}...")
+    print(f"Kesz: {ok} / {len(symbols)} papirnal van friss negyedeves adat (data/fundamentals).")
+    return 0
+
+
 def cmd_practice_pool(args) -> int:
     """Gyakorlo mod: a feladatkeszlet (rejtett multbeli helyzetek) felepitese az univerzum-cache-bol."""
     from stockwatch.practice import sampler
@@ -1410,6 +1513,13 @@ def main() -> int:
     p.add_argument("--limit", type=int, default=15, help="ennyi hir listazasa")
     p.set_defaults(func=cmd_news)
 
+    p = subparsers.add_parser("target-prob", help="celar-valoszinuseg: a modell tanitasa es merese (holdout zarva)")
+    p.add_argument("--verbose", action="store_true")
+    p.set_defaults(func=cmd_target_prob)
+
+    p = subparsers.add_parser("news-research", help="a hirhangulat validalasa (#20): H1 / H2 szurok a kapuval")
+    p.set_defaults(func=cmd_news_research)
+
     p = subparsers.add_parser("levels", help="support/rezisztencia szintek egy papirra")
     p.add_argument("--symbol", required=True)
     p.set_defaults(func=cmd_levels)
@@ -1461,6 +1571,14 @@ def main() -> int:
     p.add_argument("--csv", help="az esemenylista CSV-ben ide")
     p.add_argument("--verbose", action="store_true")
     p.set_defaults(func=cmd_event_study)
+
+    p = subparsers.add_parser("fundamentals", help="SEC XBRL negyedeves EPS es arbevetel (point-in-time, #72)")
+    p.add_argument("--symbols", help="vesszovel elvalasztva, vagy 'all' (a watchlist)")
+    p.add_argument("--universe", action="store_true", help="a kutatasi univerzum (106 papir)")
+    p.add_argument("--indexes", action="store_true", help="a Nasdaq-100 es az S&P 500 minden tagja")
+    p.add_argument("--force", action="store_true", help="a 7 napnal frissebb tarolt adatot is ujra letolti")
+    p.add_argument("--verbose", action="store_true")
+    p.set_defaults(func=cmd_fundamentals)
 
     p = subparsers.add_parser("event-sources", help="esemenytanulmany-forrasok: Form 4, S&P 500 valtozasok")
     p.add_argument("--form4-since", type=int, metavar="EV", help="a SEC negyedeves Form 4 csomagjai ettol az evtol")

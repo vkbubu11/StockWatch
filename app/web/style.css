@@ -550,3 +550,15 @@ tr.lab-detail h3, #lab-ml h3 { font-size: 13px; margin: 6px 0; }
 .sector-pick .best-top .ticker { font-size: 18px; }
 .btn.small { padding: 3px 9px; font-size: 12px; margin-left: 6px; }
 @media (max-width: 720px) { .sector-form select { width: 100%; } }
+
+/* Negyedeves EPS (#72) a Papir kiertekelese ablakban */
+.fund-bars { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; align-items: end; margin: 6px 0; }
+.fund-q { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.fund-bar { width: 70%; max-width: 34px; background: var(--up); border-radius: 3px 3px 0 0; opacity: .8; }
+.fund-bar.neg { background: var(--down); }
+.fund-val { font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* Celar-valoszinuseg a Papir kiertekelese ablakban */
+.tp-form { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-end; margin: 6px 0 10px; }
+.tp-form label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.tp-form input, .tp-form select { min-width: 120px; }

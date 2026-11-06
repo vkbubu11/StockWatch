@@ -135,6 +135,9 @@ python cli.py monitor
 | `event-study --type earnings --universe sp500 [--window -10 60] [--csv out.csv]` · `event-sources --index-changes --form4-since 2017` | Eseménytanulmányok és a forrásadatuk (lásd lent) |
 | `agent run --brief briefs/x.yaml` · `agent queue --brief … [--night]` · `agent list` · `agent report --run-id …` | Kutatóügynök: stratégiaváltozatok keresése egy kutatási cél szerint (lásd lent) |
 | `digest [--print] [--no-refresh] [--date YYYY-MM-DD]` | Reggeli összefoglaló most: a watchlist és a Saját pozíciók változásai (lásd lent) |
+| `fundamentals [--symbols X,Y] [--universe] [--indexes] [--force]` | SEC XBRL negyedéves hígított EPS és árbevétel a beadás dátumával (point-in-time; a szám csak a beadás utáni naptól ismert). Kell hozzá `SEC_USER_AGENT` a `.env`-ben (név + e-mail). Az EPS-szűrő (`entry.min_eps_growth_pct`, `entry.require_eps_acceleration`) alapból ki; mérés: `entry-research --study` |
+| `target-prob` | Célár-valószínűség modell tanítása és mérése (alapesély + feltételcsoportok, előre rögzített elfogadás; `docs/TARGET-PROBABILITY-DESIGN.md`). A Papír kiértékelése ablakban: irány, célár, időtáv, opcionális stop |
+| `news-research` | A hírhangulat validálása (#20): H1 / H2 szűrők a kapuval, tanító / validáció; eredmény: `docs/SENTIMENT-RESULTS-2026-11.md` |
 | `practice-pool [--queue] [--force]` | A Gyakorló mód feladatkészletének felépítése (lásd lent) |
 
 ---

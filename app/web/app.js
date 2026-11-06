@@ -469,6 +469,18 @@ function renderCheck() {
     <h3 class="check-h">Momentum (12-1) <span class="muted small">– havi rotáció: a legjobb ${v.momentum.top_n} papír, megtartás a legjobb ${v.momentum.buffer} között</span></h3>
     ${momentumRow(v.momentum)}
 
+    <h3 class="check-h">Célár-valószínűség <span class="muted small">– a múltban hasonló helyzetekben milyen gyakran érte el az ár a célt</span></h3>
+    <form class="tp-form" id="tp-form" autocomplete="off">
+      <label>Irány <select name="side"><option value="long">Long</option><option value="short">Short</option></select></label>
+      <label>Célár ($) <input name="target" type="number" step="0.01" min="0" required></label>
+      <label>Időtáv (kereskedési nap) <input name="days" type="number" min="1" max="60" value="20" required></label>
+      <label>Stop ($, nem kötelező) <input name="stop" type="number" step="0.01" min="0"></label>
+      <button class="btn primary" type="submit">Becslés</button></form>
+    <div id="tp-result"></div>
+
+    <h3 class="check-h">Negyedéves EPS és árbevétel <span class="muted small">– SEC XBRL, a beadás napja után ismert adat</span></h3>
+    ${fundamentalsBlock(d.fundamentals)}
+
     ${v.patterns.length ? `<h3 class="check-h">Minden aktív alakzat</h3>${checkPatterns(v.patterns)}` : ""}
     <details class="check-more"><summary>Irányjelzés összetevői</summary><div class="parts">${f.components.map((c) => `
       <div class="part"><span>${esc(c.name)}</span><span class="num ${c.score > 0 ? "up" : c.score < 0 ? "down" : ""}">${signed(c.score, 2)}</span><span class="muted">${esc(c.reason)}</span></div>`).join("")}</div></details>
@@ -478,6 +490,54 @@ function renderCheck() {
   dlg.querySelectorAll("a").forEach((a) => a.addEventListener("click", () => dlg.close()));
   dlg.querySelectorAll("button[data-view]").forEach((b) => b.addEventListener("click", () => { checkView = b.dataset.view; renderCheck(); }));
   bindQuickForms(dlg);
+  const tpf = $("#tp-form");
+  if (tpf) tpf.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const box = $("#tp-result");
+    const num = (n) => (tpf.elements[n].value.trim() === "" ? null : Number(tpf.elements[n].value));
+    box.innerHTML = `<div class="loading">Becslés…</div>`;
+    try {
+      const r = await api("/api/target-prob", { method: "POST", body: JSON.stringify({ symbol: d.symbol, side: tpf.elements.side.value,
+        target: num("target"), days: num("days"), stop: num("stop") }) });
+      box.innerHTML = targetProbView(r);
+    } catch (e) { box.innerHTML = `<div class="callout">${esc(e.message)}</div>`; }
+  });
+}
+
+// a celar-valoszinuseg eredmenye: kalibralt gyakorisag, az alapesely (csak volatilitasbol), a validacios sav, csoportonkent
+// a hozzajarulas - leiro szoveggel, nem ajanlas
+function targetProbView(r) {
+  const p = (v) => (v == null ? "–" : `${fmt(v * 100, 0)}%`);
+  if (!r.ok && r.reason === "range") return `<div class="callout">A cél ${r.d != null ? `${fmt(r.d, 2)} ATR-re van` : "rossz oldalon van"}: a becslés 0–8 ATR és 1–60 nap között, a cél az irány felőli oldalon (longnál a záró felett) értelmezett.</div>`;
+  const what = r.stop != null ? "a stop előtt" : "legalább egyszer";
+  const head = r.ok
+    ? `<div class="kpi"><div class="label">${r.accepted ? "Becslés a mai helyzetre" : "Alapesély (a feltételek nem javítottak mérhetően)"}</div>
+        <div class="value">${p(r.accepted ? r.probability : r.base)}</div>
+        <div class="sub">${r.side === "long" ? "Long" : "Short"} · cél ${fmt(r.target)} $ (${fmt(r.d, 2)} ATR) · ${r.days} nap · ${what}</div></div>`
+    : `<div class="callout">Nincs elég hasonló múltbeli helyzet (${r.band.n} &lt; 200) – nem írunk ki számot.</div>`;
+  return `<div class="kpis check-kpis">${head}
+      <div class="kpi"><div class="label">Alapesély</div><div class="value">${p(r.base)}</div><div class="sub">csak a volatilitásból, a távolságból és az időből</div></div>
+      <div class="kpi"><div class="label">Validáció (2008–2025/03, évenként előre)</div><div class="value">${p(r.band.observed)}</div>
+        <div class="sub">${r.band.n} hasonló becslésnél ennyiszer teljesült (95%: ${p(r.band.lo)}–${p(r.band.hi)})</div></div></div>
+    ${r.contributions.length ? `<p class="small">Hozzájárulás az alapeselyhez képest: ${r.contributions.map((c) => `<span>${esc(c.label)}</span> ${c.pp > 0 ? "+" : ""}${fmt(c.pp, 1)} pp`).join(" · ")}</p>` : ""}
+    ${r.news ? `<p class="small muted"><span>Hírek (a becslésbe nem számít bele):</span> ${esc(r.news)}</p>` : ""}
+    <p class="muted small">A ${esc(r.as_of)} zárás (${fmt(r.close)} $) utáni helyzetre, a múltbeli hasonló helyzetek gyakoriságából; modell: ${esc(r.method || "alapesély")}, tanítva ${esc(r.trained)}; a validációs sáv 2008–2025 évenkénti, előre nem látott becsléseiből. Leírás, nem ajánlás – a múlt nem garantálja a jövőt.</p>`;
+}
+
+// a SEC XBRL negyedevei (#72): higitott EPS oszlopokkal, ev/ev novekedes; a 4. negyedev az eves ertekbol szarmaztatott
+function fundamentalsBlock(f) {
+  if (!f) return `<div class="callout">Nincs friss negyedéves SEC-adat (pl. külföldi kibocsátó, ETF vagy még nem töltődött le).</div>`;
+  const max = Math.max(1e-9, ...f.quarters.map((q) => Math.abs(q.eps || 0)));
+  const yoy = (v) => (v == null ? "–" : pct(v, 0));
+  return `<div class="fund-bars" role="img" aria-label="Negyedéves EPS">${f.quarters.map((q) => `
+      <div class="fund-q" title="${esc(q.end)}${q.derived ? " (az éves értékből számolva)" : ""}">
+        <span class="fund-val ${q.eps < 0 ? "down" : ""}">${q.eps == null ? "–" : fmt(q.eps, 2)}</span>
+        <span class="fund-bar ${q.eps < 0 ? "neg" : ""}" style="height:${Math.round(Math.abs(q.eps || 0) / max * 56) + 2}px"></span>
+        <span class="muted small">${esc(q.end.slice(2, 7))}${q.derived ? "*" : ""}</span>
+        <span class="small ${q.eps_yoy > 0 ? "up" : q.eps_yoy < 0 ? "down" : ""}">${yoy(q.eps_yoy)}</span></div>`).join("")}</div>
+    <p class="small"><span>EPS év/év:</span> <strong>${yoy(f.eps_yoy)}</strong> · <span>árbevétel év/év:</span> <strong>${yoy(f.revenue_yoy)}</strong>
+      · <span>EPS-növekedés gyorsul:</span> ${f.eps_accelerating ? "igen" : "nem"} · <span>pozitív EPS-növekedés egymás után:</span> ${f.eps_positive_streak} <span>negyedév</span></p>
+    <p class="muted small">* a 4. negyedév az éves jelentésből és a három negyedéves jelentésből számolva (az EPS-nél közelítés).</p>`;
 }
 
 // Hol tart az alakzat a jelzeshez kepest
