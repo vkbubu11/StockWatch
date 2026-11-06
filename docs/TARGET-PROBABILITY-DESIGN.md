@@ -76,3 +76,27 @@ hasonló helyzetek számával. Ha a mérés szerint a feltételek nem javítanak
 - Nyelvi modell (a projekt elve).
 - Opciós implikált volatilitás (nincs megbízható ingyenes, point-in-time forrás).
 - A zárolt holdout: csak egyszer, a végső ellenőrzéshez, naplózva.
+
+## 7. Eredmények
+
+### 2026-11-06 – a J, V, K csoportokkal (532 papír, ~500 ezer kérdés, validáció 2022 – 2025/03)
+
+| csoport | sorrendi Brier | egyedül az alap mellett | marad |
+|---|---|---|---|
+| A – alap | 0,1660 (ECE 0,0065) | – | igen |
+| B – piac | 0,1694 | −2,07% | nem |
+| C – szektor | 0,1678 | −1,10% | nem |
+| D – momentum | 0,1662 | −0,12% | nem |
+| E – technika | 0,1664 | −0,22% | nem |
+| F – fundamentum | 0,1666 | −0,34% | nem |
+| J – gyorsjelentés | 0,1661 | −0,04% | nem |
+| V – volatilitás-előrejelzés | 0,1770 | −6,62% | nem |
+| K – a papír karaktere | 0,1669 | −0,51% | nem |
+
+Egyik csoport sem javított; a végső modell = az alapesély (javulás 95%-os intervalluma: 0 .. 0).
+
+**Diagnózis:** a tanító időszak az árfolyamtár 10 éves ablaka miatt csak 2017 vége – 2019, egyetlen nyugodt rezsim
+(^VIX > 25 a napok 3%-án; a validációban 17%-án, a kalibrációban 35%-án). A fa-alapú modell a tanítóban nem látott
+volatilitás-szinteket nem tudja kezelni – ezért ront leginkább a szint-típusú V csoport (^VIX, realizált
+volatilitás). A javítás iránya: hosszabb (2000-től, 2008-at és 2020-at is tartalmazó) tanító történet, és
+rezsimfüggetlen (arány-típusú) jellemzők – egy új, a mérés előtt rögzített futásban.

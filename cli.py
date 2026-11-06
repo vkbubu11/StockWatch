@@ -722,6 +722,11 @@ def cmd_target_prob(args) -> int:
     print(f"\n{'csoport':<38} {'Brier':>8} {'ECE':>7}  marad")
     for s in result["steps"]:
         print(f"{s['group'] + ' - ' + tp.GROUP_LABELS[s['group']]:<38} {s['brier']:8.4f} {s['ece']:7.4f}  {'igen' if s['kept'] else 'nem'}")
+    print("\nTajekoztatas - minden csoport EGYEDUL az alap mellett (Brier-javulas):")
+    for g, v in result["single"].items():
+        print(f"  {g} - {tp.GROUP_LABELS[g]:<30} {v['gain'] * 100:+.2f}%")
+    print(f"\nA vegso modell Brier-javulasa az alapeselyhez kepest, 95%-os intervallum (napokra blokkolt bootstrap): "
+          f"{result['gain_ci'][0] * 100:+.2f}% .. {result['gain_ci'][1] * 100:+.2f}%")
     print("\nEvenkent (validacio) - Brier: modell / alapesely")
     for year, v in result["years"].items():
         print(f"  {year}: {v['model']:.4f} / {v['base']:.4f}")

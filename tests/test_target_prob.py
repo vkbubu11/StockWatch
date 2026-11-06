@@ -96,3 +96,26 @@ def test_estimate_endpoint_validates_and_answers(monkeypatch, tmp_path):
         except ValueError:
             continue
         raise AssertionError(f"elfogadta: {bad}")
+
+
+def test_earnings_features_know_only_the_past_moves():
+    df = _walk(bars=400, seed=5, start="2020-01-01")
+    e = tp.indicators.enrich(df)
+    dates = [df.index[100].date(), df.index[200].date(), df.index[300].date()]
+    f = tp.earnings_features(e, dates)
+    assert f["earn_days"].iloc[95] == 5 and f["earn_days"].iloc[100] == 0            # a jelentes napja: 0
+    assert np.isnan(f["earn_jump_atr"].iloc[101]) and not np.isnan(f["earn_jump_atr"].iloc[102])   # D+1 zaras utan
+    assert f["earn_jump_atr"].iloc[250] != f["earn_jump_atr"].iloc[150]              # a 2. jelentes utan frissul
+    assert np.isnan(f["earn_days"].iloc[350])                                         # nincs tobb ismert jelentes
+
+
+def test_own_hit_uses_only_closed_outcomes():
+    df = _walk(bars=900, seed=6)
+    atr = tp.indicators.enrich(df)["atr"]
+    exc = tp.excursions(df, atr)
+    t = 700
+    base = tp.own_hit(exc, t, 1.0, 20, 1)
+    changed = df.copy()
+    changed.iloc[t + 1:, changed.columns.get_loc("high")] *= 1.5                       # csak a t utani (jovobeli) napok
+    assert tp.own_hit(tp.excursions(changed, atr), t, 1.0, 20, 1) == base
+    assert 0 <= base <= 1 and np.isnan(tp.own_hit(exc, 50, 1.0, 20, 1))               # keves multbeli kimenet
