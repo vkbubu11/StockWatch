@@ -557,3 +557,8 @@ tr.lab-detail h3, #lab-ml h3 { font-size: 13px; margin: 6px 0; }
 .fund-bar { width: 70%; max-width: 34px; background: var(--up); border-radius: 3px 3px 0 0; opacity: .8; }
 .fund-bar.neg { background: var(--down); }
 .fund-val { font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* Celar-valoszinuseg a Papir kiertekelese ablakban */
+.tp-form { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-end; margin: 6px 0 10px; }
+.tp-form label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.tp-form input, .tp-form select { min-width: 120px; }

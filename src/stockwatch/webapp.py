@@ -2120,6 +2120,16 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                     if not SYMBOL_RE.match(symbol):
                         return self._error(400, "Ervenytelen ticker")
                     return self._json(quickcheck.evaluate_symbol(symbol))
+                if path == "/api/target-prob":                 # celar-valoszinuseg (docs/TARGET-PROBABILITY-DESIGN.md)
+                    from . import target_prob
+
+                    symbol = str(body.get("symbol") or "").strip().upper()
+                    if not SYMBOL_RE.match(symbol):
+                        return self._error(400, "Ervenytelen ticker")
+                    stop = body.get("stop")
+                    return self._json(target_prob.estimate(symbol, str(body.get("side") or ""), body.get("target"),
+                                                           body.get("days"), None if stop in (None, "") else stop,
+                                                           load_settings()))
                 return self._error(404, "Nem talalhato")
             except (ValueError, TypeError, broker.BrokerError, LockTimeout) as exc:
                 return self._error(400, str(exc))

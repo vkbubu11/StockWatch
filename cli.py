@@ -698,12 +698,75 @@ def cmd_news(args) -> int:
         f = news.features_for(symbol, day)
         print(f"\n{symbol} - {len(arts)} tarolt hir / bejelentes. Dontes {f['as_of']} (latott hirek: {f['cutoff']} elott)")
         print(f"  {news.summary(f)}")
-        shown = [a for a in arts if a.published < nf.decision_cutoff(day)][-args.limit:]
+        shown = [a for a in arts if a.published < nf.decision_cutoff(day)][-args.limit:] if args.limit > 0 else []
         for a in reversed(shown):
             when = a.published.tz_convert(nf.MARKET_TZ)
             sc = a.score
             ev = f" [{news.EVENT_LABELS.get(sc.get('event'), sc.get('event'))}]" if sc.get("event") else ""
             print(f"  {when:%Y-%m-%d %H:%M} {a.source:<6} {sc.get('label', '?'):<8} {sc.get('polarity', 0):+.2f}{ev}  {a.title[:100]}")
+    return 0
+
+
+def cmd_target_prob(args) -> int:
+    """A celar-valoszinuseg modelljenek tanitasa es merese (docs/TARGET-PROBABILITY-DESIGN.md); a holdout zarva."""
+    from stockwatch import indexes as indexes_mod, target_prob as tp
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings, verbose=args.verbose)
+    members = indexes_mod.IndexMembers(settings)
+    symbols = list(dict.fromkeys(_universe_symbols() + members.members("nasdaq100") + members.members("sp500")))
+    print(f"Tanito adat {len(symbols)} papirbol (papironkent {tp.DAYS_PER_SYMBOL} veletlen nap)...")
+    data = tp.build(symbols, settings)
+    print(f"{len(data)} sor, {data['symbol'].nunique()} papir. Tanitas (csoportonkent egy modell)...")
+    result = tp.train(data)
+    print(f"\n{'csoport':<38} {'Brier':>8} {'ECE':>7}  marad")
+    for s in result["steps"]:
+        print(f"{s['group'] + ' - ' + tp.GROUP_LABELS[s['group']]:<38} {s['brier']:8.4f} {s['ece']:7.4f}  {'igen' if s['kept'] else 'nem'}")
+    print("\nEvenkent (validacio) - Brier: modell / alapesely")
+    for year, v in result["years"].items():
+        print(f"  {year}: {v['model']:.4f} / {v['base']:.4f}")
+    print(f"\nElfogadva: {'IGEN' if result['accepted'] else 'NEM - a feluleten csak az alapesely latszik'}"
+          f" (sorok: {result['rows']})")
+    tp.save(result)
+    print(f"Mentve: {tp.MODEL_PATH}")
+    return 0
+
+
+def cmd_news_research(args) -> int:
+    """A hirhangulat validalasa (#20, 2. fazis): az elore rogzitett H1 / H2 szurok a kutatasi univerzumon,
+    tanito / validacio bontasban, a kapuval. A holdout zarva marad. Elotte: news <papirok> --fetch --since 2016-10-01."""
+    import json
+
+    import pandas as pd
+
+    from stockwatch import entry_research as er, market, meanrev_research as mr
+    from stockwatch.config import DATA_DIR
+    from stockwatch.sentiment import research
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings)
+    symbols = _universe_symbols()
+    ctx = market.load_context(settings, refresh=False, allow_network=False)
+    earnings = market.HistoricalEarnings(settings, allow_network=False)
+    groups = {}
+    for name, params in (("Visszahuzas", settings.strategies.pullback.params), ("Mely visszahuzas", settings.strategies.deep.params)):
+        data = mr.load_universe(symbols, settings, params, ctx, earnings, end=er.HOLDOUT_START - pd.Timedelta(days=1))
+        groups[name] = [(t.symbol, t.signal_date, t.net_pct) for t in mr.candidates(data, params) if t.status == "closed"]
+    live = er.Variant.from_settings(settings.entry, name="ELO beallitas")
+    out = er.run(symbols, settings, universe=True, grid=[live])
+    groups["Kitores"] = [(r.symbol, r.date, r.r) for r in out["rows"][0]["results"]]
+    report = research.run(groups)
+    unit = {"Visszahuzas": "%", "Mely visszahuzas": "%", "Kitores": " R"}
+    for name, r in report.items():
+        print(f"{name}: {r['signals']} jelzes, ebbol hirforrassal lefedett {r['covered']} (elso: {r['first_covered']})")
+    print()
+    md = research.report_markdown(report, unit)
+    print(md)
+    out_dir = DATA_DIR / "research" / "news"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "report.md").write_text(md + "\n", encoding="utf-8")
+    (out_dir / "summary.json").write_text(json.dumps(report, default=str, indent=1), encoding="utf-8")
+    print(f"\nMentve: {out_dir}")
     return 0
 
 
@@ -1440,6 +1503,13 @@ def main() -> int:
     p.add_argument("--as-of", help="a dontes napja (alap: ma) - csak az aznap 16:00 NY elotti hirek latszanak")
     p.add_argument("--limit", type=int, default=15, help="ennyi hir listazasa")
     p.set_defaults(func=cmd_news)
+
+    p = subparsers.add_parser("target-prob", help="celar-valoszinuseg: a modell tanitasa es merese (holdout zarva)")
+    p.add_argument("--verbose", action="store_true")
+    p.set_defaults(func=cmd_target_prob)
+
+    p = subparsers.add_parser("news-research", help="a hirhangulat validalasa (#20): H1 / H2 szurok a kapuval")
+    p.set_defaults(func=cmd_news_research)
 
     p = subparsers.add_parser("levels", help="support/rezisztencia szintek egy papirra")
     p.add_argument("--symbol", required=True)
