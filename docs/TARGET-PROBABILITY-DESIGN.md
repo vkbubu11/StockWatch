@@ -100,3 +100,27 @@ Egyik csoport sem javított; a végső modell = az alapesély (javulás 95%-os i
 volatilitás-szinteket nem tudja kezelni – ezért ront leginkább a szint-típusú V csoport (^VIX, realizált
 volatilitás). A javítás iránya: hosszabb (2000-től, 2008-at és 2020-at is tartalmazó) tanító történet, és
 rezsimfüggetlen (arány-típusú) jellemzők – egy új, a mérés előtt rögzített futásban.
+
+## 8. Második változat (2026-11-06, a mérés előtt rögzítve)
+
+**Módszer** (irodalom: Corsi 2009 HAR-RV; a sorompós címkézés és az időrendi, „purged” validálás López de Prado
+2018 nyomán):
+1. **Hosszú történet:** 2000-től (külön kutatási tár: `data/research/history/`), benne 2008, 2020, 2022.
+2. **HAR-RV volatilitás-előrejelzés** az `N` napos időtávra (napi variancia OHLC-ból: éjszakai rés² + Garman–Klass;
+   papírokon átfogó OLS, H = 5 / 20 / 60, köztes H log-interpolációval).
+3. **Analitikus esély** a HAR-szigmával: érinti = 2(1 − Φ(z)), stoppal Monte Carlo-táblázat (Brown-híd korrekció).
+4. **Volatilitás-normalizált jellemzők**: `z_b = ln(cél/záró) / (σ√N)`, `z_c` a stopra, ATR / σ, rv5 / rv60,
+   ^VIX / egyéves medián, jelentés az ablakban, a szokásos jelentési mozgás σ√N-ben.
+
+**Modellcsaládok:** M0 = az eddigi alapesély (A csoport); M1 = csak az analitikus esély (izotonikus kalibráció);
+M2 = gradient boosting a normalizált jellemzőkön; M3 = M2 + a környezeti csoportok (piac, szektor, momentum,
+technika, fundamentum, a papír karaktere).
+
+**Mérés:** walk-forward, tesztévek 2008 – 2024 (+ 2025 Q1): az `Y` év becslése a `Y−2` előtti adatból tanul
+(60 kereskedési napos „purge”), az `[Y−2, Y)` időszakon kalibrál. Holdout zárva.
+
+**Döntés (előre rögzítve):** a legkisebb összesített walk-forward Brier-pontszámú család, ha
+1. az összesített ECE ≤ 0,03 és minden tesztévben ≤ 0,05;
+2. az M0-hoz képest a Brier-javulás napokra blokkolt bootstrap-intervallumának alsó határa > 0 (az M0-nál ez nem kell).
+Ha a legjobb nem teljesíti az 1. pontot, a következő legjobb; ha egyik sem, nincs telepítés. Az elfogadott családot
+élesben a 2023 előtti adaton tanítjuk és 2023 – 2025/03-on kalibráljuk.
