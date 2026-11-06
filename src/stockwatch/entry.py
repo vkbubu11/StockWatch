@@ -381,6 +381,24 @@ def position_size(entry: float, stop: float, cfg: EntrySettings) -> int:
 # ---------------------------------------------------------------------------
 # Kemeny szurok
 # ---------------------------------------------------------------------------
+def fundamental_checks(symbol: str, as_of, cfg: EntrySettings) -> list[Check]:
+    """EPS-szurok (#72) a tarolt SEC-kivonatbol, a jelzes napjan ismert adattal; adat nelkul "nem ismert"."""
+    from . import fundamentals
+
+    f = fundamentals.as_of(symbol, as_of)
+    out = []
+    if cfg.min_eps_growth_pct is not None:
+        g = f and f["eps_yoy"]
+        out.append(Check("EPS-novekedes", None, "nincs (friss) SEC-adat") if g is None else
+                   Check("EPS-novekedes", g >= cfg.min_eps_growth_pct,
+                         f"{g:+.0f}% ev/ev (min. {cfg.min_eps_growth_pct:+.0f}%)"))
+    if cfg.require_eps_acceleration:
+        out.append(Check("EPS gyorsul", None, "nincs (friss) SEC-adat") if not f else
+                   Check("EPS gyorsul", f["eps_accelerating"], "az utolso harom negyedev ev/ev EPS-novekedese "
+                         + ("no" if f["eps_accelerating"] else "nem no folyamatosan")))
+    return out
+
+
 def run_checks(
     match: PatternMatch,
     kind: EntryKind,
@@ -528,6 +546,8 @@ def strength_checks(df: pd.DataFrame, cfg: EntrySettings, rel_strength: float | 
                       Check("Relativ ero", rel_strength >= cfg.min_rel_strength,
                             f"{rel_strength:+.1f} pp a {cfg.benchmark}-hoz kepest 60 napra "
                             f"(min. {cfg.min_rel_strength:+.0f})"))
+    if cfg.min_eps_growth_pct is not None or cfg.require_eps_acceleration:
+        checks.extend(fundamental_checks(match.symbol, df.index[-1], cfg))
     if cfg.max_contraction > 0:
         ratio = contraction_ratio(df)
         checks.append(Check("Osszehuzodas", None, "tul rovid historia") if ratio is None else

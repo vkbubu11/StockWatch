@@ -135,6 +135,7 @@ python cli.py monitor
 | `event-study --type earnings --universe sp500 [--window -10 60] [--csv out.csv]` · `event-sources --index-changes --form4-since 2017` | Eseménytanulmányok és a forrásadatuk (lásd lent) |
 | `agent run --brief briefs/x.yaml` · `agent queue --brief … [--night]` · `agent list` · `agent report --run-id …` | Kutatóügynök: stratégiaváltozatok keresése egy kutatási cél szerint (lásd lent) |
 | `digest [--print] [--no-refresh] [--date YYYY-MM-DD]` | Reggeli összefoglaló most: a watchlist és a Saját pozíciók változásai (lásd lent) |
+| `fundamentals [--symbols X,Y] [--universe] [--indexes] [--force]` | SEC XBRL negyedéves hígított EPS és árbevétel a beadás dátumával (point-in-time; a szám csak a beadás utáni naptól ismert). Kell hozzá `SEC_USER_AGENT` a `.env`-ben (név + e-mail). Az EPS-szűrő (`entry.min_eps_growth_pct`, `entry.require_eps_acceleration`) alapból ki; mérés: `entry-research --study` |
 | `practice-pool [--queue] [--force]` | A Gyakorló mód feladatkészletének felépítése (lásd lent) |
 
 ---

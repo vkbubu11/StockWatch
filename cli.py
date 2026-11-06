@@ -1179,6 +1179,37 @@ def cmd_event_sources(args) -> int:
     return 0
 
 
+def cmd_fundamentals(args) -> int:
+    """SEC XBRL negyedeves EPS es arbevetel (#72), a beadas datumaval; papironkent egy keres (<= 8 / mp)."""
+    from datetime import date
+
+    from stockwatch import fundamentals
+
+    settings = load_settings()
+    housekeeping.setup_logging(settings, verbose=args.verbose)
+    if args.indexes:
+        from stockwatch import indexes as indexes_mod
+
+        members = indexes_mod.IndexMembers(settings)
+        symbols = list(dict.fromkeys(members.members("nasdaq100") + members.members("sp500")))
+    else:
+        symbols = _universe_symbols() if args.universe else _symbols(args)
+    ok = 0
+    for n, symbol in enumerate(symbols, 1):
+        data = fundamentals.fetch(symbol, max_age_days=0 if args.force else fundamentals.MAX_AGE_DAYS)
+        f = fundamentals.as_of(symbol, date.today(), data) if data else None
+        ok += f is not None
+        if args.verbose or len(symbols) <= 20:
+            print(f"{symbol:6} " + ("nincs SEC XBRL-adat" if f is None else
+                  f"utolso negyedev {f['last_quarter']}  EPS ev/ev {f['eps_yoy'] if f['eps_yoy'] is not None else '-'}%  "
+                  f"arbevetel ev/ev {f['revenue_yoy'] if f['revenue_yoy'] is not None else '-'}%  "
+                  f"gyorsul: {'igen' if f['eps_accelerating'] else 'nem'}"))
+        elif n % 50 == 0:
+            print(f"{n} / {len(symbols)}...")
+    print(f"Kesz: {ok} / {len(symbols)} papirnal van friss negyedeves adat (data/fundamentals).")
+    return 0
+
+
 def cmd_practice_pool(args) -> int:
     """Gyakorlo mod: a feladatkeszlet (rejtett multbeli helyzetek) felepitese az univerzum-cache-bol."""
     from stockwatch.practice import sampler
@@ -1461,6 +1492,14 @@ def main() -> int:
     p.add_argument("--csv", help="az esemenylista CSV-ben ide")
     p.add_argument("--verbose", action="store_true")
     p.set_defaults(func=cmd_event_study)
+
+    p = subparsers.add_parser("fundamentals", help="SEC XBRL negyedeves EPS es arbevetel (point-in-time, #72)")
+    p.add_argument("--symbols", help="vesszovel elvalasztva, vagy 'all' (a watchlist)")
+    p.add_argument("--universe", action="store_true", help="a kutatasi univerzum (106 papir)")
+    p.add_argument("--indexes", action="store_true", help="a Nasdaq-100 es az S&P 500 minden tagja")
+    p.add_argument("--force", action="store_true", help="a 7 napnal frissebb tarolt adatot is ujra letolti")
+    p.add_argument("--verbose", action="store_true")
+    p.set_defaults(func=cmd_fundamentals)
 
     p = subparsers.add_parser("event-sources", help="esemenytanulmany-forrasok: Form 4, S&P 500 valtozasok")
     p.add_argument("--form4-since", type=int, metavar="EV", help="a SEC negyedeves Form 4 csomagjai ettol az evtol")

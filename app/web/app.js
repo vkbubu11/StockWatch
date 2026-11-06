@@ -469,6 +469,9 @@ function renderCheck() {
     <h3 class="check-h">Momentum (12-1) <span class="muted small">– havi rotáció: a legjobb ${v.momentum.top_n} papír, megtartás a legjobb ${v.momentum.buffer} között</span></h3>
     ${momentumRow(v.momentum)}
 
+    <h3 class="check-h">Negyedéves EPS és árbevétel <span class="muted small">– SEC XBRL, a beadás napja után ismert adat</span></h3>
+    ${fundamentalsBlock(d.fundamentals)}
+
     ${v.patterns.length ? `<h3 class="check-h">Minden aktív alakzat</h3>${checkPatterns(v.patterns)}` : ""}
     <details class="check-more"><summary>Irányjelzés összetevői</summary><div class="parts">${f.components.map((c) => `
       <div class="part"><span>${esc(c.name)}</span><span class="num ${c.score > 0 ? "up" : c.score < 0 ? "down" : ""}">${signed(c.score, 2)}</span><span class="muted">${esc(c.reason)}</span></div>`).join("")}</div></details>
@@ -478,6 +481,22 @@ function renderCheck() {
   dlg.querySelectorAll("a").forEach((a) => a.addEventListener("click", () => dlg.close()));
   dlg.querySelectorAll("button[data-view]").forEach((b) => b.addEventListener("click", () => { checkView = b.dataset.view; renderCheck(); }));
   bindQuickForms(dlg);
+}
+
+// a SEC XBRL negyedevei (#72): higitott EPS oszlopokkal, ev/ev novekedes; a 4. negyedev az eves ertekbol szarmaztatott
+function fundamentalsBlock(f) {
+  if (!f) return `<div class="callout">Nincs friss negyedéves SEC-adat (pl. külföldi kibocsátó, ETF vagy még nem töltődött le).</div>`;
+  const max = Math.max(1e-9, ...f.quarters.map((q) => Math.abs(q.eps || 0)));
+  const yoy = (v) => (v == null ? "–" : pct(v, 0));
+  return `<div class="fund-bars" role="img" aria-label="Negyedéves EPS">${f.quarters.map((q) => `
+      <div class="fund-q" title="${esc(q.end)}${q.derived ? " (az éves értékből számolva)" : ""}">
+        <span class="fund-val ${q.eps < 0 ? "down" : ""}">${q.eps == null ? "–" : fmt(q.eps, 2)}</span>
+        <span class="fund-bar ${q.eps < 0 ? "neg" : ""}" style="height:${Math.round(Math.abs(q.eps || 0) / max * 56) + 2}px"></span>
+        <span class="muted small">${esc(q.end.slice(2, 7))}${q.derived ? "*" : ""}</span>
+        <span class="small ${q.eps_yoy > 0 ? "up" : q.eps_yoy < 0 ? "down" : ""}">${yoy(q.eps_yoy)}</span></div>`).join("")}</div>
+    <p class="small"><span>EPS év/év:</span> <strong>${yoy(f.eps_yoy)}</strong> · <span>árbevétel év/év:</span> <strong>${yoy(f.revenue_yoy)}</strong>
+      · <span>EPS-növekedés gyorsul:</span> ${f.eps_accelerating ? "igen" : "nem"} · <span>pozitív EPS-növekedés egymás után:</span> ${f.eps_positive_streak} <span>negyedév</span></p>
+    <p class="muted small">* a 4. negyedév az éves jelentésből és a három negyedéves jelentésből számolva (az EPS-nél közelítés).</p>`;
 }
 
 // Hol tart az alakzat a jelzeshez kepest

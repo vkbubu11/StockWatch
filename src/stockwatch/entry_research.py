@@ -590,6 +590,8 @@ def study_grid(cfg: EntrySettings) -> list[Variant]:
       volumen            Bulkowski: kicsi, vegyes hatas - ujramerve
       RSI-plafon         a tulvettseg kevesse elorejelzo - lazitva
       pontszam-kuszob    elorejelzo-e a pontszam?
+      EPS-novekedes      CAN SLIM (O'Neil): >= 20% ev/ev, gyorsulo - a SEC XBRL point-in-time adatabol (#72);
+                         SEC-adat nelkuli papiron "nem ismert" (nem szur): a futas elott `python cli.py fundamentals`
     """
     live = Variant.from_settings(cfg)
 
@@ -610,6 +612,9 @@ def study_grid(cfg: EntrySettings) -> list[Variant]:
         v("pontszam >= 70", min_score=70.0),
         v("+52h >= 90% +momentum > 0", min_high52_ratio=0.90, min_momentum_pct=0.0),
         v("+52h >= 90% +relativ ero > 0", min_high52_ratio=0.90, min_rel_strength=0.0),
+        v("+EPS-novekedes >= 20%", min_eps_growth_pct=20.0),
+        v("+EPS gyorsul", require_eps_acceleration=True),
+        v("+EPS >= 20% es gyorsul", min_eps_growth_pct=20.0, require_eps_acceleration=True),
     ]
 
 
