@@ -1524,6 +1524,62 @@ def backtest_action(action: str, body: dict) -> dict:
     return {"started": True, "job": jobs.snapshot()}
 
 
+_SWING_JOBS = None
+
+
+def swing_jobs():
+    global _SWING_JOBS
+    if _SWING_JOBS is None:
+        from .backtest_page.jobs import Jobs
+
+        _SWING_JOBS = Jobs()
+    return _SWING_JOBS
+
+
+def swing_payload() -> dict:
+    """Swing fül: beallitasok, a legutobbi szures es backteszt, a kotesnaplo - csak tarolt adat."""
+    from .swing import service as swing
+
+    return swing.payload() | {"job": swing_jobs().snapshot()}
+
+
+SWING_MAX = (100, 300, 1000, 0)          # 0 = a teljes (elore szurt) NASDAQ
+
+
+def swing_action(action: str, body: dict) -> dict:
+    from .swing import service as swing
+
+    if action == "scan":
+        max_n = int(body.get("max") or 0)
+        if max_n not in SWING_MAX:
+            raise ValueError("Ervenytelen meret")
+        if not swing_jobs().start("swing_scan", "", lambda progress: swing.scan(max_n, progress=progress)):
+            raise ValueError("Mar fut egy swing-feladat.")
+        return swing_payload()
+    if action == "backtest":
+        max_n = int(body.get("max") or 100)
+        if max_n not in (50, 100, 200, 500):
+            raise ValueError("Ervenytelen meret")
+        rng = str(body.get("range") or "5y")
+        if not swing_jobs().start("swing_backtest", "", lambda progress: swing.backtest(max_n, rng, progress=progress)):
+            raise ValueError("Mar fut egy swing-feladat.")
+        return swing_payload()
+    if action == "plan":
+        symbol = str(body.get("symbol") or "").upper()
+        if not SYMBOL_RE.match(symbol):
+            raise ValueError("Ervenytelen ticker")
+        return {"plan": swing.plan(symbol)}
+    if action == "config":
+        swing.save_config(body.get("values") or {})
+        return swing_payload() | {"message": "Mentve."}
+    ops = {"add": lambda: swing.add_trade(body), "update": swing.update_trades,
+           "close": lambda: swing.close_trade(body), "delete": lambda: swing.delete_trade(body)}
+    if action in ops:
+        result = ops[action]()                 # elobb a muvelet, utana a friss allapot
+        return swing_payload() | result
+    raise ValueError("Ismeretlen muvelet")
+
+
 def strategies_payload() -> dict:
     from . import meanrev_research as mr
     from . import momentum_research
@@ -1971,6 +2027,8 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                         return self._error(400, "Ervenytelen nap")
                     payload = digest_payload(day)
                     return self._json(payload) if payload["record"] else self._error(404, "Nincs ilyen osszefoglalo")
+                if path == "/api/swing":
+                    return self._json(swing_payload())
                 if path == "/api/practice":
                     return self._json(practice_payload())
                 m = PRACTICE_SESSION_RE.fullmatch(path)
@@ -2108,6 +2166,8 @@ def make_handler(app: AppState, auth: webauth.Auth | None = None):
                         return self._error(404, str(exc))
                 if path.startswith("/api/practice/"):
                     return self._json(practice_action(path.rsplit("/", 1)[-1], body))
+                if path.startswith("/api/swing/"):
+                    return self._json(swing_action(path.rsplit("/", 1)[-1], body))
                 if path == "/api/news/refresh":
                     symbol = str(body.get("symbol") or "").upper()
                     if not SYMBOL_RE.match(symbol):
