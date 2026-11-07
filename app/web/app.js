@@ -3060,8 +3060,6 @@ api("/api/session").then((s) => { $("#logout").hidden = !s.auth; }).catch(() => 
 $("#logout").addEventListener("click", () => {
   api("/logout", { method: "POST" }).catch(() => {}).finally(() => { location.href = "/login"; });
 });
-window.addEventListener("hashchange", route);
-route();
 
 // ---------------------------------------------------------------------------
 // Backteszt: egy papir / ETF teljes tortenete a kivalasztott datumig, a rendszer strategiaival
@@ -3935,3 +3933,7 @@ function alertBox(form, text) {
   el.className = "msg err";
   el.textContent = text;
 }
+
+// Az elso utvonal-kezeles a fajl VEGEN: a kesobb deklaralt let/const-ok (pl. swingTimer) csak itt inicializaltak.
+window.addEventListener("hashchange", route);
+route();
