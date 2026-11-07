@@ -1770,9 +1770,11 @@ async function bindAlpacaForm() {
     $("#a-secret").placeholder = c.secret_set ? "beállítva – üresen hagyva nem változik" : "";
     if (c.endpoint) $("#a-endpoint").value = c.endpoint;
   };
+  const form = $("#alpaca-form");
   try { show((await api("/api/broker")).credentials); } catch (e) { status.textContent = e.message; }
+  if (!form || !form.isConnected) return;          // a valasz elott elhagytak a Beallitasok oldalt
 
-  $("#alpaca-form").addEventListener("submit", async (ev) => {
+  form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     msg.className = "msg"; msg.textContent = "Kapcsolódás…";
     try {
