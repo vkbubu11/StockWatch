@@ -223,3 +223,50 @@ def test_webapp_swing_actions(offline):
     assert out["config"]["account_usd"] == 5000.0
     out = webapp.swing_action("add", {"symbol": "XYZ", "qty": 3, "fill": 50, "stop": 48})
     assert out["open"][0]["symbol"] == "XYZ" and "brókernél" in out["message"]
+
+
+# ---------------------------------------------------------------------------
+# Hasonlo kotesek a Terv mellett (a backteszt kotesei rezsimmel es osztalyzattal)
+# ---------------------------------------------------------------------------
+def test_backtest_saves_every_trade_with_regime_and_grade(offline):
+    b = pullback_series()
+    last = b[-1]["c"]
+    b += [{"d": f"2099-02-{k:02d}", "o": last + 0.8 * k - 0.6, "h": last + 0.8 * k + 0.3, "l": last + 0.8 * k - 0.9,
+           "c": last + 0.8 * k, "v": 3_000_000} for k in range(1, 25)]
+    offline["PB"] = b
+    swing.backtest(50, "5y", workers=1)
+    saved = sc.load_json(swing._path("backtest_trades.json"))
+    assert saved["trades"] and len(saved["trades"]) == swing.payload()["backtest"]["all"]["trades"]
+    for t in saved["trades"]:
+        assert t["regime"] in ("up", "neutral", "down", None) and t["grade"] in ("A", "B", "C", None)
+        assert "score0" not in t and "rs" not in t
+
+
+def _fake_backtest(trades):
+    sc.save_json(swing._path("backtest_trades.json"), {"range": "10y", "symbols": 100, "trades": trades})
+    sc.save_json(swing._path("candidates.json"), {"regime": {"state": "up"}, "candidates": []})
+
+
+def test_odds_pick_the_closest_level_with_enough_trades(offline):
+    t = lambda r, regime="up", grade="A", setup="pullback": {"setup": setup, "regime": regime, "grade": grade,  # noqa: E731
+                                                              "r": r, "status": "closed"}
+    trades = [t(1.0)] * 12 + [t(-1.0)] * 8                                   # 20 pontos egyezes: keves
+    trades += [t(1.0, grade="B")] * 10 + [t(-1.0, grade="B")] * 10          # + 20 -> rezsim-szinten 40
+    trades += [t(5.0, setup="breakout")] * 50                                 # mas setup: nem szamit
+    trades += [{**t(9.0), "status": "open_at_end"}] * 30                    # meg nyitott: nem szamit
+    _fake_backtest(trades)
+    o = swing.odds({"symbol": "PB", "setup": "pullback", "grade": "A"}, swing.config())
+    exact, same_regime, same_setup = o["rows"]
+    assert exact["n"] == 20 and not exact["enough"]
+    assert same_regime["n"] == 40 and same_regime["win_rate"] == 55.0 and o["best"] is same_regime
+    assert same_setup["n"] == 40 and 0 < same_regime["lo"] < 55.0 < same_regime["hi"] < 100
+    assert o["regime"] == "up" and o["own"]["label"].startswith("PB")
+
+
+def test_plan_carries_the_odds_and_says_when_there_is_no_backtest(offline):
+    swing.scan(10, None)
+    c = (sc.load_json(swing._path("candidates.json")) or {"candidates": []})["candidates"]
+    if not c:
+        pytest.skip("a szintetikus sorban nincs jelolt")
+    p = swing.plan(c[0]["symbol"])
+    assert p["odds"]["backtest"] is None and p["odds"]["best"] is None and len(p["odds"]["rows"]) == 3

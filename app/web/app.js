@@ -3766,12 +3766,30 @@ function swingJob(j) {
   el.innerHTML = `<span class="badge ${j.state === "error" ? "bad" : j.state === "done" ? "go" : "watch"}">${j.state === "running" ? "Fut" : j.state === "done" ? "Kész" : "Hiba"}</span> ${esc(j.message)}`;
 }
 
+// a Terv mellett: hasonlo multbeli kotesek gyakorisaga ugyanazokkal a szabalyokkal (a backteszt kotesei)
+function swingOddsHtml(o) {
+  if (!o) return "";
+  const row = (r) => (r.n ? `<tr${r === o.best ? ' class="sw-best"' : ""}><td>${esc(r.label)}</td><td class="num">${r.n}</td>
+      <td class="num"><strong>${fmt(r.win_rate, 0)}%</strong></td><td class="num small">${fmt(r.lo, 0)}–${fmt(r.hi, 0)}%</td>
+      <td class="num">${signed(r.avg_r, 2, "R")}</td></tr>` : `<tr><td>${esc(r.label)}</td><td class="num">0</td><td colspan="3" class="muted small">nincs ilyen kötés</td></tr>`);
+  const head = o.best ? `<p><strong>${fmt(o.best.win_rate, 0)}%</strong> <span>– ennyi hasonló kötés zárult nyereséggel a múltban</span>
+      (${o.best.n} <span>kötés,</span> 95%: ${fmt(o.best.lo, 0)}–${fmt(o.best.hi, 0)}%; <span>átlag</span> ${signed(o.best.avg_r, 2, "R")}).</p>`
+    : o.backtest ? `<p class="msg">Kevés hasonló kötés (mindegyik szinten ${o.min}-nál kevesebb) – futtass hosszabb vagy több papíros backtestet.</p>`
+      : `<p class="msg">Még nincs backteszt: futtasd lent a „Backteszt indítása” gombbal, utána itt látod a hasonló kötések eredményét.</p>`;
+  return `<h3>Hasonló kötések a múltban</h3>${head}
+    ${o.backtest ? `<table class="table"><thead><tr><th>Mihez hasonló</th><th class="num">Kötés</th><th class="num">Nyereséges</th><th class="num">95%</th><th class="num">Átlag</th></tr></thead>
+      <tbody>${o.rows.map(row).join("")}${o.own ? row(o.own) : ""}</tbody></table>` : ""}
+    <p class="muted small">Piaci rezsim most: ${esc(o.regime || "nem ismert")} · osztályzat: ${esc(o.grade || "–")}${o.backtest ? ` · backteszt: ${o.backtest.symbols} papír, ${esc(o.backtest.range)}` : ""}.
+      Ugyanazok a belépési és kiszállási szabályok a múltbeli árakon; nyereséges = a csúszás után R &gt; 0. Túlélési torzítás (csak a ma jegyzett cégek), napi gyertyák. Leírás, nem előrejelzés.</p>`;
+}
+
 function swingPlanHtml(p) {
   return `<h2>Terv: ${esc(p.symbol)} ${swingSetup(p.setup)}</h2><div class="card-body">
     <p><strong>${fmt(p.qty, p.qty % 1 ? 4 : 0)} db</strong> · pozíció ${money(p.position_usd)} (${fmt(p.position_pct, 1)}%) ·
       kockázat <strong>${money(p.risk_usd)}</strong> · nyereség a T1-nél ${money(p.reward_t1_usd)}</p>
     ${p.tickets.length ? `<ol>${p.tickets.map((t) => `<li><code>${esc(t)}</code></li>`).join("")}</ol>` : ""}
     ${p.warnings.map((w) => `<p class="msg err">${esc(w)}</p>`).join("")}
+    ${swingOddsHtml(p.odds)}
     <p class="muted small">Belépés előtt nézd meg az árat a brókernél: ha már a limit fölött van, a setup elment – ne üldözd.
       Ha a bróker nem tud összekapcsolt (OCO) stopot és limitet, az egyik teljesülése után a másikat kézzel töröld.</p>
     ${p.qty ? `<form id="sw-add" class="ag-form">
