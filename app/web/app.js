@@ -4237,7 +4237,7 @@ function alertBox(form, text) {
   el.textContent = text;
 }
 
-// Az elso utvonal-kezeles a fajl VEGEN: a kesobb deklaralt let/const-ok (pl. practiceTimer, NEWS_LABEL) csak itt
+// Az elso utvonal-kezeles a fajl VEGEN: a kesobb deklaralt let/const-ok (pl. practiceTimer, NEWS_LABEL, swingTimer) csak itt
 // inicializaltak - kozvetlen betolteskor (#/practice, #/events) kulonben "before initialization" hiba jonne.
 window.addEventListener("hashchange", route);
 route();
