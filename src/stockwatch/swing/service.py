@@ -191,8 +191,29 @@ def scan(max_n: int = 300, symbols: list[str] | None = None, progress=lambda msg
 # ---------------------------------------------------------------------------
 # Backteszt
 # ---------------------------------------------------------------------------
-def _bt_symbol(sym: str, bars: list[dict], cfg: dict) -> list[dict]:
+def regime_series(bars: list[dict]) -> dict[str, str]:
+    """Nap -> a QQQ-rezsim aznap (ugyanaz a szabaly, mint a szuresben: zaro > SMA50 > SMA200 = up, ...)."""
+    if len(bars) < 210:
+        return {}
     ind = sc.indicators(bars)
+    out = {}
+    for i in range(200, len(bars)):
+        c, s50, s200 = ind["close"][i], ind["sma50"][i], ind["sma200"][i]
+        if c is not None and s50 is not None and s200 is not None:
+            out[bars[i]["d"]] = "up" if c > s50 > s200 else "neutral" if c > s200 else "down"
+    return out
+
+
+def _bt_symbol(sym: str, bars: list[dict], cfg: dict, regimes: dict | None = None,
+               rs_by_day: dict | None = None) -> list[dict]:
+    """A papir kotesei. `regimes`: nap -> QQQ-rezsim; `rs_by_day`: ide gyujti a papir napi relativ erejet (a
+    jelzesnapi osztalyzathoz a rangsor az osszes papir kozott keszul, backtest())."""
+    ind = sc.indicators(bars)
+    if rs_by_day is not None:
+        for i in range(252, len(bars)):
+            rs = sc.rs_raw(ind, i)
+            if rs is not None:
+                rs_by_day.setdefault(bars[i]["d"], []).append(rs)
     trades, busy_until = [], -1
     for i in range(210, len(bars) - 1):
         if i <= busy_until:
@@ -205,6 +226,9 @@ def _bt_symbol(sym: str, bars: list[dict], cfg: dict) -> list[dict]:
             if t is None:
                 continue
             t["symbol"] = sym
+            t["regime"] = (regimes or {}).get(bars[i]["d"])
+            t["rs"] = sc.rs_raw(ind, i)
+            t["score0"] = sc.score(s, 0.0, ind, i)[0]        # a pontszam a relativ ero nelkul (az linearisan adodik hozza)
             last = t.get("closed") or bars[-1]["d"]
             busy_until = next((k for k in range(i, len(bars)) if bars[k]["d"] >= last), len(bars))
             trades.append(t)
@@ -250,16 +274,25 @@ def backtest(max_n: int = 100, rng: str = "5y", progress=lambda msg: None, worke
     uni.sort(key=lambda r: -(r.get("market_cap") or 0))
     syms = [r["symbol"] for r in uni[:max_n]]
     trades, errors = [], 0
+    try:
+        regimes = regime_series(sc.get_bars(cfg["regime_symbol"], rng))
+    except Exception:  # noqa: BLE001 - rezsim nelkul is lefut, csak a hasonlo-kotes szures lazabb
+        regimes = {}
+    rs_by_day: dict[str, list[float]] = {}
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         futs = {pool.submit(sc.get_bars, s, rng): s for s in syms}
         for n, fut in enumerate(as_completed(futs), 1):
             try:
-                trades.extend(_bt_symbol(futs[fut], fut.result(), cfg))
+                trades.extend(_bt_symbol(futs[fut], fut.result(), cfg, regimes, rs_by_day))
             except Exception:  # noqa: BLE001
                 errors += 1
             if n % 10 == 0 or n == len(syms):
                 progress(f"Backteszt: {n} / {len(syms)} papír, {len(trades)} kötés")
     trades.sort(key=lambda t: t["opened"])
+    grade_trades(trades, rs_by_day)
+    sc.save_json(_path("backtest_trades.json"), {"range": rng, "symbols": len(syms), "trades": [
+        {k: t.get(k) for k in ("symbol", "setup", "signal_date", "opened", "closed", "status", "r", "regime", "grade")}
+        for t in trades]})
     out = {"generated": sc.now_ny().isoformat(timespec="minutes"), "range": rng, "symbols": len(syms),
            "errors": errors, "all": bt_stats(trades),
            "by_setup": {name: bt_stats([t for t in trades if t["setup"] == name]) for name in cfg["setups"]},
@@ -269,6 +302,68 @@ def backtest(max_n: int = 100, rng: str = "5y", progress=lambda msg: None, worke
                       for t in trades[-30:]][::-1]}
     sc.save_json(_path("backtest.json"), out)
     return {"message": f"Kész: {out['all']['trades']} kötés, átlag {out['all'].get('avg_r', 0):+.2f}R"}
+
+
+def grade_trades(trades: list[dict], rs_by_day: dict[str, list[float]]) -> None:
+    """A jelzesnapi osztalyzat (A/B/C), ugyanugy, mint a szuresben: a relativ ero percentilise az aznapi osszes
+    vizsgalt papir kozott (50%) + a volumen-apadas es a hely a rezisztenciaig (sc.score)."""
+    # shortcut: a szures a teljes NASDAQ-hoz rangsorol, itt a backteszt papirjaihoz - az osztalyzat csak
+    # kozelitoleg osszevetheto; ha szamit, a backteszt univerzumat a szuresevel egyezore kell allitani.
+    for t in trades:
+        day, rs = t.get("signal_date"), t.pop("rs", None)
+        pool = sorted(rs_by_day.get(day, []))
+        if rs is None or not pool:
+            t["grade"] = None
+            continue
+        pct = 100 * sum(1 for x in pool if x <= rs) / len(pool)
+        s = t.pop("score0") + 50 * pct / 100
+        t["grade"] = "A" if s >= 75 else "B" if s >= 60 else "C"
+
+
+MIN_SIMILAR = 30          # ennel kevesebb hasonlo kotes: "keves minta", es lazabb szintre lepunk
+
+
+def _wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    p = k / n
+    den = 1 + z * z / n
+    mid = (p + z * z / (2 * n)) / den
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / den
+    return round(100 * max(0.0, mid - half), 1), round(100 * min(1.0, mid + half), 1)
+
+
+def _odds_row(label: str, trades: list[dict]) -> dict:
+    rs = [t["r"] for t in trades if t.get("r") is not None and t.get("status") != "open_at_end"]
+    if not rs:
+        return {"label": label, "n": 0}
+    wins = sum(1 for r in rs if r > 0)
+    lo, hi = _wilson(wins, len(rs))
+    return {"label": label, "n": len(rs), "win_rate": round(100 * wins / len(rs), 1), "lo": lo, "hi": hi,
+            "avg_r": round(sum(rs) / len(rs), 2), "enough": len(rs) >= MIN_SIMILAR}
+
+
+def odds(c: dict, cfg: dict) -> dict:
+    """Milyen gyakran zarult nyereseggel (R > 0, a csuszas utan) a multban egy hasonlo kotes, UGYANAZOKKAL a
+    szabalyokkal: a legutobbi backteszt kotesei kozul ugyanaz a setup + rezsim + osztalyzat, majd lazitva; kulon a
+    papir sajat 10 eves tortenete. Leiro gyakorisag, nem elorejelzes."""
+    regime = ((sc.load_json(_path("candidates.json")) or {}).get("regime") or {}).get("state")
+    bt = sc.load_json(_path("backtest_trades.json")) or {}
+    pool = [t for t in bt.get("trades", []) if t.get("setup") == c["setup"]]
+    levels = [
+        ("ugyanaz a setup, piaci rezsim és osztályzat",
+         [t for t in pool if t.get("regime") == regime and t.get("grade") == c.get("grade")]),
+        ("ugyanaz a setup és piaci rezsim", [t for t in pool if t.get("regime") == regime]),
+        ("ugyanaz a setup", pool),
+    ]
+    rows = [_odds_row(label, sel) for label, sel in levels]
+    best = next((r for r in rows if r.get("enough")), None)
+    own = None
+    try:                                         # a papir sajat tortenete (a gyorsitotarbol, ha friss)
+        own_trades = [t for t in _bt_symbol(c["symbol"], sc.get_bars(c["symbol"], "10y"), cfg) if t["setup"] == c["setup"]]
+        own = _odds_row(f"{c['symbol']} saját története (10 év, ugyanez a setup)", own_trades)
+    except Exception:  # noqa: BLE001 - halozati hiba: a sajat tortenet nelkul
+        pass
+    return {"regime": regime, "grade": c.get("grade"), "rows": rows, "best": best, "own": own,
+            "backtest": {k: bt.get(k) for k in ("range", "symbols")} if bt else None, "min": MIN_SIMILAR}
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +430,7 @@ def plan(symbol: str) -> dict:
     if any(t["symbol"] == symbol and t["status"] == "open" for t in trades):
         raise ValueError(f"{symbol} már nyitott a naplóban.")
     risk_left = float(cfg["account_usd"]) * cfg["max_total_risk_pct"] / 100 - _open_risk(trades)
-    return size(c, cfg, risk_left)
+    return size(c, cfg, risk_left) | {"odds": odds(c, cfg)}
 
 
 # ---------------------------------------------------------------------------
