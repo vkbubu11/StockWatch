@@ -1,5 +1,5 @@
 /* StockWatch helyi felulet - vanilla JS, keretrendszer nelkul.
- * Utvonalak (hash): #/  #/digest  #/digest/YYYY-MM-DD  #/agent  #/agent/run/ID  #/events  #/events/ID  #/practice  #/practice/ID  #/p/TICKER  #/holdings  #/positions  #/broker  #/ledger  #/signal/ID  #/alerts  #/settings
+ * Utvonalak (hash): #/  #/swing  #/digest  #/digest/YYYY-MM-DD  #/agent  #/agent/run/ID  #/events  #/events/ID  #/practice  #/practice/ID  #/p/TICKER  #/holdings  #/positions  #/broker  #/ledger  #/signal/ID  #/alerts  #/settings
  */
 "use strict";
 
@@ -2291,7 +2291,7 @@ async function pageSettings() {
 // ---------------------------------------------------------------------------
 async function route() {
   const hash = location.hash || "#/";
-  const tab = hash.startsWith("#/ledger") || hash.startsWith("#/signal/") ? "ledger" : hash.startsWith("#/broker") ? "broker" : hash.startsWith("#/holdings") ? "holdings" : hash.startsWith("#/positions") ? "positions" : hash.startsWith("#/alerts") ? "alerts" : hash.startsWith("#/settings") ? "settings" : hash.startsWith("#/lab") ? "lab" : hash.startsWith("#/strategies") ? "strategies" : hash.startsWith("#/sandbox") ? "sandbox" : hash.startsWith("#/backtest") ? "backtest" : hash.startsWith("#/info") ? "info" : hash.startsWith("#/digest") ? "digest" : hash.startsWith("#/agent") ? "agent" : hash.startsWith("#/events") ? "events" : hash.startsWith("#/practice") ? "practice" : hash.startsWith("#/calendar") ? "calendar" : "overview";
+  const tab = hash.startsWith("#/ledger") || hash.startsWith("#/signal/") ? "ledger" : hash.startsWith("#/broker") ? "broker" : hash.startsWith("#/holdings") ? "holdings" : hash.startsWith("#/positions") ? "positions" : hash.startsWith("#/alerts") ? "alerts" : hash.startsWith("#/settings") ? "settings" : hash.startsWith("#/lab") ? "lab" : hash.startsWith("#/strategies") ? "strategies" : hash.startsWith("#/sandbox") ? "sandbox" : hash.startsWith("#/backtest") ? "backtest" : hash.startsWith("#/info") ? "info" : hash.startsWith("#/digest") ? "digest" : hash.startsWith("#/agent") ? "agent" : hash.startsWith("#/events") ? "events" : hash.startsWith("#/practice") ? "practice" : hash.startsWith("#/calendar") ? "calendar" : hash.startsWith("#/swing") ? "swing" : "overview";
   document.querySelectorAll(".tabs a, #info-link, .bottom-nav a, .more-list a").forEach((a) => {
     a.classList.toggle("active", a.dataset.tab === tab);
     if (a.dataset.tab === tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
@@ -2313,6 +2313,7 @@ async function route() {
     else if (tab === "strategies") await pageStrategies();
     else if (tab === "sandbox") await pageSandbox();
     else if (tab === "info") pageInfo();
+    else if (tab === "swing") await pageSwing();
     else if (tab === "events") {
       const em = hash.match(/^#\/events\/(\d{8}-[0-9a-f]{8})$/);
       if (em) await pageEventStudy(em[1]); else await pageEvents();
@@ -4037,6 +4038,202 @@ function adaptTables(root) {
   });
 }
 new MutationObserver(() => adaptTables(view)).observe(view, { childList: true, subtree: true });
+
+
+// ---------------------------------------------------------------------------
+// Swing: NASDAQ swing-szuro, meretezes, kotesnaplo, backteszt (swing/) - megbizast nem ad fel
+// ---------------------------------------------------------------------------
+let swingTimer = null;
+const SWING_SETUP = {
+  pullback: ["Visszahúzás a 20 EMA-hoz", "Emelkedő trend (záró > SMA50 > SMA200), friss csúcs, csendes visszahúzódás a 20 napos EMA-ig, RSI 35–60. Entry: a jelzőnap csúcsa fölött."],
+  breakout: ["Kitörés bázisból", "Legalább 25%-os emelkedés után 20 napos, legfeljebb 15% mély bázis, szűkülő sáv és apadó forgalom. Entry: a bázis teteje (pivot) fölött."],
+};
+const swingSetup = (id) => { const [label, help] = SWING_SETUP[id] || [id, ""]; return `<span class="badge watch has-help" title="${esc(help)}">${esc(label)}</span>`; };
+const swingGrade = (g) => `<span class="badge ${g === "A" ? "go" : g === "B" ? "watch" : "fail"}">${esc(g)}</span>`;
+const SWING_REGIME = { up: ["ok", "emelkedő"], neutral: ["warn", "semleges"], down: ["bad", "csökkenő"], unknown: ["plain", "ismeretlen"] };
+const SWING_CFG = [
+  ["account_usd", "Számla ($)", 1], ["risk_pct", "Kockázat / kötés (%)", 0.05], ["max_position_pct", "Max. pozíció (% a számlából)", 1],
+  ["max_total_risk_pct", "Összes nyitott kockázat (%)", 0.1], ["commission_usd", "Díj / megbízás ($)", 0.01],
+  ["min_price", "Min. ár ($)", 1], ["min_dollar_volume", "Min. napi forgalom ($)", 1000000], ["t1_r", "T1 (R)", 0.1], ["t2_r", "T2 (R)", 0.1],
+  ["trail_atr", "Követő stop (ATR)", 0.1], ["time_stop_sessions", "Időstop (nap)", 1], ["max_hold_sessions", "Max. tartás (nap)", 1],
+  ["earnings_days", "Gyorsjelentés-figyelés (nap)", 1],
+];
+
+function swingJob(j) {
+  const el = $("#sw-job");
+  if (!el || !j || j.state === "idle") return;
+  el.innerHTML = `<span class="badge ${j.state === "error" ? "bad" : j.state === "done" ? "go" : "watch"}">${j.state === "running" ? "Fut" : j.state === "done" ? "Kész" : "Hiba"}</span> ${esc(j.message)}`;
+}
+
+function swingPlanHtml(p) {
+  return `<h2>Terv: ${esc(p.symbol)} ${swingSetup(p.setup)}</h2><div class="card-body">
+    <p><strong>${fmt(p.qty, p.qty % 1 ? 4 : 0)} db</strong> · pozíció ${money(p.position_usd)} (${fmt(p.position_pct, 1)}%) ·
+      kockázat <strong>${money(p.risk_usd)}</strong> · nyereség a T1-nél ${money(p.reward_t1_usd)}</p>
+    ${p.tickets.length ? `<ol>${p.tickets.map((t) => `<li><code>${esc(t)}</code></li>`).join("")}</ol>` : ""}
+    ${p.warnings.map((w) => `<p class="msg err">${esc(w)}</p>`).join("")}
+    <p class="muted small">Belépés előtt nézd meg az árat a brókernél: ha már a limit fölött van, a setup elment – ne üldözd.
+      Ha a bróker nem tud összekapcsolt (OCO) stopot és limitet, az egyik teljesülése után a másikat kézzel töröld.</p>
+    ${p.qty ? `<form id="sw-add" class="ag-form">
+      <input type="hidden" name="symbol" value="${esc(p.symbol)}">
+      <label>Teljesült darab<input name="qty" type="number" step="any" min="0" value="${esc(p.qty)}"></label>
+      <label>Vételi ár ($)<input name="fill" type="number" step="0.01" min="0" value="${esc(p.entry)}"></label>
+      <label>Stop ($)<input name="stop" type="number" step="0.01" min="0" value="${esc(p.stop)}"></label>
+      <label>Dátum<input name="date" type="date"></label>
+      <div class="wide"><button class="btn primary" type="submit">Megvettem – naplózás</button></div>
+    </form>` : ""}</div>`;
+}
+
+async function pageSwing(msg = "", report = null) {
+  clearInterval(swingTimer);
+  const d = await api("/api/swing");
+  const c = d.config;
+  const sc = d.scan;
+  const reg = sc ? sc.regime || {} : {};
+  const [rcls, rlabel] = SWING_REGIME[reg.state] || SWING_REGIME.unknown;
+  const bt = d.backtest;
+  const btRow = (name, s) => !s || !s.trades ? `<tr><td>${esc(name)}</td><td class="num">0</td><td colspan="6"></td></tr>`
+    : `<tr><td>${esc(name)}</td><td class="num">${s.trades}</td><td class="num">${fmt(s.win_rate, 1)}%</td><td class="num">${signed(s.avg_r, 2, "R")}</td>
+       <td class="num">${s.profit_factor ?? "–"}</td><td class="num">${signed(s.total_r, 1, "R")}</td><td class="num">${fmt(s.max_drawdown_r, 1)}R</td><td class="num">${s.worst_losing_streak}</td></tr>`;
+  view.innerHTML = `
+    <div class="page-head"><h1>Swing</h1>
+      <span class="muted">NASDAQ long swing setupok pontos belépővel, stoppal és célárakkal; méretezés a kockázatod alapján és kötésnapló.
+        Megbízást nem ad fel – a jegyeket a brókerednél te viszed be. Technikai szabályok múltbeli árakon, nem befektetési tanács.</span></div>
+    ${msg ? `<section class="card"><div class="card-body">${esc(msg)}</div></section>` : ""}
+    ${report ? `<section class="card"><h2>Napló frissítése – teendők</h2><div class="card-body">${report.length ? report.map((r) => `<p><strong>${esc(r.symbol)}</strong>
+      ${r.close != null ? `záró ${fmt(r.close)} (${signed(r.r_open, 2, "R")})` : ""}</p><ul>${r.actions.map((a) => `<li>${esc(a)}</li>`).join("") || "<li>Nincs teendő.</li>"}</ul>`).join("") : "Nincs nyitott kötés."}</div></section>` : ""}
+
+    <section class="card"><h2>Szűrés</h2><div class="card-body">
+      <div class="form-actions" style="margin-top:0">
+        <span class="pill ${rcls}" title="${esc(reg.symbol || "QQQ")}: záró ${fmt(reg.close)} · SMA50 ${fmt(reg.sma50)} · SMA200 ${fmt(reg.sma200)}">Rezsim (${esc(reg.symbol || "QQQ")}): ${rlabel}</span>
+        <label class="small">Papírok <select id="sw-max"><option value="100">100 legnagyobb</option><option value="300" selected>300 legnagyobb</option>
+          <option value="1000">1000 legnagyobb</option><option value="0">teljes NASDAQ</option></select></label>
+        <button id="sw-scan" class="btn primary" type="button">Szűrés indítása</button><span id="sw-job" class="small"></span></div>
+      <p class="muted small">${sc ? `Utolsó szűrés: ${when(sc.generated)} · adat: ${esc(sc.data_through || "–")} · ${sc.analysed} likvid papír a ${sc.universe}-ből · ${sc.candidates.length} setup${sc.errors ? ` · ${sc.errors} letöltési hiba` : ""}`
+        : "Még nem volt szűrés."} Az első teljes futás 5–10 perc; utána a gyorsítótár miatt a következő zárásig gyors.</p>
+      ${reg.state === "down" ? `<p class="msg err">Csökkenő piaci rezsim: a long kitörések többsége ilyenkor elbukik.</p>` : ""}
+      ${sc && sc.candidates.length ? `<table class="table"><thead><tr><th>Papír</th><th>Setup</th><th>Oszt.</th><th class="num">Pont</th><th class="num">RS</th>
+        <th class="num">Záró</th><th class="num">Entry</th><th class="num">Stop</th><th class="num">T1</th><th class="num">T2</th><th class="num">Kock.</th><th>Érvényes</th><th>Gyorsjelentés</th><th></th></tr></thead><tbody>
+        ${sc.candidates.slice(0, 40).map((x) => `<tr><td class="ticker"><a href="#/p/${esc(x.symbol)}" title="${esc(x.name)}">${esc(x.symbol)}</a></td><td>${swingSetup(x.setup)}</td><td>${swingGrade(x.grade)}</td>
+          <td class="num">${fmt(x.score, 0)}</td><td class="num">${fmt(x.rs, 0)}</td><td class="num">${fmt(x.close)}</td><td class="num"><strong>${fmt(x.entry)}</strong></td>
+          <td class="num">${fmt(x.stop)}</td><td class="num">${fmt(x.t1)}</td><td class="num">${fmt(x.t2)}</td><td class="num">${fmt(x.risk_pct, 1)}%</td>
+          <td class="small">${esc(x.valid_until)}</td><td class="small">${x.earnings ? `<span class="badge warn">${esc(x.earnings)}</span>` : ""}</td>
+          <td><button class="btn" type="button" data-sw-plan="${esc(x.symbol)}" title="${esc(x.why)}">Terv</button></td></tr>`).join("")}</tbody></table>`
+        : sc ? `<div class="muted">Ma nincs a szabályoknak megfelelő setup.</div>` : ""}
+    </div></section>
+    <section class="card" id="sw-plan" hidden></section>
+
+    <section class="card"><h2>Nyitott kötések</h2><div class="card-body">
+      <p class="small">Nyitott kockázat: <strong>${money(d.risk.open_usd)}</strong> / ${money(d.risk.limit_usd)} megengedett · kötésenként ${money(d.risk.per_trade_usd)}</p>
+      ${d.open.length ? `<table class="table"><thead><tr><th>Papír</th><th>Setup</th><th>Nyitva</th><th class="num">Maradék</th><th class="num">Vétel</th><th class="num">Stop</th>
+        <th class="num">T1</th><th class="num">T2</th><th>T1 megvolt</th><th class="num">Nap</th><th>Kézi eladás</th><th></th></tr></thead><tbody>
+        ${d.open.map((t) => `<tr><td class="ticker"><a href="#/p/${esc(t.symbol)}">${esc(t.symbol)}</a></td><td>${swingSetup(t.setup)}</td><td class="small">${esc(t.opened)}</td>
+          <td class="num">${fmt(t.remaining, t.remaining % 1 ? 4 : 0)}</td><td class="num">${fmt(t.entry)}</td><td class="num"><strong>${fmt(t.stop)}</strong></td>
+          <td class="num">${fmt(t.t1)}</td><td class="num">${fmt(t.t2)}</td><td>${t.t1_hit ? "igen" : "nem"}</td><td class="num">${t.sessions}</td>
+          <td><form class="sw-close" data-symbol="${esc(t.symbol)}" style="display:flex;gap:6px"><input name="price" type="number" step="0.01" min="0" placeholder="ár" style="width:80px">
+            <input name="qty" type="number" step="any" min="0" placeholder="db (mind)" style="width:80px"><button class="btn" type="submit">Rögzít</button></form></td>
+          <td><button class="btn" type="button" data-sw-del="${esc(t.symbol)}" data-opened="${esc(t.opened)}" title="Téves bejegyzés törlése">×</button></td></tr>`).join("")}</tbody></table>`
+        : `<div class="muted">Nincs nyitott kötés. A „Terv” után a „Megvettem” gombbal kerül ide.</div>`}
+      <div class="form-actions"><button id="sw-update" class="btn primary" type="button">Napló frissítése</button>
+        <span class="muted small">Zárás után (22:00 magyar idő után) futtasd: megmondja, melyik stopot kell áthelyezni, mi teljesült.</span></div>
+    </div></section>
+
+    <section class="card"><h2>Lezárt kötések</h2><div class="card-body">
+      ${d.stats.closed ? `<p>${d.stats.closed} kötés · találati arány ${fmt(d.stats.win_rate, 1)}% · átlag <strong>${signed(d.stats.avg_r, 2, "R")}</strong> · összesen ${signed(d.stats.total_r, 2, "R")}</p>` : ""}
+      ${d.closed.length ? `<table class="table"><thead><tr><th>Papír</th><th>Setup</th><th>Nyitva</th><th>Zárva</th><th class="num">Vétel</th><th class="num">Eredmény</th><th>Kilépések</th></tr></thead><tbody>
+        ${d.closed.map((t) => `<tr><td class="ticker">${esc(t.symbol)}</td><td>${swingSetup(t.setup)}</td><td class="small">${esc(t.opened)}</td><td class="small">${esc(t.closed || "")}</td>
+          <td class="num">${fmt(t.entry)}</td><td class="num ${t.r > 0 ? "up" : "down"}">${signed(t.r, 2, "R")}</td>
+          <td class="small">${(t.events || []).filter((e) => e.qty).map((e) => `${esc(e.reason)} @ ${fmt(e.price)}`).join(", ")}</td></tr>`).join("")}</tbody></table>`
+        : `<div class="muted">Még nincs lezárt kötés.</div>`}</div></section>
+
+    <section class="card"><h2>Backteszt</h2><div class="card-body">
+      <div class="form-actions" style="margin-top:0">
+        <label class="small">Papírok <select id="sw-bt-max"><option value="50">50</option><option value="100" selected>100</option><option value="200">200</option><option value="500">500</option></select></label>
+        <label class="small">Időtáv <select id="sw-bt-range"><option value="2y">2 év</option><option value="5y" selected>5 év</option><option value="10y">10 év</option></select></label>
+        <button id="sw-bt" class="btn" type="button">Backteszt indítása</button></div>
+      ${bt ? `<p class="muted small">${when(bt.generated)} · ${bt.symbols} papír · ${esc(bt.range)}</p>
+        <table class="table"><thead><tr><th>Setup</th><th class="num">Kötés</th><th class="num">Találat</th><th class="num">Átlag</th><th class="num">PF</th><th class="num">Összes</th><th class="num">Max. visszaesés</th><th class="num">Vesztes sorozat</th></tr></thead><tbody>
+        ${Object.entries(bt.by_setup).map(([k, s]) => btRow((SWING_SETUP[k] || [k])[0], s)).join("")}${btRow("Összesen", bt.all)}</tbody></table>
+        <p class="muted small">Kilépések: ${Object.entries(bt.all.exits || {}).map(([k, v]) => `${esc(k)} ${v}`).join(" · ")}. Túlélési torzítás (csak a ma jegyzett papírok), napi gyertyák (a stop a cél előtt), költség: csak csúszás.
+          Kb. +0,2R átlag fölött érdemes papíron követni; 0 körül nincs előny.</p>` : `<p class="muted">Még nem volt backteszt. Ugyanazokkal a szabályokkal fut, mint a szűrés és a napló.</p>`}
+    </div></section>
+
+    <section class="card"><h2>Beállítások</h2><div class="card-body">
+      <form id="sw-cfg" class="ag-form">
+        ${SWING_CFG.map(([k, label, step]) => `<label>${esc(label)}<input name="${k}" type="number" step="${step}" value="${esc(c[k])}"></label>`).join("")}
+        <label class="wide"><span><input type="checkbox" name="fractional_shares" ${c.fractional_shares ? "checked" : ""}> Törtrészvény (a bróker engedi)</span></label>
+        <div class="wide">${c.setups_all.map((s) => `<label><span><input type="checkbox" name="setup" value="${esc(s)}" ${c.setups.includes(s) ? "checked" : ""}> ${esc((SWING_SETUP[s] || [s])[0])}</span></label>`).join("")}</div>
+        <div class="wide"><button class="btn primary" type="submit">Mentés</button><span id="sw-cfg-msg" class="msg"></span></div>
+      </form></div></section>`;
+
+  const poll = () => {
+    clearInterval(swingTimer);
+    swingTimer = setInterval(async () => {
+      if (location.hash !== "#/swing") { clearInterval(swingTimer); return; }
+      const p = await api("/api/swing").catch(() => null);
+      if (!p) return;
+      swingJob(p.job);
+      if (p.job.state !== "running") { clearInterval(swingTimer); await pageSwing(p.job.message); }
+    }, 2000);
+  };
+  swingJob(d.job);
+  if (d.job.state === "running") poll();
+  const start = async (path, body) => {
+    try { const r = await api(path, { method: "POST", body: JSON.stringify(body) }); swingJob(r.job); poll(); }
+    catch (e) { swingJob({ state: "error", message: e.message }); }
+  };
+  $("#sw-scan").addEventListener("click", () => start("/api/swing/scan", { max: Number($("#sw-max").value) }));
+  $("#sw-bt").addEventListener("click", () => start("/api/swing/backtest", { max: Number($("#sw-bt-max").value), range: $("#sw-bt-range").value }));
+  $("#sw-update").addEventListener("click", async (ev) => {
+    ev.target.disabled = true;
+    try { const r = await api("/api/swing/update", { method: "POST", body: "{}" }); await pageSwing(r.message, r.report); }
+    catch (e) { await pageSwing(`Hiba: ${e.message}`); }
+  });
+  view.querySelectorAll("[data-sw-plan]").forEach((b) => b.addEventListener("click", async () => {
+    const box = $("#sw-plan");
+    try {
+      const r = await api("/api/swing/plan", { method: "POST", body: JSON.stringify({ symbol: b.dataset.swPlan }) });
+      box.innerHTML = swingPlanHtml(r.plan);
+    } catch (e) { box.innerHTML = `<div class="card-body msg err">${esc(e.message)}</div>`; }
+    box.hidden = false;
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+    const form = $("#sw-add");
+    if (form) form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const body = Object.fromEntries(new FormData(form).entries());
+      try { const r = await api("/api/swing/add", { method: "POST", body: JSON.stringify(body) }); await pageSwing(r.message); }
+      catch (e2) { alertBox(form, e2.message); }
+    });
+  }));
+  view.querySelectorAll("form.sw-close").forEach((f) => f.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const body = { symbol: f.dataset.symbol, price: f.elements.price.value, qty: f.elements.qty.value };
+    try { const r = await api("/api/swing/close", { method: "POST", body: JSON.stringify(body) }); await pageSwing(r.message); }
+    catch (e) { alertBox(f, e.message); }
+  }));
+  view.querySelectorAll("[data-sw-del]").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm(`Törlöd a naplóból: ${b.dataset.swDel}?`)) return;
+    try { const r = await api("/api/swing/delete", { method: "POST", body: JSON.stringify({ symbol: b.dataset.swDel, opened: b.dataset.opened }) }); await pageSwing(r.message); }
+    catch (e) { await pageSwing(`Hiba: ${e.message}`); }
+  }));
+  $("#sw-cfg").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const f = ev.target;
+    const values = {};
+    SWING_CFG.forEach(([k]) => { values[k] = Number(f.elements[k].value); });
+    values.fractional_shares = f.elements.fractional_shares.checked;
+    values.setups = [...f.querySelectorAll("input[name=setup]:checked")].map((x) => x.value);
+    const m = $("#sw-cfg-msg");
+    try { await api("/api/swing/config", { method: "POST", body: JSON.stringify({ values }) }); m.className = "msg ok"; m.textContent = "Mentve."; }
+    catch (e) { m.className = "msg err"; m.textContent = e.message; }
+  });
+}
+
+function alertBox(form, text) {
+  let el = form.querySelector(".msg");
+  if (!el) { el = document.createElement("span"); form.appendChild(el); }
+  el.className = "msg err";
+  el.textContent = text;
+}
 
 // Az elso utvonal-kezeles a fajl VEGEN: a kesobb deklaralt let/const-ok (pl. practiceTimer, NEWS_LABEL) csak itt
 // inicializaltak - kozvetlen betolteskor (#/practice, #/events) kulonben "before initialization" hiba jonne.

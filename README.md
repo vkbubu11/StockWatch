@@ -795,6 +795,30 @@ Alapból **fut, értesít és virtuálisan követ**. A rangsort minden zárás u
 rangsor”; a „Papír kiértékelése” ablak is mutatja a papír helyét). A paper fiókhoz a Stratégiák fülön köthető, ilyenkor
 egyszerre 10 pozíciót tart.
 
+## Swing (Swing fül)
+
+NASDAQ long swing setupok pontos belépővel, stoppal és célárakkal; méretezés és kötésnapló. Ugyanazok a
+szabályok, mint a különálló **swing-skill** Claude-csomagban (`src/stockwatch/swing/core.py` annak
+`swingcore.py`-ja), így a szerveren tokenköltség nélkül fut. Megbízást nem ad fel.
+
+- **Szűrés** – a NASDAQ papírjai (Nasdaq screener: ár ≥ 10 $, piaci érték ≥ 300 M$, majd 20 napos forgalom
+  ≥ 20 M$), 100 / 300 / 1000 legnagyobb vagy a teljes lista. Két setup:
+  *Visszahúzás a 20 EMA-hoz* (záró > SMA50 > SMA200, friss csúcs, RSI 35–60; entry a jelzőnap csúcsa fölött,
+  stop az 5 napos mélypont alatt) és *Kitörés bázisból* (≥ 25% emelkedés után 20 napos, ≤ 15% mély, szűkülő
+  bázis, apadó forgalom; entry a pivot fölött, stop a 10 napos mélypont alatt). Stop 1–3 ATR, T1 = 2R,
+  T2 = 3R, stop-limit vétel (limit = entry + 0,3 ATR), 2 kereskedési napig érvényes. Pontszám: 50% relatív
+  erő, 25% forgalom-apadás, 25% hely a következő ellenállásig; A ≥ 75, B ≥ 60. QQQ-rezsim, gyorsjelentés-jelzés.
+- **Terv** – darabszám = számla × kockázat% / (entry − stop), a pozíció- és az összkockázat-plafonnal;
+  kész megbízási jegyek (stop-limit vétel, védő stop, T1 limit). A számla és a kockázat alapból az
+  `entry.account_size` / `entry.risk_per_trade_pct`, a fül Beállítások kártyáján felülírható.
+- **Kötésnapló** – „Megvettem” után a „Napló frissítése” gomb (zárás után) végigjátssza az új napokat:
+  stop, T1 (fele eladva, stop breakevenre), követő stop (legmagasabb záró − 2 ATR), időstop (10 nap T1 nélkül).
+- **Backteszt** – ugyanezek a szabályok 2 / 5 / 10 éven, R-ben (találati arány, átlag R, PF, visszaesés,
+  vesztes sorozat). Túlélési torzítás: csak a ma jegyzett papírok.
+
+Adat: `data/swing/` (config, candidates, backtest, trades, és a napi gyertyák gyorsítótára, teljes
+NASDAQ-nál kb. 40 MB). Adatforrás: Nasdaq screener és earnings naptár, Yahoo chart (a Stooq tartalék).
+
 ## Backteszt oldal (Backteszt fül)
 
 Egy kiválasztott papír vagy ETF **teljes története a megadott kezdődátumtól** (akár 1980-tól), a rendszer
